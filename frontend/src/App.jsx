@@ -1,17 +1,17 @@
-import { Routes, Route, Link } from 'react-router-dom'
-import Home from './page/Home'
+import { Routes, Route } from 'react-router-dom'
+import Chat from './page/Chat'
 import Sidebar from './sidebar/Sidebar'
 
 function App() {
   return (
-    <div className="min-h-screen flex">
+    <div className="h-screen flex overflow-hidden">
       <Sidebar />
 
-      <main className="w-[90%]">
+      <main className="flex-1 overflow-y-auto bg-background text-slate-900">
         <Routes>
-            <Route path="/" element={<Home />} />
+          <Route path="/" element={<Chat />} />
         </Routes>
-			</main>
+      </main>
     </div>
   )
 }

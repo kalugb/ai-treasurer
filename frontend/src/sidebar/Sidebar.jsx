@@ -1,9 +1,9 @@
 import { NavLink } from "react-router-dom";
-import { useState } from "react";
+import { Settings } from "lucide-react";
 
 const navItems = [
     {
-        to: "/", label: "Home",
+        to: "/", label: "Chat",
     },
     {
         to: "/about", label: "About",
@@ -12,16 +12,29 @@ const navItems = [
 
 function Sidebar() {
     return (
-        <nav className="flex flex-col gap-10 p-4 w-[10%] justify-start items-center bg-gray-200">
-            {navItems.map((item) => (
+        <nav className="flex flex-col w-[10%] justify-between items-center h-screen bg-gray-200">
+            <div className="flex flex-col gap-10 p-5 pt-5 justify-start items-center bg-gray-200">
+                {navItems.map((item) => (
+                    <NavLink
+                        key={item.to}
+                        to={item.to}
+                        className={({ isActive }) => `mt-3 ${(isActive ? "text-blue-500" : "")}`}
+                    >
+                        {item.label}                    
+                    </NavLink>
+                ))}
+            </div>
+
+            <div className="flex flex-col gap-10 p-5 pt-5 w-[15%] justify-start items-center bg-gray-200">
                 <NavLink
-                    key={item.to}
-                    to={item.to}
-                    className={({ isActive }) => isActive ? "text-blue-500" : ""}
+                    to="/settings"
+                    className={({ isActive }) => `mt-3 flex items-center gap-2 whitespace-nowrap
+                         ${(isActive ? "text-blue-500" : "")}`}
                 >
-                    {item.label}                    
+                    <Settings size={24} />
+                    Settings
                 </NavLink>
-            ))}
+            </div>
         </nav>
     )
 }
