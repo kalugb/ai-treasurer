@@ -1,0 +1,14 @@
+{
+    "ttl_index": [
+        {
+            "collection_name": "memories",
+            "field": "timestamp",
+            "expireAfterSeconds": 604800
+        },
+        {
+            "collection_name": "sessions",
+            "field": "created_at",
+            "expireAfterSeconds": 86400
+        }
+    ]
+}

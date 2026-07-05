@@ -1,13 +1,19 @@
-import { Outlet } from 'react-router-dom'
-import Sidebar from './components/sidebar/Sidebar'
+import { Routes, Route, Link } from 'react-router-dom'
+import Home from './page/Home'
+import Sidebar from './sidebar/Sidebar'
 
-export default function App() {
+function App() {
   return (
-    <div className="flex h-screen w-full">
+    <div className="min-h-screen flex">
       <Sidebar />
-      <main className="flex-1 min-w-0 bg-[#F7F4EF]">
-        <Outlet />
-      </main>
+
+      <main className="w-[90%]">
+        <Routes>
+            <Route path="/" element={<Home />} />
+        </Routes>
+			</main>
     </div>
   )
 }
+
+export default App

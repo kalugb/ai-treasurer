@@ -1,0 +1,31 @@
+[project]
+name = "ai-agent"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "bcrypt>=5.0.0",
+    "ddgs>=9.14.4",
+    "dotenv>=0.9.9",
+    "fastapi>=0.137.0",
+    "httpx>=0.28.0",
+    "google-api-python-client>=2.197.0",
+    "google-auth-httplib2>=0.4.0",
+    "google-auth-oauthlib>=1.4.0",
+    "mcp>=1.28.0",
+    "motor>=3.7.1",
+    "openai>=2.41.1",
+    "openrouter>=0.9.1",
+    "pymongo[srv]>=4.17.0",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=0.26.0",
+    "questionary>=2.1.1",
+    "sentence-transformers>=5.5.1",
+    "torch>=2.6.1",
+    "typing-extensions>=4.15.0",
+    "tzdata>=2026.2",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

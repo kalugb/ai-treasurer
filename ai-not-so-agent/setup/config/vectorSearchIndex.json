@@ -1,0 +1,14 @@
+{
+  "fields": [
+    {
+      "numDimensions": 384,
+      "path": "textVector",
+      "similarity": "cosine",
+      "type": "vector"
+    },
+    {
+      "path": "conversationID",
+      "type": "filter"
+    }
+  ]
+}

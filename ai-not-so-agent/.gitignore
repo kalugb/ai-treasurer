@@ -1,0 +1,26 @@
+# env
+.env
+
+# claude creds
+.claude/
+CLAUDE.md
+
+# __pycache__
+chatbot/__pycache__
+db/__pycache__
+mcp_servers/__pycache__
+tools/__pycache__
+__pycache__
+
+# notes (no need to include inside git)
+db_docs_example.json
+
+# drawio for notes only
+*.drawio
+
+# session token, no need to include inside git
+auth/session_token.json
+
+# google creds, ofc cannot include inside git
+credentials.json
+*.pickle

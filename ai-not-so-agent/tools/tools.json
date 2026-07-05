@@ -1,0 +1,337 @@
+[
+    {
+        "type": "function",
+        "name": "ddgs_search",
+        "description": "Search the web using DuckDuckGo. Supports text, news, image, and video searches.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "search_query": {
+                    "type": "string",
+                    "description": "The search query to look up"
+                },
+                "search_type": {
+                    "type": "string",
+                    "enum": [
+                        "text",
+                        "news",
+                        "image",
+                        "video"
+                    ],
+                    "description": "Type of search to perform. Defaults to 'text'."
+                }
+            },
+            "required": [
+                "search_query"
+            ]
+        }
+    },
+    {
+        "type": "function",
+        "name": "manage_user_memory",
+        "description": "Manage the current user's long-term memory profile. Call this whenever the user reveals something personal and persistent â€” a preference, a habit, a recurring interest, a communication style they prefer, or a fact about themselves or their life. Think like a human observer: if a friend told you this, would you remember it for future conversations? If yes, record it. IMPORTANT: Always call this tool FIRST before generating any response. Do not call this for one-off requests, temporary context, or things only relevant to the current conversation. Use 'create' only if no memory profile exists yet. Use 'update' for all additions or changes. Use 'delete' only if the user explicitly asks to forget something.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": [
+                        "create",
+                        "update",
+                        "delete"
+                    ],
+                    "description": "The operation to perform. Use 'update' by default unless creating for the first time or the user asks to delete."
+                },
+                "preference": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    },
+                    "description": "Persistent preferences about how the user likes things. Examples: {\"responseStyle\": \"concise and direct\"}, {\"codingLanguage\": \"Python\"}, {\"tonePreference\": \"casual and friendly\"}, {\"explanationDepth\": \"high level only, no jargon\"}. Only include keys that changed or were newly mentioned."
+                },
+                "facts": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Specific facts about the user worth remembering long-term. Examples: 'User is building an AI agent for a hackathon', 'User dislikes overly formal responses', 'User works as a developer in Malaysia', 'User prefers bullet points for technical explanations'. Each fact should be a single clear sentence. Only append new facts not already recorded."
+                },
+                "full_update": {
+                    "type": "boolean",
+                    "description": "If true, completely replaces the user's preferences and facts with the new values provided. Use this only when the user explicitly wants to reset or overwrite their memory â€” for example, 'forget everything and start fresh' or 'replace my preferences with these'. Defaults to false, which merges preferences key-by-key and appends new facts without touching existing ones."
+                }
+            },
+            "required": [
+                "action"
+            ]
+        }
+    },
+    {
+        "type": "function",
+        "name": "gmail_send",
+        "description": "Send an email via Gmail. Use this when the user asks to send an email, or when a scheduled task completes and a notification needs to be sent.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "to": {
+                    "type": "string",
+                    "description": "Recipient email address"
+                },
+                "subject": {
+                    "type": "string",
+                    "description": "Email subject line"
+                },
+                "body": {
+                    "type": "string",
+                    "description": "Plain text email body"
+                },
+                "html_body": {
+                    "type": "string",
+                    "description": "Optional HTML version of the email body. If provided, email clients will show HTML version with plain text as fallback."
+                }
+            },
+            "required": [
+                "to",
+                "subject",
+                "body"
+            ]
+        }
+    },
+    {
+        "type": "function",
+        "name": "mcp_filesystem",
+        "description": "Read, write, edit, and list files on the local filesystem. Use when the user asks to view, create, or modify project files. All paths are relative to the project root. Supports four actions: 'read_file' (read a file), 'write_file' (create or overwrite a file), 'list_dir' (list directory contents), 'edit_file' (replace a section of a file).",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": [
+                        "read_file",
+                        "write_file",
+                        "list_dir",
+                        "edit_file"
+                    ],
+                    "description": "Which filesystem operation to perform."
+                },
+                "path": {
+                    "type": "string",
+                    "description": "File or directory path relative to project root, e.g. 'chatbot/llm.py' or 'tools/'"
+                },
+                "content": {
+                    "type": "string",
+                    "description": "Full file content to write. Required for 'write_file'."
+                },
+                "old_text": {
+                    "type": "string",
+                    "description": "Exact text to find and replace. Required for 'edit_file'. Must be unique in the file."
+                },
+                "new_text": {
+                    "type": "string",
+                    "description": "Replacement text. Required for 'edit_file'."
+                }
+            },
+            "required": [
+                "action",
+                "path"
+            ]
+        }
+    },
+    {
+        "type": "function",
+        "name": "manage_scheduler",
+        "description": "Create, read, update, and delete scheduled jobs for the current user. Use when the user wants to schedule a task, check upcoming jobs, modify a scheduled job, or cancel one. The scheduler runs asynchronously and can optionally send email notifications when tasks execute.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": [
+                        "create",
+                        "read",
+                        "update",
+                        "delete"
+                    ],
+                    "description": "The operation to perform on the scheduled job."
+                },
+                "scheduler_id": {
+                    "type": "string",
+                    "description": "The ID of the scheduled job. Required for read (single), update, and delete."
+                },
+                "task_name": {
+                    "type": "string",
+                    "description": "A short descriptive name for the scheduled task. Required for create."
+                },
+                "prompt": {
+                    "type": "string",
+                    "description": "The prompt/instructions the LLM should execute when the task runs. Required for create."
+                },
+                "next_execution_time": {
+                    "type": "string",
+                    "description": "ISO 8601 datetime string for when the task should first run (e.g. 2026-07-01T09:00:00+08:00). Required for create."
+                },
+                "repeating": {
+                    "type": "boolean",
+                    "description": "Whether the task should repeat after execution. Defaults to false."
+                },
+                "max_repeat": {
+                    "type": "number",
+                    "description": "Maximum number of times the task should repeat. Only used when repeating is true."
+                },
+                "interval_in_seconds": {
+                    "type": "number",
+                    "description": "Seconds between repeated executions. Defaults to 3600 (1 hour). Only used when repeating is true."
+                },
+                "changes": {
+                    "type": "object",
+                    "description": "Fields to update on an existing scheduled job. Required for update. Keys can include taskName, prompt, nextExecutionTime, repeating, intervalInSeconds, maxRepeat."
+                },
+                "find_many": {
+                    "type": "boolean",
+                    "description": "If true, returns all matching jobs instead of one. Use with read to list all jobs for the user."
+                }
+            },
+            "required": [
+                "action"
+            ]
+        }
+    },
+    {
+        "type": "function",
+        "name": "github_tool",
+        "description": "Run git operations on a local repository. Use when the user asks to pull, push, fetch, list branches, create/delete branches, checkout, view status/log/diff, stage, commit, stash, reset, list remotes/tags, or get the current branch. All actions accept an optional 'repo_path' (defaults to current directory). Returns {returncode, stdout, stderr}.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": [
+                        "pull",
+                        "push",
+                        "fetch",
+                        "branch_list",
+                        "branch_create",
+                        "branch_delete",
+                        "checkout",
+                        "status",
+                        "log",
+                        "diff",
+                        "add",
+                        "commit",
+                        "stash",
+                        "stash_pop",
+                        "reset",
+                        "remote_list",
+                        "tag_list",
+                        "current_branch"
+                    ],
+                    "description": "Git operation to perform."
+                },
+                "repo_path": {
+                    "type": "string",
+                    "description": "Path to the git repository. Defaults to current working directory."
+                },
+                "remote": {
+                    "type": "string",
+                    "description": "Remote name, defaults to 'origin'."
+                },
+                "branch": {
+                    "type": "string",
+                    "description": "Branch name for pull/push/log/diff."
+                },
+                "force": {
+                    "type": "boolean",
+                    "description": "Force push."
+                },
+                "set_upstream": {
+                    "type": "boolean",
+                    "description": "Set upstream tracking on push (-u)."
+                },
+                "all": {
+                    "type": "boolean",
+                    "description": "For fetch: fetch all remotes. For add: stage all changes."
+                },
+                "prune": {
+                    "type": "boolean",
+                    "description": "Prune deleted remote refs on fetch."
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Branch name for branch_create/branch_delete."
+                },
+                "base": {
+                    "type": "string",
+                    "description": "Base branch for branch_create or checkout -b."
+                },
+                "target": {
+                    "type": "string",
+                    "description": "Target for checkout (branch/commit) or reset (commit/HEAD)."
+                },
+                "create": {
+                    "type": "boolean",
+                    "description": "Create branch on checkout (-b)."
+                },
+                "short": {
+                    "type": "boolean",
+                    "description": "Short status format."
+                },
+                "limit": {
+                    "type": "number",
+                    "description": "Number of log entries to show."
+                },
+                "oneline": {
+                    "type": "boolean",
+                    "description": "One-line log format."
+                },
+                "graph": {
+                    "type": "boolean",
+                    "description": "Show ASCII graph in log."
+                },
+                "author": {
+                    "type": "string",
+                    "description": "Filter log by author."
+                },
+                "since": {
+                    "type": "string",
+                    "description": "Show commits since date (e.g. '2024-01-01', '1 week ago')."
+                },
+                "staged": {
+                    "type": "boolean",
+                    "description": "Show staged diff."
+                },
+                "file": {
+                    "type": "string",
+                    "description": "Restrict diff/add to a specific file path."
+                },
+                "message": {
+                    "type": "string",
+                    "description": "Commit message or stash message."
+                },
+                "amend": {
+                    "type": "boolean",
+                    "description": "Amend the previous commit."
+                },
+                "index": {
+                    "type": "number",
+                    "description": "Stash index to pop."
+                },
+                "mode": {
+                    "type": "string",
+                    "enum": [
+                        "soft",
+                        "mixed",
+                        "hard"
+                    ],
+                    "description": "Reset mode. Defaults to 'mixed'."
+                },
+                "sort": {
+                    "type": "string",
+                    "description": "Tag sort order (e.g. 'version:refname', '-creatordate')."
+                }
+            },
+            "required": [
+                "action"
+            ]
+        }
+    }
+]

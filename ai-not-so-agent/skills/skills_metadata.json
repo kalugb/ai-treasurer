@@ -1,0 +1,19 @@
+{
+    "version": "1.0.0",
+    "skills": [
+        {
+            "id": "ai_knowledge_skill",
+            "description": "Provides up-to-date information on AI models, tools, frameworks, research, and industry news. Always searches for latest info before answering.",
+            "keywords": [
+                "ai", "artificial intelligence", "machine learning", "deep learning",
+                "neural networks", "llm", "model", "gpt", "claude", "gemini", "mistral",
+                "llama", "openai", "anthropic", "benchmark", "context window", "fine-tuning",
+                "rag", "agent", "multimodal", "embedding", "transformer", "hugging face",
+                "langchain", "ollama", "reasoning model", "inference", "quantization"
+            ],
+            "type": "instruction",
+            "skill_file": "skills/ai_knowledge_skill/SKILL.md",
+            "enabled": true
+        }
+    ]
+}
