@@ -1,4 +1,3 @@
-# ai/llm_mistral.py
 import os
 from dotenv import load_dotenv
 from langchain_mistralai import ChatMistralAI
@@ -6,7 +5,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 load_dotenv()
 
-def load_mistral_llm():
+async def load_mistral_llm():
     API_KEY = os.getenv("MISTRAL_API_KEY")
     MODEL_NAME = os.getenv("MISTRAL_LLM_MODEL")
     
@@ -22,7 +21,9 @@ def load_mistral_llm():
     return llm
 
 if __name__ == "__main__":
-    llm = load_mistral_llm()
+    import asyncio
+    
+    llm = asyncio.run(load_mistral_llm())
     
     user_message = "Please provide a brief summary of the latest advancements in AI technology."
     sys_message = "You are a helpful assistant."
