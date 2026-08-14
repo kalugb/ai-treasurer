@@ -55,14 +55,23 @@ You are a helpful assistant. Reply to user in a concise way. Use chat history if
         return response.content
     
 if __name__ == "__main__":
+    async def async_input(prompt: str = ""):
+        return await asyncio.to_thread(input, prompt)
+    
     async def main():
         llm_inference = await LLMInference.get_instance()
         
-        user_input = "Please provide a brief summary of the latest advancements in AI technology."
-        response = await llm_inference.run_llm(user_input)
-        
-        print(f"User input: {user_input}")
-        print(f"Reply: {response}")
+        while True:
+            print("Enter your prompt: ")
+            user_input = await async_input()
+            response = await llm_inference.run_llm(user_input)
+            
+            if user_input.lower() in ["exit", "quit"]:
+                print("Exiting...")
+                break
+            
+            print(f"User input: {user_input}")
+            print(f"Reply: {response}")
     
     asyncio.run(main())
 
