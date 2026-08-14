@@ -15,6 +15,7 @@ class LLMInference:
         self.llm_with_fallback = None
         
         self.chat_history = []
+        self.tools = [] 
     
     @classmethod
     async def get_instance(cls):
@@ -53,6 +54,11 @@ You are a helpful assistant. Reply to user in a concise way. Use chat history if
         self.chat_history = self.chat_history[-10:]
         
         return response.content
+        
+    async def call_tool(self, tool_name, tool_input):
+        pass
+    
+    
     
 if __name__ == "__main__":
     async def async_input(prompt: str = ""):
