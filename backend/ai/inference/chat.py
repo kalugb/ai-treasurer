@@ -13,6 +13,7 @@ load_dotenv()
 from ai.load_models.load_nvidia import load_nvidia_llm
 from ai.load_models.load_mistral import load_mistral_llm
 from ai.tools.sample_tool import get_current_time, add_numbers, get_weather
+from ai.tools.web_search_tools import web_search
 
 class LLMInference:
     def __init__(self):
@@ -30,7 +31,7 @@ class LLMInference:
             load_nvidia_llm()
         )
         
-        self.tools = [get_current_time, add_numbers, get_weather]
+        self.tools = [get_current_time, add_numbers, get_weather, web_search]
         
         self.llm_with_fallback = create_agent(
             model=mistral_llm,
@@ -42,6 +43,29 @@ class LLMInference:
         )
         
         return self
+    
+    @staticmethod
+    def _extract_text(content) -> str:
+        """
+        Normalize model output into plain text.
+        - Mistral (and some providers) return a list of content blocks,
+        e.g. [{"type": "text", "text": "...", "reference": {...}}, ...]
+        - NVIDIA NIM (and most OpenAI-style providers) return a plain string.
+        """
+        if isinstance(content, str):
+            return content.strip()
+        
+        if isinstance(content, list):
+            parts = []
+            for block in content:
+                if isinstance(block, dict):
+                    parts.append(block.get("text", ""))
+                elif isinstance(block, str):
+                    parts.append(block)
+            return "".join(parts).strip()
+        
+        return str(content).strip()
+    
 
     async def run_llm(self, user_input):        
         sys_message = f"""
@@ -62,6 +86,7 @@ You are a helpful assistant. Reply to user in a concise way. Use chat history if
         async for chunk in self.llm_with_fallback.astream(llm_msg_format, stream_mode="values"):
             last_msg = chunk["messages"][-1]
             
+            # record tool calling events
             if isinstance(last_msg, AIMessage) and last_msg.tool_calls:
                 for call in last_msg.tool_calls:
                     pending_calls[call["id"]] = {
@@ -91,15 +116,16 @@ You are a helpful assistant. Reply to user in a concise way. Use chat history if
             result = chunk
         
         response = result["messages"][-1]
+        formatted_response = self._extract_text(response.content)
         
         self.chat_history.append({
             "user": user_input,
-            "assistant": response.content
+            "assistant": formatted_response
         })
         
         self.chat_history = self.chat_history[-10:]
         
-        return response.content
+        return formatted_response   
     
     
 if __name__ == "__main__":
