@@ -57,7 +57,7 @@ You are a helpful assistant. Reply to user in a concise way. Use chat history if
         llm_msg_format = {"messages": message}
         
         # result = await self.llm_with_fallback.ainvoke(llm_msg_format)
-        final_state = None
+        result = None
         pending_calls = {}
         async for chunk in self.llm_with_fallback.astream(llm_msg_format, stream_mode="values"):
             last_msg = chunk["messages"][-1]
@@ -73,11 +73,12 @@ You are a helpful assistant. Reply to user in a concise way. Use chat history if
             
             if isinstance(last_msg, ToolMessage):
                 call_id = last_msg.tool_call_id
-                record = pending_calls.pop(call_id, {
+                default_record = {
                     "name": last_msg.name,
                     "args": None,
                     "requested_at": None,
-                })
+                }
+                record = pending_calls.pop(call_id, default_record)
                 
                 self.tool_call_log.append({
                     **record,
@@ -87,7 +88,7 @@ You are a helpful assistant. Reply to user in a concise way. Use chat history if
                 })
                 print(f"Tool call completed: {record['name']} with result: {last_msg.content}")
                 
-                result = chunk
+            result = chunk
         
         response = result["messages"][-1]
         
