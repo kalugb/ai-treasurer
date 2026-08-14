@@ -1,6 +1,8 @@
 import os
 from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+from langchain.agents import create_agent
+from langchain.agents.middleware import ModelFallbackMiddleware, ModelRetryMiddleware
 import sys
 import httpx
 import asyncio
@@ -26,9 +28,13 @@ class LLMInference:
             load_nvidia_llm()
         )
         
-        self.llm_with_fallback = mistral_llm.with_fallbacks(
-            [nvidia_llm],
-            exceptions_to_handle=(httpx.RequestError, httpx.HTTPStatusError)
+        self.llm_with_fallback = create_agent(
+            model=mistral_llm,
+            tools=self.tools, # tools are empty for now, add later
+            middleware=[
+                ModelFallbackMiddleware(nvidia_llm),
+                ModelRetryMiddleware(max_retries=2, initial_delay=1.0, backoff_factor=2.0)
+            ]
         )
         
         return self
@@ -44,7 +50,8 @@ You are a helpful assistant. Reply to user in a concise way. Use chat history if
             message.append(AIMessage(content=turn["assistant"]))
         message.append(HumanMessage(content=user_input))
         
-        response = await self.llm_with_fallback.ainvoke(message)
+        result = await self.llm_with_fallback.ainvoke({"messages": message})
+        response = result["messages"][-1]
         
         self.chat_history.append({
             "user": user_input,
@@ -70,11 +77,12 @@ if __name__ == "__main__":
         while True:
             print("Enter your prompt: ")
             user_input = await async_input()
-            response = await llm_inference.run_llm(user_input)
             
             if user_input.lower() in ["exit", "quit"]:
                 print("Exiting...")
                 break
+            
+            response = await llm_inference.run_llm(user_input)
             
             print(f"User input: {user_input}")
             print(f"Reply: {response}")
