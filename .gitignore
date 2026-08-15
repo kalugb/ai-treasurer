@@ -8,6 +8,10 @@ opencode.json
 
 __pycache__/
 
+credentials.json
+credentials_web.json
+token.json
+
 # frontend default ignores
 # Logs
 logs
