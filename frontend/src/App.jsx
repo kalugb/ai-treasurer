@@ -4,6 +4,7 @@ import Sidebar from './components/Sidebar'
 import Dashboard from './pages/Dashboard'
 import Agent from './pages/Agent'
 import Settings from './pages/Settings'
+import Integration from './pages/Integration'
 import MockPage from './pages/MockPage'
 
 export default function App() {
@@ -28,9 +29,11 @@ export default function App() {
     ? <Dashboard goTo={setPage} />
     : page === 'agent'
       ? <Agent />
-      : page === 'settings'
-        ? <Settings />
-        : <MockPage type={page} />
+    : page === 'settings'
+      ? <Settings />
+      : page === 'integration'
+        ? <Integration />
+        : <MockPage key={page} type={page} />
 
   return (
     <div className="app-shell" style={{ '--sidebar-width': `${sidebar}%` }}>

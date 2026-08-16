@@ -1,7 +1,7 @@
 export const navGroups = [
-  { label: 'AI', items: [{ id: 'agent', label: 'AI Agent', icon: 'spark' }, { id: 'insights', label: 'AI Insights', icon: 'insight' }, { id: 'policies', label: 'AI Policies', icon: 'shield' }] },
   { label: 'Finance', items: [{ id: 'dashboard', label: 'Overview', icon: 'grid' }, { id: 'receipts', label: 'Receipts', icon: 'receipt' }, { id: 'summaries', label: 'Summaries', icon: 'summary' }] },
-  { label: 'Settings', items: [{ id: 'settings', label: 'Settings', icon: 'sliders' }] },
+  { label: 'AI', items: [{ id: 'agent', label: 'AI Agent', icon: 'spark' }, { id: 'insights', label: 'AI Insights', icon: 'insight' }, { id: 'policies', label: 'AI Policies', icon: 'shield' }] },
+  { label: 'Settings', items: [{ id: 'settings', label: 'Settings', icon: 'sliders' }, { id: 'integration', label: 'Integration', icon: 'plug' }] },
 ]
 
 export const receipts = [
