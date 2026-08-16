@@ -1,0 +1,13 @@
+{
+  "name": "ai_treasurer",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "scripts": {
+    "frontend": "cd frontend && bun run dev",
+    "backend": ""
+  }
+}
