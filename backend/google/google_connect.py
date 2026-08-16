@@ -9,8 +9,8 @@ from pathlib import Path
 
 SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 
-CREDENTIALS_FILE = Path(__file__).parent / "credentials.json"
-TOKEN_FILE = Path(__file__).parent / "token.json"
+CREDENTIALS_FILE = Path(__file__).parent.parent / "google_creds" / "credentials.json"
+TOKEN_FILE = Path(__file__).parent.parent / "google_creds" / "token.json"
 
 
 def get_drive_service():

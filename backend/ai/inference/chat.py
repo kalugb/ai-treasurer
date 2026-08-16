@@ -14,6 +14,7 @@ from ai.load_models.load_nvidia import load_nvidia_llm
 from ai.load_models.load_mistral import load_mistral_llm
 from ai.tools.sample_tool import get_current_time, add_numbers, get_weather
 from ai.tools.web_search_tools import web_search
+from ai.tools.google_tools import search_drive_files, list_drive_folders, list_folder_contents
 
 class LLMInference:
     def __init__(self):
@@ -31,7 +32,10 @@ class LLMInference:
             load_nvidia_llm()
         )
         
-        self.tools = [get_current_time, add_numbers, get_weather, web_search]
+        self.tools = [
+            get_current_time, add_numbers, get_weather, web_search, 
+            search_drive_files, list_drive_folders, list_folder_contents
+        ]
         
         self.llm_with_fallback = create_agent(
             model=mistral_llm,
