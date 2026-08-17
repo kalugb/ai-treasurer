@@ -3,17 +3,17 @@ import Icon from '../components/Icon'
 import { receipts } from '../data/mockData'
 
 export default function MockPage({ type }) {
-  const pages = { insights: { eyebrow: 'AI / Insights', title: 'Make sense of your money.', description: 'Personalized observations from your mock financial records.', heading: 'Recent insights', items: [['Subscriptions', 'You have 4 recurring subscriptions totaling $87.20 this month.', 'Review'], ['Travel', 'Travel is your largest category so far, at 31% of total spending.', 'Explore'], ['Receipts', '12 receipts are waiting for a quick review.', 'Review']] }, policies: { eyebrow: 'AI / Policies', title: 'Set the rules for your AI.', description: 'Choose what AI Treasurer can do when organizing your records.', heading: 'Active policies', items: [['Receipt categorization', 'Suggest a category for new receipts before saving.', 'On'], ['Monthly summaries', 'Create a plain-English summary on the first day of each month.', 'On'], ['Spending alerts', 'Flag unusual purchases over $250 for your review.', 'On']] }, receipts: { eyebrow: 'Finance / Receipts', title: 'Your receipt records.', description: 'Add, review, and organize the purchases in your workspace.', heading: 'All receipts', items: receipts.map(([date, merchant, category, amount, status]) => [merchant, `${date} · ${category} · ${amount}`, status]) }, summaries: { eyebrow: 'Finance / Summaries', title: 'Your financial summaries.', description: 'A simple view of where your money is going.', heading: 'March 2025', items: [['Total spending', '$2,847.62 across 38 captured receipts.', 'On track'], ['Top category', 'Travel · $882.40 this month.', '31%'], ['Budget remaining', '$1,352.38 available for the rest of March.', '32%']] } }
+  const pages = { insights: { eyebrow: 'AI / Insights', title: 'Make sense of your money.', description: 'Personalized observations from your mock financial records.', heading: 'Recent insights', items: [['Subscriptions', 'You have 4 recurring subscriptions totaling $87.20 this month.', 'Review'], ['Travel', 'Travel is your largest category so far, at 31% of total spending.', 'Explore'], ['Receipts', '12 receipts are waiting for a quick review.', 'Review']] }, receipts: { eyebrow: 'Finance / Receipts', title: 'Your receipt records.', description: 'Add, review, and organize the purchases in your workspace.', heading: 'All receipts', items: receipts.map(([date, merchant, category, amount, status]) => [merchant, `${date} · ${category} · ${amount}`, status]) }, summaries: { eyebrow: 'Finance / Summaries', title: 'Your financial summaries.', description: 'A simple view of where your money is going.', heading: 'March 2025', items: [['Total spending', '$2,847.62 across 38 captured receipts.', 'On track'], ['Top category', 'Travel · $882.40 this month.', '31%'], ['Budget remaining', '$1,352.38 available for the rest of March.', '32%']] } }
   const page = pages[type]
-  const icon = type === 'receipts' ? 'receipt' : type === 'summaries' ? 'summary' : type === 'policies' ? 'shield' : 'insight'
+  const icon = type === 'receipts' ? 'receipt' : type === 'summaries' ? 'summary' : 'insight'
   const [items, setItems] = useState(page.items)
   const [selectedItem, setSelectedItem] = useState(null)
-  const isManagedPage = ['policies', 'insights', 'receipts'].includes(type)
+  const isManagedPage = ['insights', 'receipts'].includes(type)
 
   const addItem = () => {
-    const label = type === 'policies' ? 'New spending policy' : type === 'receipts' ? 'New merchant receipt' : 'New insight'
+    const label = type === 'receipts' ? 'New merchant receipt' : 'New insight'
     const detail = type === 'receipts' ? 'Mar 19, 2025 · Uncategorized · $0.00' : 'Mock item added for this frontend preview.'
-    setItems((current) => [[label, detail, type === 'policies' ? 'On' : type === 'receipts' ? 'Needs review' : 'Review'], ...current])
+    setItems((current) => [[label, detail, type === 'receipts' ? 'Needs review' : 'Review'], ...current])
   }
 
   const editItem = (index) => {
@@ -26,7 +26,6 @@ export default function MockPage({ type }) {
   }
 
   const emptyCopy = {
-    policies: ['No AI policies yet', 'Add a policy to decide how AI Treasurer should organize and review your records.'],
     insights: ['No AI insights yet', 'Add an insight to keep a useful note about your finances for later.'],
     receipts: ['No receipts yet', 'Add your first receipt to start tracking and understanding your spending.'],
   }
@@ -38,7 +37,7 @@ export default function MockPage({ type }) {
         {isManagedPage ? (
           <button className="button button-primary" onClick={addItem}>
             <Icon name="plus" size={16} />
-            {type === 'policies' ? 'Add policy' : 'Add insight'}
+            {type === 'receipts' ? 'Add receipt' : 'Add insight'}
           </button>
         ) : (
           <button className="button button-primary" onClick={type === 'receipts' ? addItem : undefined}><Icon name={type === 'receipts' ? 'plus' : 'spark'} size={16} /> {type === 'receipts' ? 'Add receipt' : 'Ask AI Agent'}</button>
@@ -51,7 +50,7 @@ export default function MockPage({ type }) {
             <span className="empty-icon"><Icon name={icon} size={22} /></span>
             <h3>{emptyCopy[type][0]}</h3>
             <p>{emptyCopy[type][1]}</p>
-            <button className="button button-primary" onClick={addItem}><Icon name="plus" size={16} /> Add {type === 'policies' ? 'policy' : type === 'receipts' ? 'receipt' : 'insight'}</button>
+            <button className="button button-primary" onClick={addItem}><Icon name="plus" size={16} /> Add {type === 'receipts' ? 'receipt' : 'insight'}</button>
           </div>
         ) : (
           <div className="mock-list">
