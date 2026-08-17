@@ -1,9 +1,59 @@
-/* Hallmark · macrostructure: App Shell · tone: calm analytical · anchor hue: blue */
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap');
-@import './tokens.css';
+@import 'tailwindcss';
 
-:root { font-family: var(--font-body); color: var(--color-ink); background: var(--color-paper); font-synthesis: none; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
-* { box-sizing: border-box; }
-body { margin: 0; min-width: 320px; min-height: 100vh; }
-button, input, select { font: inherit; }
-button { cursor: pointer; }
+@theme {
+  --font-body: 'DM Sans', Arial, sans-serif;
+  --font-display: Manrope, Arial, sans-serif;
+
+  --color-paper: oklch(98.5% 0.008 90);
+  --color-sidebar: oklch(99.2% 0.004 90);
+  --color-ink: oklch(25% 0.025 260);
+  --color-muted: oklch(55% 0.025 260);
+  --color-line: oklch(91.5% 0.018 90);
+  --color-blue: oklch(48% 0.17 255);
+  --color-blue-dark: oklch(40% 0.16 255);
+  --color-blue-soft: oklch(94% 0.035 255);
+  --color-blue-ring: oklch(75% 0.13 255 / 0.7);
+  --color-green: oklch(53% 0.14 150);
+  --color-green-soft: oklch(93% 0.04 150);
+  --color-brown: oklch(48% 0.09 55);
+  --color-brown-dark: oklch(34% 0.08 55);
+  --color-brown-soft: oklch(93% 0.035 75);
+
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@layer base {
+  :root {
+    font-family: var(--font-body);
+    color: var(--color-ink);
+    background: var(--color-paper);
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    margin: 0;
+    min-width: 320px;
+    min-height: 100vh;
+  }
+
+  button,
+  input,
+  select {
+    font: inherit;
+  }
+
+  button {
+    cursor: pointer;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+  }
+}

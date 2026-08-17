@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import Icon from '../components/Icon'
+import { button } from '../components/button'
 import { receipts } from '../data/mockData'
 
 export default function MockPage({ type }) {
@@ -32,41 +33,41 @@ export default function MockPage({ type }) {
 
   return (
     <>
-      <header className="page-header">
-        <div><p className="eyebrow">{page.eyebrow}</p><h1>{page.title}</h1><p className="subtle">{page.description}</p></div>
+      <header className="mb-9 flex items-end justify-between gap-6 max-[820px]:flex-col max-[820px]:items-start">
+        <div><p className="mb-[10px] text-[11px] font-bold tracking-[0.1em] uppercase text-muted">{page.eyebrow}</p><h1 className="font-display text-[clamp(28px,3vw,42px)] leading-[1.08] tracking-[-0.05em] text-ink">{page.title}</h1><p className="mt-3 text-[13px] leading-[1.55] text-muted">{page.description}</p></div>
         {isManagedPage ? (
-          <button className="button button-primary" onClick={addItem}>
+          <button className={button.primary} onClick={addItem}>
             <Icon name="plus" size={16} />
             {type === 'receipts' ? 'Add receipt' : 'Add insight'}
           </button>
         ) : (
-          <button className="button button-primary" onClick={type === 'receipts' ? addItem : undefined}><Icon name={type === 'receipts' ? 'plus' : 'spark'} size={16} /> {type === 'receipts' ? 'Add receipt' : 'Ask AI Agent'}</button>
+          <button className={button.primary} onClick={type === 'receipts' ? addItem : undefined}><Icon name={type === 'receipts' ? 'plus' : 'spark'} size={16} /> {type === 'receipts' ? 'Add receipt' : 'Ask AI Agent'}</button>
         )}
       </header>
-      <section className="panel mock-page">
-        <div className="panel-heading"><div><h2>{page.heading}</h2><p className="subtle">Mock data for the first frontend pass</p></div><span className="mock-count">{items.length} items</span></div>
+      <section className="min-h-[360px] rounded-[14px] border border-line bg-white p-[22px] max-[560px]:p-4">
+        <div className="mb-5 flex items-start justify-between gap-[18px]"><div><h2 className="font-display text-[17px] tracking-[-0.03em]">{page.heading}</h2><p className="mt-[6px] text-[13px] leading-[1.55] text-muted">Mock data for the first frontend pass</p></div><span className="rounded-[20px] bg-blue-soft px-[9px] py-[6px] text-[11px] font-bold text-blue">{items.length} items</span></div>
         {items.length === 0 ? (
-          <div className="empty-state">
-            <span className="empty-icon"><Icon name={icon} size={22} /></span>
-            <h3>{emptyCopy[type][0]}</h3>
-            <p>{emptyCopy[type][1]}</p>
-            <button className="button button-primary" onClick={addItem}><Icon name="plus" size={16} /> Add {type === 'receipts' ? 'receipt' : 'insight'}</button>
+          <div className="grid justify-items-center px-6 pt-[58px] pb-[46px] text-center">
+            <span className="mb-4 grid size-[48px] place-items-center rounded-[14px] bg-blue-soft text-blue"><Icon name={icon} size={22} /></span>
+            <h3 className="font-display text-[17px]">{emptyCopy[type][0]}</h3>
+            <p className="mb-5 mt-2 max-w-[360px] text-[13px] leading-[1.5] text-muted">{emptyCopy[type][1]}</p>
+            <button className={button.primary} onClick={addItem}><Icon name="plus" size={16} /> Add {type === 'receipts' ? 'receipt' : 'insight'}</button>
           </div>
         ) : (
-          <div className="mock-list">
+          <div className="grid">
             {items.map(([label, detail, action], index) => (
-              <div className="mock-row" key={`${label}-${index}`}>
-                <span className="mock-icon"><Icon name={icon} size={16} /></span>
-                <span><strong>{label}</strong><small>{detail}</small></span>
+              <div className="flex items-center gap-3 border-t border-line py-4" key={`${label}-${index}`}>
+                <span className="grid size-[34px] shrink-0 place-items-center rounded-lg bg-blue-soft text-blue"><Icon name={icon} size={16} /></span>
+                <span className="grid flex-1 gap-[5px]"><strong>{label}</strong><small className="text-xs text-muted">{detail}</small></span>
                 {isManagedPage ? (
-                  <span className="mock-actions">
-                    <span className="mock-action">{action}</span>
-                    {type === 'receipts' && <button className="mock-control" onClick={() => setSelectedItem(index)}>View</button>}
-                    {type !== 'insights' && <button className="mock-control" onClick={() => editItem(index)}>Edit</button>}
-                    <button className="mock-control danger" onClick={() => deleteItem(index)}>Delete</button>
+                  <span className="flex items-center gap-2">
+                    <span className="rounded-[20px] bg-brown-soft px-[9px] py-[5px] text-[10px] font-bold text-brown">{action}</span>
+                    {type === 'receipts' && <button className="rounded-md border border-line bg-transparent px-[7px] py-[5px] text-[10px] font-bold text-blue hover:border-blue hover:bg-blue-soft" onClick={() => setSelectedItem(index)}>View</button>}
+                    {type !== 'insights' && <button className="rounded-md border border-line bg-transparent px-[7px] py-[5px] text-[10px] font-bold text-blue hover:border-blue hover:bg-blue-soft" onClick={() => editItem(index)}>Edit</button>}
+                    <button className="rounded-md border border-line bg-transparent px-[7px] py-[5px] text-[10px] font-bold text-brown hover:border-brown hover:bg-brown-soft" onClick={() => deleteItem(index)}>Delete</button>
                   </span>
-                ) : <span className="mock-action">{action}</span>}
-                {type === 'receipts' && selectedItem === index && <div className="receipt-detail"><strong>{label}</strong><span>{detail}</span><small>Mock receipt detail view · no backend connected</small></div>}
+                ) : <span className="rounded-[20px] bg-brown-soft px-[9px] py-[5px] text-[10px] font-bold text-brown">{action}</span>}
+                {type === 'receipts' && selectedItem === index && <div className="mt-1 ml-[46px] grid basis-full gap-1 rounded-lg bg-paper p-3 text-xs text-muted"><strong className="text-ink">{label}</strong><span>{detail}</span><small className="text-[11px]">Mock receipt detail view · no backend connected</small></div>}
               </div>
             ))}
           </div>

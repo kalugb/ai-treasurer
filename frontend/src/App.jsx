@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import './App.css'
 import Sidebar from './components/Sidebar'
 import Dashboard from './pages/Dashboard'
 import Agent from './pages/Agent'
@@ -42,9 +41,9 @@ export default function App() {
         : <MockPage key={page} type={page} />
 
   return (
-    <div className="app-shell" style={{ '--sidebar-width': `${sidebar}%` }}>
+    <div className="flex min-h-screen bg-paper" style={{ '--sidebar-width': `${sidebar}%` }}>
       <Sidebar page={page} setPage={setPage} />
-      <main className="main-content">{content}</main>
+      <main className="mx-auto min-w-0 max-w-[1440px] flex-1 px-[clamp(24px,5vw,72px)] py-[52px] max-[820px]:px-5 max-[820px]:py-8 max-[560px]:px-[14px] max-[560px]:py-7">{content}</main>
     </div>
   )
 }
