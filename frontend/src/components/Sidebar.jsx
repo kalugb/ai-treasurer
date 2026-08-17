@@ -40,10 +40,14 @@ export default function Sidebar({ page, setPage }) {
         </div>
       </aside>
       <button
-        className="z-[2] -ml-[3px] w-[6px] cursor-col-resize border-0 bg-transparent hover:bg-blue-soft focus:outline-none focus-visible:bg-blue-soft max-[560px]:hidden"
-        aria-label="Resize navigation"
+        className="z-[2] -ml-[15px] grid w-[18px] cursor-col-resize place-items-center border-0 bg-transparent p-0 focus:outline-none focus-visible:[&>span]:outline-[3px] focus-visible:[&>span]:outline-blue-ring focus-visible:[&>span]:outline-offset-2 max-[560px]:hidden"
+        aria-label="Drag to resize navigation"
         onPointerDown={() => { window.__resizing = true }}
-      />
+      >
+        <span className="grid size-7 place-items-center rounded-full border border-line bg-sidebar text-muted shadow-sm transition-colors hover:border-blue hover:bg-blue-soft hover:text-blue">
+          <Icon name="resize" size={14} />
+        </span>
+      </button>
     </>
   )
 }

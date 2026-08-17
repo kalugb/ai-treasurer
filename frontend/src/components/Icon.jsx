@@ -13,6 +13,7 @@ export default function Icon({ name, size = 18 }) {
     folder: <><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H10l2 2h7.5A1.5 1.5 0 0 1 21 8.5v9A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5v-11Z" /></>,
     chat: <><path d="M20 11.5a7.5 7.5 0 0 1-8 7.5 8.7 8.7 0 0 1-3.4-.7L4 20l1.7-3.6A7.5 7.5 0 1 1 20 11.5Z" /><path d="M8 12h.01M12 12h.01M16 12h.01" /></>,
     chevron: <path d="m9 18 6-6-6-6" />,
+    resize: <><path d="M4 12h16M7 9l-3 3 3 3M17 9l3 3-3 3" /><path d="M10 8v8M14 8v8" /></>,
   }
   return (
     <svg
