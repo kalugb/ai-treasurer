@@ -1,5 +1,6 @@
 export const navGroups = [
-  { label: 'Finance', items: [{ id: 'dashboard', label: 'Overview', icon: 'grid' }, { id: 'receipts', label: 'Receipts', icon: 'receipt' }, { id: 'summaries', label: 'Summaries', icon: 'summary' }] },
+  { label: 'Organization', items: [{ id: 'organization', label: 'Organization', icon: 'grid' }] },
+  { label: 'Finance', items: [{ id: 'dashboard', label: 'Overview', icon: 'grid' }, { id: 'folders', label: 'Receipts management', icon: 'folder' }] },
   { label: 'AI', items: [{ id: 'agent', label: 'AI Agent', icon: 'spark' }, { id: 'insights', label: 'AI Insights', icon: 'insight' }] },
   { label: 'Settings', items: [{ id: 'settings', label: 'Settings', icon: 'sliders' }, { id: 'integration', label: 'Integration', icon: 'plug' }] },
 ]

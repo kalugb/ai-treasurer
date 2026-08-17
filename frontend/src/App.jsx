@@ -6,6 +6,8 @@ import Agent from './pages/Agent'
 import Settings from './pages/Settings'
 import Integration from './pages/Integration'
 import MockPage from './pages/MockPage'
+import Organization from './pages/Organization'
+import Folders from './pages/Folders'
 
 export default function App() {
   const [page, setPage] = useState('dashboard')
@@ -27,6 +29,10 @@ export default function App() {
 
   const content = page === 'dashboard'
     ? <Dashboard goTo={setPage} />
+    : page === 'organization'
+      ? <Organization />
+    : page === 'folders'
+      ? <Folders />
     : page === 'agent'
       ? <Agent />
     : page === 'settings'

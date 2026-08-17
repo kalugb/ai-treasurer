@@ -10,6 +10,7 @@ export default function Icon({ name, size = 18 }) {
     arrow: <><path d="M5 12h14M13 6l6 6-6 6" /></>,
     trend: <><path d="m4 16 5-5 3 3 7-8" /><path d="M15 6h4v4" /></>,
     receipt: <><path d="M5 3h14v18l-3-2-4 2-4-2-3 2V3Z" /><path d="M8 8h8M8 12h8M8 16h4" /></>,
+    folder: <><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H10l2 2h7.5A1.5 1.5 0 0 1 21 8.5v9A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5v-11Z" /></>,
     chat: <><path d="M20 11.5a7.5 7.5 0 0 1-8 7.5 8.7 8.7 0 0 1-3.4-.7L4 20l1.7-3.6A7.5 7.5 0 1 1 20 11.5Z" /><path d="M8 12h.01M12 12h.01M16 12h.01" /></>,
     chevron: <path d="m9 18 6-6-6-6" />,
   }

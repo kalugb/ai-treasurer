@@ -759,6 +759,177 @@ th:first-child {
     display: grid;
 }
 
+.organization-form {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    padding-bottom: 22px;
+}
+
+.organization-form label {
+    flex: 1;
+}
+
+.organization-form-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.organization-list {
+    border-top: 1px solid var(--color-line);
+}
+
+.folder-status-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    margin-bottom: 14px;
+}
+
+.folder-status-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 18px;
+}
+
+.folder-status-card div {
+    display: grid;
+    gap: 4px;
+}
+
+.folder-status-card small {
+    color: var(--color-muted);
+    font-size: 12px;
+}
+
+.folder-status-dot {
+    width: 10px;
+    height: 10px;
+    flex: 0 0 auto;
+    background: var(--color-muted);
+    border-radius: 50%;
+}
+
+.folder-status-dot[data-active="true"] {
+    background: var(--color-green);
+}
+
+.folders-page {
+    min-height: 360px;
+}
+
+.folder-root-field {
+    display: grid;
+    gap: 7px;
+    margin-bottom: 24px;
+    color: var(--color-ink);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.folder-root-field input {
+    width: 100%;
+    height: 42px;
+    padding: 0 12px;
+    color: var(--color-ink);
+    background: var(--color-paper);
+    border: 1px solid var(--color-line);
+    border-radius: 7px;
+    outline: 0;
+}
+
+.folder-root-field input:focus {
+    border-color: var(--color-blue);
+    box-shadow: 0 0 0 3px var(--color-blue-ring);
+}
+
+.folder-heading {
+    margin-top: 4px;
+}
+
+.folder-icon {
+    color: var(--color-brown);
+    background: var(--color-brown-soft);
+}
+
+.team-toolbar {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    padding: 6px 0 22px;
+}
+
+.team-toolbar label {
+    display: grid;
+    flex: 1;
+    gap: 7px;
+    color: var(--color-ink);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.team-toolbar select {
+    width: 100%;
+    height: 42px;
+    padding: 0 12px;
+    color: var(--color-ink);
+    background: var(--color-paper);
+    border: 1px solid var(--color-line);
+    border-radius: 7px;
+}
+
+.team-source-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 0;
+    border-top: 1px solid var(--color-line);
+}
+
+.team-source-row>div {
+    display: grid;
+    flex: 1;
+    gap: 4px;
+}
+
+.team-source-row small {
+    color: var(--color-muted);
+    font-size: 12px;
+}
+
+.receipt-source-list {
+    border-top: 1px solid var(--color-line);
+}
+
+.modal-backdrop {
+    position: fixed;
+    z-index: 10;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 20px;
+    background: rgb(28 35 36 / 35%);
+}
+
+.modal-card {
+    width: min(100%, 480px);
+    padding: 24px;
+    background: var(--color-white);
+    border: 1px solid var(--color-line);
+    border-radius: 14px;
+    box-shadow: 0 20px 50px rgb(28 35 36 / 18%);
+}
+
+.modal-card form {
+    display: grid;
+    gap: 18px;
+}
+
+.modal-card .folder-root-field {
+    margin: 0;
+}
+
 .mock-row {
     display: flex;
     align-items: center;
@@ -906,6 +1077,15 @@ th:first-child {
     .page-header {
         align-items: flex-start;
         flex-direction: column;
+    }
+
+    .organization-form {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .folder-status-grid {
+        grid-template-columns: 1fr;
     }
 
     .agent-orb {
