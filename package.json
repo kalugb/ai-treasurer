@@ -9,5 +9,10 @@
   "scripts": {
     "frontend": "cd frontend && bun run dev",
     "backend": ""
+  },
+  "dependencies": {
+    "@assistant-ui/react": "^0.15.15",
+    "@assistant-ui/react-ai-sdk": "^1.4.6",
+    "@openai/codex-security": "^0.1.14"
   }
 }
