@@ -14,6 +14,8 @@ export default function Icon({ name, size = 18 }) {
     chat: <><path d="M20 11.5a7.5 7.5 0 0 1-8 7.5 8.7 8.7 0 0 1-3.4-.7L4 20l1.7-3.6A7.5 7.5 0 1 1 20 11.5Z" /><path d="M8 12h.01M12 12h.01M16 12h.01" /></>,
     user: <><circle cx="12" cy="8" r="3.5" /><path d="M5 21a7 7 0 0 1 14 0" /></>,
     assistant: <><rect x="4" y="6" width="16" height="13" rx="4" /><path d="M12 3v3M8.5 12h.01M15.5 12h.01M9 16h6" /></>,
+    users: <><path d="M16 20v-1.5a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4V20" /><circle cx="9.5" cy="7" r="3" /><path d="M17 11a3 3 0 1 0-1-5.8M20.5 20v-1.5a4 4 0 0 0-2.8-3.8" /></>,
+    close: <><path d="m6 6 12 12M18 6 6 18" /></>,
     chevron: <path d="m9 18 6-6-6-6" />,
     resize: <><path d="M4 12h16M7 9l-3 3 3 3M17 9l3 3-3 3" /><path d="M10 8v8M14 8v8" /></>,
   }

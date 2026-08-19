@@ -7,10 +7,13 @@ import Integration from './pages/Integration'
 import MockPage from './pages/MockPage'
 import Organization from './pages/Organization'
 import Folders from './pages/Folders'
+import TeamManagement from './pages/TeamManagement'
+import { initialTeams } from './data/mockData'
 
 export default function App() {
   const [page, setPage] = useState('dashboard')
   const [sidebar, setSidebar] = useState(15)
+  const [teams, setTeams] = useState(initialTeams)
   useEffect(() => {
     const move = (event) => {
       if (!window.__resizing) return
@@ -31,7 +34,9 @@ export default function App() {
     : page === 'organization'
       ? <Organization />
     : page === 'folders'
-      ? <Folders />
+      ? <Folders teams={teams} />
+    : page === 'teams'
+      ? <TeamManagement teams={teams} setTeams={setTeams} />
     : page === 'agent'
       ? <Agent />
     : page === 'settings'

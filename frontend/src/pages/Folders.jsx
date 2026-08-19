@@ -1,48 +1,53 @@
 import { useState } from 'react'
 import Icon from '../components/Icon'
 import { button } from '../components/button'
-import AddTeamModal from '../components/AddTeamModal'
-import { receipts } from '../data/mockData'
 
-const initialTeams = [
-  { name: 'Personal', source: 'both', googleFolderId: 'personal-folder' },
-  { name: 'Northwind Co.', source: 'google', googleFolderId: 'northwind-folder' },
-  { name: 'Side project', source: 'manual' },
-]
+const formatMoney = (amount) => `$${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
-export default function Folders() {
-  const [teams, setTeams] = useState(initialTeams)
+function ReceiptPreview({ receipt, onClose }) {
+  if (!receipt) return null
+  return (
+    <div className="fixed inset-0 z-20 grid place-items-center bg-[rgb(28_35_36_/_38%)] p-5" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <div className="w-[min(100%,500px)] rounded-[14px] border border-line bg-white p-6 shadow-[0_20px_50px_rgb(28_35_36_/_18%)]" role="dialog" aria-modal="true" aria-labelledby="receipt-preview-title">
+        <div className="mb-5 flex items-start justify-between gap-4">
+          <div><p className="text-[11px] font-bold tracking-[0.1em] text-muted uppercase">Receipt preview</p><h2 id="receipt-preview-title" className="mt-1 font-display text-[20px] tracking-[-0.03em]">{receipt.merchant}</h2></div>
+          <button className="rounded-lg px-2 py-1 text-xs font-bold text-blue focus-visible:outline-[3px] focus-visible:outline-blue-ring" type="button" onClick={onClose}>Close</button>
+        </div>
+        <div className="grid min-h-[190px] place-items-center rounded-xl border border-line bg-paper text-blue"><Icon name="receipt" size={48} /></div>
+        <div className="mt-5 grid grid-cols-2 gap-4 text-[13px]"><div><span className="block text-xs text-muted">Filename</span><strong className="mt-1 block truncate">{receipt.filename}</strong></div><div><span className="block text-xs text-muted">Amount</span><strong className="mt-1 block">{formatMoney(receipt.amount)}</strong></div><div><span className="block text-xs text-muted">Date</span><strong className="mt-1 block">{receipt.date}</strong></div><div><span className="block text-xs text-muted">Category</span><strong className="mt-1 block">{receipt.category}</strong></div></div>
+      </div>
+    </div>
+  )
+}
+
+export default function Folders({ teams = [] }) {
   const [teamIndex, setTeamIndex] = useState(0)
-  const [modalOpen, setModalOpen] = useState(false)
-  const [googleConnected, setGoogleConnected] = useState(false)
-
-  const saveTeam = ({ name, source, googleFolderId }) => {
-    if (!name || (source !== 'manual' && !googleFolderId)) return
-    setTeams((current) => [...current, { name, source, googleFolderId }])
-    setTeamIndex(teams.length)
-    setModalOpen(false)
-  }
-
-  const team = teams[teamIndex] || teams[0]
-  const visibleReceipts = team?.source === 'google' ? receipts.slice(0, 2) : team?.source === 'manual' ? receipts.slice(2) : receipts
-  const sourceLabel = { manual: 'Manual upload', google: 'Google Drive', both: 'Manual + Google Drive' }
+  const [preview, setPreview] = useState(null)
+  const selectedIndex = teams.length ? Math.min(teamIndex, teams.length - 1) : 0
+  const team = teams[selectedIndex]
+  const remaining = team ? Math.max(0, team.budget - team.used) : 0
+  const remainingPercent = team?.budget ? (remaining / team.budget) * 100 : 0
+  const alert = team && remainingPercent < 10
 
   return (
     <>
-      <header className="mb-9 flex items-end justify-between gap-6 max-[820px]:flex-col max-[820px]:items-start">
-        <div><p className="mb-[10px] text-[11px] font-bold tracking-[0.1em] uppercase text-muted">Finance / Receipts management</p><h1 className="font-display text-[clamp(28px,3vw,42px)] leading-[1.08] tracking-[-0.05em] text-ink">Receipts management</h1><p className="mt-3 text-[13px] leading-[1.55] text-muted">Choose a team and see the receipts collected from its connected sources.</p></div>
-        <button className={googleConnected ? button.secondary : button.primary} onClick={() => setGoogleConnected((value) => !value)}><Icon name={googleConnected ? 'plug' : 'plus'} size={16} /> {googleConnected ? 'Google connected' : 'Set Google integration'}</button>
+      <header className="mb-12 flex items-end justify-between gap-6 max-[820px]:flex-col max-[820px]:items-start">
+        <div><p className="mb-2.5 text-[11px] font-bold tracking-[0.1em] text-muted uppercase">Finance / Receipts management</p><h1 className="font-display text-[clamp(28px,3vw,42px)] leading-[1.08] tracking-[-0.05em] text-ink">Receipts management</h1><p className="mt-3 text-[13px] leading-6 text-muted">Browse receipts by team in one shared workspace.</p></div>
+        <label className="grid min-w-[190px] gap-2 text-xs font-bold text-ink">Team<select className="h-10 rounded-lg border border-line bg-white px-3 text-[13px] outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" value={selectedIndex} onChange={(event) => setTeamIndex(Number(event.target.value))}>{teams.map((item, index) => <option key={item.id} value={index}>{item.name}</option>)}</select></label>
       </header>
-      <section className="mb-[14px] grid grid-cols-2 gap-[14px] max-[820px]:grid-cols-1">
-        <article className="flex items-center gap-3 rounded-[14px] border border-line bg-white px-[18px] py-4"><span className="size-[10px] shrink-0 rounded-full bg-muted data-[active=true]:bg-green" data-active={googleConnected} /><div className="grid gap-1"><strong>Google Drive integration</strong><small className="text-xs text-muted">{googleConnected ? 'Set' : 'Not set'}</small></div></article>
-      </section>
-      <section className="min-h-[360px] rounded-[14px] border border-line bg-white p-[22px] max-[560px]:p-4">
-        <div className="mb-5 flex items-start justify-between gap-[18px]"><div><h2 className="font-display text-[17px] tracking-[-0.03em]">Receipt sources</h2><p className="mt-[6px] text-[13px] leading-[1.55] text-muted">These values are local-only until Google integration is wired to a backend.</p></div></div>
-        <div className="flex items-end gap-3 pt-[6px] pb-[22px]"><label className="grid flex-1 gap-[7px] text-xs font-bold text-ink">Team<select className="h-[42px] w-full rounded-[7px] border border-line bg-paper px-3 text-ink" value={teamIndex} onChange={(event) => setTeamIndex(Number(event.target.value))}>{teams.map((item, index) => <option value={index} key={item.name}>{item.name}</option>)}</select></label><button className={button.primary} onClick={() => setModalOpen(true)}><Icon name="plus" size={16} /> Add team</button></div>
-        {team && <div className="flex items-center gap-3 border-t border-line py-[14px]"><span className="grid size-[34px] shrink-0 place-items-center rounded-lg bg-brown-soft text-brown"><Icon name="folder" size={16} /></span><div className="grid flex-1 gap-1"><strong>{team.name}</strong><small className="text-xs text-muted">Showing {sourceLabel[team.source]} receipts</small></div><span className="rounded-[20px] bg-blue-soft px-[9px] py-[6px] text-[11px] font-bold text-blue">{visibleReceipts.length} receipts</span></div>}
-        <div className="grid border-t border-line">{visibleReceipts.map(([date, merchant, category, amount, status]) => <div className="flex items-center gap-3 border-t border-line py-4" key={merchant}><span className="grid size-[34px] shrink-0 place-items-center rounded-lg bg-blue-soft text-blue"><Icon name="receipt" size={16} /></span><span className="grid flex-1 gap-[5px]"><strong>{merchant}</strong><small className="text-xs text-muted">{date} · {category} · {amount}</small></span><span className="rounded-[20px] bg-brown-soft px-[9px] py-[5px] text-[10px] font-bold text-brown">{status}</span></div>)}</div>
-      </section>
-      <AddTeamModal open={modalOpen} onClose={() => setModalOpen(false)} onAdd={saveTeam} />
+      {team ? (
+        <>
+          <section className={alert ? 'mb-6 rounded-[14px] border border-red-200 bg-red-50 p-5 text-red-900' : 'mb-6 rounded-[14px] border border-line bg-white p-5'}>
+            <div className="flex items-end justify-between gap-5 max-[560px]:flex-col max-[560px]:items-start"><div><p className="text-[11px] font-bold tracking-[0.1em] uppercase opacity-70">{team.name} · budget summary</p><p className="mt-2 font-display text-[24px] tracking-[-0.04em]">{formatMoney(team.used)} <span className="font-body text-sm font-normal opacity-70">spent</span></p></div><div className="text-left min-[561px]:text-right"><p className="text-xs opacity-70">Remaining budget</p><p className="mt-1 font-display text-[20px]">{formatMoney(remaining)}</p></div></div>
+            {alert && <p className="mt-4 flex items-center gap-2 text-xs font-bold"><Icon name="insight" size={15} /> Less than 10% of this team’s budget remains.</p>}
+          </section>
+          <section>
+            <div className="mb-4 flex items-center justify-between"><div><h2 className="font-display text-[18px] tracking-[-0.03em]">Team receipts</h2><p className="mt-1 text-xs text-muted">{team.receipts.length} {team.receipts.length === 1 ? 'receipt' : 'receipts'}</p></div><button className={button.secondary} type="button"><Icon name="plus" size={15} /> Add receipt</button></div>
+            {team.receipts.length ? <div className="grid grid-cols-2 gap-4 min-[700px]:grid-cols-3 min-[1050px]:grid-cols-5">{team.receipts.map((receipt) => <button className="group min-w-0 text-left focus-visible:outline-[3px] focus-visible:outline-blue-ring" type="button" key={receipt.id} onClick={() => setPreview(receipt)}><div className="grid aspect-[1.15] place-items-center rounded-[14px] border border-line bg-white text-blue shadow-sm transition group-hover:-translate-y-0.5 group-hover:border-blue group-hover:shadow-md"><Icon name="receipt" size={34} /></div><strong className="mt-3 block overflow-hidden text-ellipsis whitespace-nowrap text-[13px] text-ink">{receipt.filename}</strong><span className="mt-1 block truncate text-xs text-muted">{receipt.date} · {formatMoney(receipt.amount)}</span></button>)}</div> : <div className="grid min-h-[220px] place-items-center rounded-[14px] border border-dashed border-line bg-white p-8 text-center"><div><span className="mx-auto grid size-11 place-items-center rounded-xl bg-blue-soft text-blue"><Icon name="folder" size={20} /></span><h3 className="mt-4 font-display text-[16px]">No receipts yet</h3><p className="mt-1 text-xs text-muted">Add the first receipt for {team.name} to see it here.</p></div></div>}
+          </section>
+        </>
+      ) : <div className="rounded-[14px] border border-line bg-white p-8 text-sm text-muted">No teams available. Add a team from Team Management first.</div>}
+      <ReceiptPreview receipt={preview} onClose={() => setPreview(null)} />
     </>
   )
 }
