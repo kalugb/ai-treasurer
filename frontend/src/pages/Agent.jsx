@@ -38,7 +38,7 @@ function AssistantMessage() {
       <span className="grid size-8 shrink-0 place-items-center rounded-full bg-brown text-white" aria-label="AI Treasurer">
         <Icon name="assistant" size={17} />
       </span>
-      <div className="min-w-0 max-w-[780px] pt-1 text-[14px] leading-7 text-ink">
+      <div className="min-w-0 max-w-195 pt-1 text-[14px] leading-7 text-ink">
         <MessagePrimitive.Parts />
       </div>
     </MessagePrimitive.Root>
@@ -63,7 +63,7 @@ function AgentChat() {
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <section className="mx-auto flex h-[calc(100vh-104px)] min-h-[620px] max-w-[920px] flex-col">
+      <section className="mx-auto flex h-[calc(100vh-104px)] min-h-155 max-w-230 flex-col">
         <header className="flex items-center justify-between border-b border-line pb-5">
           <div className="flex items-center gap-3">
             <span className="grid size-10 place-items-center rounded-xl bg-brown text-white">
@@ -80,18 +80,18 @@ function AgentChat() {
         </header>
 
         <ThreadPrimitive.Viewport className="min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-[820px] py-8">
+          <div className="mx-auto w-full max-w-205 py-8">
             <div className="mb-5 px-1 text-center">
-              <p className="text-[12px] font-bold tracking-[0.1em] text-muted uppercase">Financial assistant</p>
-              <BlurText className="mt-2 block font-display text-[clamp(26px,4vw,38px)] tracking-[-0.05em] text-ink" text="How can I help today?" />
+              <p className="text-[12px] font-bold tracking-widest text-muted uppercase">Financial assistant</p>
+              <BlurText className="mt-2 block font-display text-[clamp(26px,4vw,38px)] tracking-tighter text-ink" text="How can I help today?" />
             </div>
             <ThreadPrimitive.Messages components={{ UserMessage, AssistantMessage }} />
           </div>
         </ThreadPrimitive.Viewport>
 
         <ThreadPrimitive.ViewportFooter className="border-t border-line bg-paper pt-4">
-          <div className="mx-auto max-w-[820px]">
-            <ComposerPrimitive.Root className="flex items-end gap-2 rounded-2xl border border-line bg-white p-2 shadow-[0_8px_30px_oklch(30%_0.03_260_/_0.06)] focus-within:border-blue">
+          <div className="mx-auto max-w-205">
+            <ComposerPrimitive.Root className="flex items-end gap-2 rounded-2xl border border-line bg-white p-2 shadow-[0_8px_30px_oklch(30%_0.03_260/0.06)] focus-within:border-blue">
               <button className="grid size-9 shrink-0 place-items-center rounded-xl text-muted transition hover:bg-paper hover:text-ink focus-visible:outline-[3px] focus-visible:outline-blue-ring" type="button" aria-label="Attach a receipt">
                 <Icon name="plus" size={19} />
               </button>
