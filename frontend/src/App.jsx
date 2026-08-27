@@ -8,12 +8,13 @@ import MockPage from './pages/MockPage'
 import Organization from './pages/Organization'
 import Folders from './pages/Folders'
 import TeamManagement from './pages/TeamManagement'
-import { initialTeams } from './data/mockData'
+import { api } from './data/api'
 
 export default function App() {
   const [page, setPage] = useState('dashboard')
   const [sidebar, setSidebar] = useState(15)
-  const [teams, setTeams] = useState(initialTeams)
+  const [teams, setTeams] = useState([])
+  const [dashboard, setDashboard] = useState(null)
   useEffect(() => {
     const move = (event) => {
       if (!window.__resizing) return
@@ -29,21 +30,39 @@ export default function App() {
     }
   }, [])
 
+  useEffect(() => {
+    Promise.all([api.getDashboard(), api.getTeams()]).then(([nextDashboard, nextTeams]) => {
+      setDashboard(nextDashboard)
+      setTeams(nextTeams)
+    })
+  }, [])
+
+  const saveTeam = async (team) => {
+    const { id, ...input } = team
+    const saved = id ? await api.updateTeam(id, input) : await api.createTeam(input)
+    setTeams((current) => id ? current.map((item) => item.id === id ? saved : item) : [...current, saved])
+  }
+
+  const removeTeam = async (id) => {
+    await api.deleteTeam(id)
+    setTeams((current) => current.filter((team) => team.id !== id))
+  }
+
   const content = page === 'dashboard'
-    ? <Dashboard goTo={setPage} />
+    ? <Dashboard goTo={setPage} dashboard={dashboard} />
     : page === 'organization'
       ? <Organization />
     : page === 'folders'
       ? <Folders teams={teams} />
     : page === 'teams'
-      ? <TeamManagement teams={teams} setTeams={setTeams} />
+      ? <TeamManagement teams={teams} onSaveTeam={saveTeam} onDeleteTeam={removeTeam} />
     : page === 'agent'
       ? <Agent />
     : page === 'settings'
       ? <Settings />
       : page === 'integration'
         ? <Integration />
-        : <MockPage key={page} type={page} />
+        : <MockPage key={page} type={page} backendReceipts={dashboard?.recent_receipts} />
 
   return (
     <div className="flex min-h-screen bg-paper" style={{ '--sidebar-width': `${sidebar}%` }}>

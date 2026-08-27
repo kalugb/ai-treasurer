@@ -12,6 +12,8 @@ credentials.json
 credentials_web.json
 token.json
 
+skills-lock.json
+
 # frontend default ignores
 # Logs
 logs

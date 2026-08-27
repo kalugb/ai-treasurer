@@ -184,19 +184,19 @@ function usagePercent(team) {
   return team.budget > 0 ? Math.round((team.used / team.budget) * 100) : 0
 }
 
-export default function TeamManagement({ teams, setTeams }) {
+export default function TeamManagement({ teams, onSaveTeam, onDeleteTeam }) {
   const [editingTeam, setEditingTeam] = useState(null)
   const [deleteTeam, setDeleteTeam] = useState(null)
   const [showForm, setShowForm] = useState(false)
 
-  const saveTeam = (nextTeam) => {
-    setTeams((current) => nextTeam.id ? current.map((team) => team.id === nextTeam.id ? { ...team, ...nextTeam } : team) : [...current, { ...nextTeam, id: crypto.randomUUID(), receipts: [] }])
+  const saveTeam = async (nextTeam) => {
+    await onSaveTeam(nextTeam)
     setShowForm(false)
     setEditingTeam(null)
   }
 
-  const removeTeam = (id) => {
-    setTeams((current) => current.filter((team) => team.id !== id))
+  const removeTeam = async (id) => {
+    await onDeleteTeam(id)
     setDeleteTeam(null)
   }
 
