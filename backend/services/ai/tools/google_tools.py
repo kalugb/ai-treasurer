@@ -5,7 +5,7 @@ Reuses the same OAuth flow as your working credentials.json/token.json script,
 so no MCP server is involved -- this calls the Drive API v3 directly.
 
 Usage:
-    from ai.tools.gdrive_tools import search_drive_files, list_drive_folders, list_folder_contents
+    from services.ai.tools.gdrive_tools import search_drive_files, list_drive_folders, list_folder_contents
 
     self.tools = [get_current_time, add_numbers, get_weather, web_search,
                   search_drive_files, list_drive_folders, list_folder_contents]

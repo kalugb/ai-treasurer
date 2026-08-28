@@ -6,7 +6,7 @@ from googleapiclient.errors import HttpError
 import os
 from dotenv import load_dotenv
 
-from google.google_connect import get_drive_service, get_drive_service_with_token
+from services.google.google_connect import get_drive_service, get_drive_service_with_token
 
 load_dotenv()
 
