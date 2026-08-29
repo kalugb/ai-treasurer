@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Icon from '../components/Icon'
 import { button } from '../components/button'
+import { api } from '../data/api'
 
 const formatMoney = (amount) => `$${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
@@ -20,9 +21,15 @@ function ReceiptPreview({ receipt, onClose }) {
   )
 }
 
-export default function Folders({ teams = [] }) {
+export default function Folders() {
+  const [teams, setTeams] = useState([])
   const [teamIndex, setTeamIndex] = useState(0)
   const [preview, setPreview] = useState(null)
+
+  useEffect(() => {
+    api.getTeams().then(setTeams)
+  }, [])
+
   const selectedIndex = teams.length ? Math.min(teamIndex, teams.length - 1) : 0
   const team = teams[selectedIndex]
   const remaining = team ? Math.max(0, team.budget - team.used) : 0

@@ -8,13 +8,11 @@ import MockPage from './pages/MockPage'
 import Organization from './pages/Organization'
 import Folders from './pages/Folders'
 import TeamManagement from './pages/TeamManagement'
-import { api } from './data/api'
+import NotFound from './pages/NotFound'
 
 export default function App() {
   const [page, setPage] = useState('dashboard')
   const [sidebar, setSidebar] = useState(15)
-  const [teams, setTeams] = useState([])
-  const [dashboard, setDashboard] = useState(null)
   useEffect(() => {
     const move = (event) => {
       if (!window.__resizing) return
@@ -30,39 +28,23 @@ export default function App() {
     }
   }, [])
 
-  useEffect(() => {
-    Promise.all([api.getDashboard(), api.getTeams()]).then(([nextDashboard, nextTeams]) => {
-      setDashboard(nextDashboard)
-      setTeams(nextTeams)
-    })
-  }, [])
-
-  const saveTeam = async (team) => {
-    const { id, ...input } = team
-    const saved = id ? await api.updateTeam(id, input) : await api.createTeam(input)
-    setTeams((current) => id ? current.map((item) => item.id === id ? saved : item) : [...current, saved])
-  }
-
-  const removeTeam = async (id) => {
-    await api.deleteTeam(id)
-    setTeams((current) => current.filter((team) => team.id !== id))
-  }
-
   const content = page === 'dashboard'
-    ? <Dashboard goTo={setPage} dashboard={dashboard} />
+    ? <Dashboard goTo={setPage} />
     : page === 'organization'
       ? <Organization />
     : page === 'folders'
-      ? <Folders teams={teams} />
+      ? <Folders />
     : page === 'teams'
-      ? <TeamManagement teams={teams} onSaveTeam={saveTeam} onDeleteTeam={removeTeam} />
+      ? <TeamManagement />
     : page === 'agent'
       ? <Agent />
     : page === 'settings'
       ? <Settings />
-      : page === 'integration'
-        ? <Integration />
-        : <MockPage key={page} type={page} backendReceipts={dashboard?.recent_receipts} />
+    : page === 'integration'
+      ? <Integration />
+      : page === 'not-found'
+        ? <NotFound goTo={setPage} />
+        : <MockPage key={page} type={page} />
 
   return (
     <div className="flex min-h-screen bg-paper" style={{ '--sidebar-width': `${sidebar}%` }}>

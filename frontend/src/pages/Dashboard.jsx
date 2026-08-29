@@ -1,7 +1,15 @@
+import { useEffect, useState } from 'react'
 import Icon from '../components/Icon'
 import { button } from '../components/button'
+import { api } from '../data/api'
 
-export default function Dashboard({ goTo, dashboard }) {
+export default function Dashboard({ goTo }) {
+  const [dashboard, setDashboard] = useState(null)
+
+  useEffect(() => {
+    api.getDashboard().then(setDashboard)
+  }, [])
+
   if (!dashboard) return <p className="text-sm text-muted">Loading overview…</p>
   const receipts = dashboard.recent_receipts
   return (
@@ -70,6 +78,11 @@ export default function Dashboard({ goTo, dashboard }) {
           <div className="mb-[22px] flex gap-[10px] border-t border-[rgba(119,82,52,0.16)] pt-4"><span className="mt-[5px] size-2 shrink-0 rounded-full bg-brown" /><div><strong className="text-xs">Potential saving</strong><p className="mt-1 text-[13px] leading-[1.55] text-muted">Canceling unused plans could save <b className="text-brown-dark">$38 / month</b>.</p></div></div>
         </article>
       </section>
+      <div className="mt-8 flex justify-center">
+        <button className={button.secondary} type="button" onClick={() => goTo('not-found')}>
+          Test 404 page
+        </button>
+      </div>
     </>
   )
 }

@@ -1,15 +1,23 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Icon from '../components/Icon'
 import { button } from '../components/button'
+import { api } from '../data/api'
 
-export default function MockPage({ type, backendReceipts }) {
-  const receipts = backendReceipts ?? []
+export default function MockPage({ type }) {
+  const receipts = []
   const pages = { insights: { eyebrow: 'AI / Insights', title: 'Make sense of your money.', description: 'Personalized observations from your mock financial records.', heading: 'Recent insights', items: [['Subscriptions', 'You have 4 recurring subscriptions totaling $87.20 this month.', 'Review'], ['Travel', 'Travel is your largest category so far, at 31% of total spending.', 'Explore'], ['Receipts', '12 receipts are waiting for a quick review.', 'Review']] }, receipts: { eyebrow: 'Finance / Receipts', title: 'Your receipt records.', description: 'Add, review, and organize the purchases in your workspace.', heading: 'All receipts', items: receipts.map(([date, merchant, category, amount, status]) => [merchant, `${date} · ${category} · ${amount}`, status]) }, summaries: { eyebrow: 'Finance / Summaries', title: 'Your financial summaries.', description: 'A simple view of where your money is going.', heading: 'March 2025', items: [['Total spending', '$2,847.62 across 38 captured receipts.', 'On track'], ['Top category', 'Travel · $882.40 this month.', '31%'], ['Budget remaining', '$1,352.38 available for the rest of March.', '32%']] } }
   const page = pages[type]
   const icon = type === 'receipts' ? 'receipt' : type === 'summaries' ? 'summary' : 'insight'
   const [items, setItems] = useState(page.items)
   const [selectedItem, setSelectedItem] = useState(null)
   const isManagedPage = ['insights', 'receipts'].includes(type)
+
+  useEffect(() => {
+    if (type !== 'receipts') return
+    api.getDashboard().then(({ recent_receipts }) => {
+      setItems(recent_receipts.map(({ date, merchant, category, amount }) => [merchant, `${date} · ${category} · $${amount.toFixed(2)}`, 'Reviewed']))
+    })
+  }, [type])
 
   const addItem = () => {
     const label = type === 'receipts' ? 'New merchant receipt' : 'New insight'

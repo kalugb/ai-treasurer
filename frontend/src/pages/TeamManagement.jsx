@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Icon from '../components/Icon'
 import { button } from '../components/button'
+import { api } from '../data/api'
 
 const users = ['Alex Morgan', 'Jamie Lee', 'Sam Rivera', 'Priya Shah', 'Taylor Kim']
 const roles = ['Lead', 'Co-Lead', 'Member']
@@ -184,10 +185,26 @@ function usagePercent(team) {
   return team.budget > 0 ? Math.round((team.used / team.budget) * 100) : 0
 }
 
-export default function TeamManagement({ teams, onSaveTeam, onDeleteTeam }) {
+export default function TeamManagement() {
+  const [teams, setTeams] = useState([])
   const [editingTeam, setEditingTeam] = useState(null)
   const [deleteTeam, setDeleteTeam] = useState(null)
   const [showForm, setShowForm] = useState(false)
+
+  useEffect(() => {
+    api.getTeams().then(setTeams)
+  }, [])
+
+  const onSaveTeam = async (team) => {
+    const { id, ...input } = team
+    const saved = id ? await api.updateTeam(id, input) : await api.createTeam(input)
+    setTeams((current) => id ? current.map((item) => item.id === id ? saved : item) : [...current, saved])
+  }
+
+  const onDeleteTeam = async (id) => {
+    await api.deleteTeam(id)
+    setTeams((current) => current.filter((team) => team.id !== id))
+  }
 
   const saveTeam = async (nextTeam) => {
     await onSaveTeam(nextTeam)
