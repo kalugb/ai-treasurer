@@ -1,5 +1,5 @@
 import Icon from './Icon'
-import { navGroups } from '../data/mockData'
+import { navGroups } from '../api/mockData'
 
 const navFocus = 'focus-visible:outline-[3px] focus-visible:outline-blue-ring focus-visible:outline-offset-2'
 

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Icon from '../components/Icon'
 import { button } from '../components/button'
-import { api } from '../data/api'
+import { teamsAPI } from '../api/teams'
 
 const users = ['Alex Morgan', 'Jamie Lee', 'Sam Rivera', 'Priya Shah', 'Taylor Kim']
 const roles = ['Lead', 'Co-Lead', 'Member']
@@ -192,17 +192,17 @@ export default function TeamManagement() {
   const [showForm, setShowForm] = useState(false)
 
   useEffect(() => {
-    api.getTeams().then(setTeams)
+    teamsAPI.getTeams().then(setTeams)
   }, [])
 
   const onSaveTeam = async (team) => {
     const { id, ...input } = team
-    const saved = id ? await api.updateTeam(id, input) : await api.createTeam(input)
+    const saved = id ? await teamsAPI.updateTeam(id, input) : await teamsAPI.createTeam(input)
     setTeams((current) => id ? current.map((item) => item.id === id ? saved : item) : [...current, saved])
   }
 
   const onDeleteTeam = async (id) => {
-    await api.deleteTeam(id)
+    await teamsAPI.deleteTeam(id)
     setTeams((current) => current.filter((team) => team.id !== id))
   }
 

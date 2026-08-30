@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import Icon from '../components/Icon'
 import { button } from '../components/button'
-import { api } from '../data/api'
+import { teamsAPI } from '../api/teams'
 
 const formatMoney = (amount) => `$${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
@@ -27,7 +27,7 @@ export default function Folders() {
   const [preview, setPreview] = useState(null)
 
   useEffect(() => {
-    api.getTeams().then(setTeams)
+    teamsAPI.getTeams().then(setTeams)
   }, [])
 
   const selectedIndex = teams.length ? Math.min(teamIndex, teams.length - 1) : 0

@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
 import Icon from '../components/Icon'
 import { button } from '../components/button'
-import { api } from '../data/api'
+import { dashboardAPI } from '../api/dashboard'
 
 export default function Dashboard({ goTo }) {
   const [dashboard, setDashboard] = useState(null)
 
   useEffect(() => {
-    api.getDashboard().then(setDashboard)
+    dashboardAPI.getDashboard().then(setDashboard)
   }, [])
 
   if (!dashboard) return <p className="text-sm text-muted">Loading overview…</p>

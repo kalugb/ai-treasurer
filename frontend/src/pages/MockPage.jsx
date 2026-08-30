@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import Icon from '../components/Icon'
 import { button } from '../components/button'
-import { api } from '../data/api'
+import { dashboardAPI } from '../api/dashboard'
 
 export default function MockPage({ type }) {
   const receipts = []
@@ -14,7 +14,7 @@ export default function MockPage({ type }) {
 
   useEffect(() => {
     if (type !== 'receipts') return
-    api.getDashboard().then(({ recent_receipts }) => {
+    dashboardAPI.getDashboard().then(({ recent_receipts }) => {
       setItems(recent_receipts.map(({ date, merchant, category, amount }) => [merchant, `${date} · ${category} · $${amount.toFixed(2)}`, 'Reviewed']))
     })
   }, [type])
