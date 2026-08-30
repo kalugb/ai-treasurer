@@ -36,7 +36,7 @@ function Modal({ title, description, onClose, children, labelledBy }) {
 
   return (
     <div
-      className="fixed inset-0 z-20 grid place-items-center bg-[rgb(28_35_36_/_38%)] p-5"
+      className="fixed inset-0 z-20 grid place-items-center bg-[rgb(28_35_36/38%)] p-5"
       role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose()
@@ -44,7 +44,7 @@ function Modal({ title, description, onClose, children, labelledBy }) {
     >
       <div
         ref={dialogRef}
-        className="max-h-[90vh] w-[min(100%,620px)] overflow-y-auto rounded-[14px] border border-line bg-white p-6 shadow-[0_20px_50px_rgb(28_35_36_/_18%)]"
+        className="max-h-[90vh] w-[min(100%,620px)] overflow-y-auto rounded-[14px] border border-line bg-white p-6 shadow-[0_20px_50px_rgb(28_35_36/18%)]"
         role="dialog"
         aria-modal="true"
         aria-labelledby={labelledBy}
@@ -174,7 +174,7 @@ function DeleteModal({ team, onClose, onDelete }) {
         </label>
         <div className="flex justify-end gap-2 border-t border-line pt-5">
           <button className={button.secondary} type="button" onClick={onClose}>Cancel</button>
-          <button className="inline-flex min-h-[42px] items-center justify-center rounded-lg bg-red-600 px-4 text-[13px] font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40" type="button" disabled={!matches} onClick={() => onDelete(team.id)}>Delete team</button>
+          <button className="inline-flex min-h-10.5 items-center justify-center rounded-lg bg-red-600 px-4 text-[13px] font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40" type="button" disabled={!matches} onClick={() => onDelete(team.id)}>Delete team</button>
         </div>
       </div>
     </Modal>
@@ -221,8 +221,8 @@ export default function TeamManagement() {
     <>
       <header className="mb-9 flex items-end justify-between gap-6 max-[820px]:flex-col max-[820px]:items-start">
         <div>
-          <p className="mb-2.5 text-[11px] font-bold tracking-[0.1em] text-muted uppercase">Finance / Team management</p>
-          <h1 className="font-display text-[clamp(28px,3vw,42px)] leading-[1.08] tracking-[-0.05em] text-ink">Team management</h1>
+          <p className="mb-2.5 text-[11px] font-bold tracking-widest text-muted uppercase">Finance / Team management</p>
+          <h1 className="font-display text-[clamp(28px,3vw,42px)] leading-[1.08] tracking-tighter text-ink">Team management</h1>
           <p className="mt-3 text-[13px] leading-6 text-muted">Keep budgets, ownership, and team roles in one place.</p>
         </div>
         <button className={button.primary} type="button" onClick={() => setShowForm(true)}><Icon name="plus" size={16} /> Add team</button>
@@ -239,7 +239,7 @@ export default function TeamManagement() {
                 </div>
                 <div className="flex gap-2">
                   <button className={button.secondary} type="button" onClick={() => { setEditingTeam(team); setShowForm(true) }}>Edit</button>
-                  <button className="inline-flex min-h-[42px] items-center justify-center rounded-lg border border-red-200 px-[15px] text-[13px] font-bold text-red-600 transition hover:bg-red-50 focus-visible:outline-[3px] focus-visible:outline-blue-ring" type="button" onClick={() => setDeleteTeam(team)}>Delete</button>
+                  <button className="inline-flex min-h-10.5 items-center justify-center rounded-lg border border-red-200 px-3.75 text-[13px] font-bold text-red-600 transition hover:bg-red-50 focus-visible:outline-[3px] focus-visible:outline-blue-ring" type="button" onClick={() => setDeleteTeam(team)}>Delete</button>
                 </div>
               </div>
               <div className="mt-5 grid grid-cols-[1.2fr_1fr] gap-6 border-t border-line pt-5 max-[700px]:grid-cols-1">
