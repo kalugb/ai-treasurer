@@ -10,8 +10,28 @@ export default function Dashboard({ goTo }) {
     dashboardAPI.getDashboard().then(setDashboard)
   }, [])
 
+  const handleTestAxios = async () => {
+    try {
+      const res = await dashboardAPI.testAxios()
+      console.log('Axios test response:', res)
+
+      const testData = {
+        title: "title",
+        description: "description",
+        amount: 100,
+        date: "2025-03-19",
+      }
+
+      await dashboardAPI.testPost(testData)
+
+    } catch (error) {
+      console.error('Error occurred while testing axios:', error)
+    }
+  }
+
   if (!dashboard) return <p className="text-sm text-muted">Loading overview…</p>
   const receipts = dashboard.recent_receipts
+
   return (
     <>
       <header className="mb-9 flex items-end justify-between gap-6 max-[820px]:flex-col max-[820px]:items-start">
@@ -78,9 +98,13 @@ export default function Dashboard({ goTo }) {
           <div className="mb-5.5 flex gap-2.5 border-t border-[rgba(119,82,52,0.16)] pt-4"><span className="mt-1.25 size-2 shrink-0 rounded-full bg-brown" /><div><strong className="text-xs">Potential saving</strong><p className="mt-1 text-[13px] leading-[1.55] text-muted">Canceling unused plans could save <b className="text-brown-dark">$38 / month</b>.</p></div></div>
         </article>
       </section>
+      
       <div className="mt-8 flex justify-center">
         <button className={button.secondary} type="button" onClick={() => goTo('not-found')}>
           Test 404 page
+        </button>
+        <button className={`${button.secondary} ml-5`} type="button" onClick={handleTestAxios}>
+          Test axios 
         </button>
       </div>
     </>

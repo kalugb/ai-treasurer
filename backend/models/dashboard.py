@@ -11,3 +11,9 @@ class Dashboard(BaseModel):
     monthly_budget: float
     monthly_budget_used_percent: float
     recent_receipts: list[Receipt]
+
+class TestPostRequest(BaseModel):
+    title: str
+    description: str
+    amount: float
+    date: str
