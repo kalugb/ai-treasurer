@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import Icon from '../components/Icon'
 import { button } from '../components/button'
 import { teamsAPI } from '../api/teams'
+import { OrganizationContext, OrganizationRequiredEmptyState } from '../components/OrganizationContext'
 
 const users = ['Alex Morgan', 'Jamie Lee', 'Sam Rivera', 'Priya Shah', 'Taylor Kim']
 const roles = ['Lead', 'Co-Lead', 'Member']
@@ -185,7 +186,7 @@ function usagePercent(team) {
 	return team.budget > 0 ? Math.round((team.used / team.budget) * 100) : 0
 }
 
-export default function TeamManagement() {
+export default function TeamManagement({ organization, onOrganizationChange }) {
 	const [teams, setTeams] = useState([])
 	const [editingTeam, setEditingTeam] = useState(null)
 	const [deleteTeam, setDeleteTeam] = useState(null)
@@ -216,6 +217,11 @@ export default function TeamManagement() {
 		await onDeleteTeam(id)
 		setDeleteTeam(null)
 	}
+	if (!organization) return <>
+		<header className="mb-9"><p className="mb-2.5 text-[11px] font-bold tracking-widest text-muted uppercase">Finance / Team management</p><h1 className="font-display text-[clamp(28px,3vw,42px)] leading-[1.08] tracking-tighter text-ink">Team management</h1><p className="mt-3 text-[13px] leading-6 text-muted">Keep budgets, ownership, and team roles in one place.</p></header>
+		<OrganizationContext organization={organization} onChange={onOrganizationChange} />
+		<OrganizationRequiredEmptyState />
+	</>
 
 	return (
 		<>
@@ -227,8 +233,9 @@ export default function TeamManagement() {
 				</div>
 				<button className={button.primary} type="button" onClick={() => setShowForm(true)}><Icon name="plus" size={16} /> Add team</button>
 			</header>
+			<OrganizationContext organization={organization} onChange={onOrganizationChange} />
 			<section className="grid gap-3">
-				{teams.map((team) => {
+				{teams.length ? teams.map((team) => {
 					const percentage = usagePercent(team)
 					return (
 						<article className="rounded-[14px] border border-line bg-white p-5" key={team.id}>
@@ -251,7 +258,15 @@ export default function TeamManagement() {
 							</div>
 						</article>
 					)
-				})}
+				}) : (
+					<div className="grid min-h-64 place-items-center rounded-[14px] border border-dashed border-line bg-white p-8 text-center">
+						<div>
+							<span className="mx-auto grid size-11 place-items-center rounded-xl bg-blue-soft text-blue"><Icon name="users" size={20} /></span>
+							<h2 className="mt-4 font-display text-[16px]">No teams yet</h2>
+							<p className="mt-1 text-xs text-muted">Add your first team to start managing budgets and members.</p>
+						</div>
+					</div>
+				)}
 			</section>
 			{(showForm || editingTeam) && <TeamModal team={editingTeam} teams={teams} onClose={() => { setShowForm(false); setEditingTeam(null) }} onSave={saveTeam} />}
 			{deleteTeam && <DeleteModal team={deleteTeam} onClose={() => setDeleteTeam(null)} onDelete={removeTeam} />}

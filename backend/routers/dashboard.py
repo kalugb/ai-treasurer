@@ -16,4 +16,15 @@ def test_axios():
 
 @router.post("/test-post")
 def test_post(request: TestPostRequest):
-    return {"message": "POST request successful!", "data": request.dict()}
+    mock_data: dict = {
+        "id": 1,
+        "name": "Mock Data",
+        "description": "This is a mock data response.",
+        "date": "2025-03-19",
+    }
+    
+    return {
+        "message": f"Received data: {request.dict()}.",
+        "mock_data": mock_data
+    }
+    

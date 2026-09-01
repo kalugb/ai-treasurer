@@ -2,10 +2,8 @@ import { useState } from 'react'
 import Icon from '../components/Icon'
 import { button } from '../components/button'
 
-const initialOrganizations = ['Personal workspace']
-
 export default function Organization() {
-	const [organizations, setOrganizations] = useState(initialOrganizations)
+	const [organizations, setOrganizations] = useState([])
 	const [name, setName] = useState('')
 	const [editing, setEditing] = useState(null)
 
@@ -45,7 +43,7 @@ export default function Organization() {
 					<div className="flex gap-2"><button className={button.primary} type="submit"><Icon name="plus" size={16} /> {editing === null ? 'Add organization' : 'Save changes'}</button>{editing !== null && <button className={button.secondary} type="button" onClick={() => { setEditing(null); setName('') }}>Cancel</button>}</div>
 				</form>
 				<div className="grid border-t border-line">
-					{organizations.map((organization, index) => <div className="flex items-center gap-3 border-t border-line py-4" key={`${organization}-${index}`}><span className="grid size-8.5 shrink-0 place-items-center rounded-lg bg-blue-soft text-blue"><Icon name="grid" size={16} /></span><span className="grid flex-1 gap-1.25"><strong>{organization}</strong><small className="text-xs text-muted">Local organization</small></span><span className="flex items-center gap-2"><button className="rounded-md border border-line bg-transparent px-1.75 py-1.25 text-[10px] font-bold text-blue hover:border-blue hover:bg-blue-soft" onClick={() => edit(index)}>Edit</button><button className="rounded-md border border-line bg-transparent px-1.75 py-1.25 text-[10px] font-bold text-brown hover:border-brown hover:bg-brown-soft" onClick={() => remove(index)}>Remove</button></span></div>)}
+					{organizations.length ? organizations.map((organization, index) => <div className="flex items-center gap-3 border-t border-line py-4" key={`${organization}-${index}`}><span className="grid size-8.5 shrink-0 place-items-center rounded-lg bg-blue-soft text-blue"><Icon name="grid" size={16} /></span><span className="grid flex-1 gap-1.25"><strong>{organization}</strong><small className="text-xs text-muted">Local organization</small></span><span className="flex items-center gap-2"><button className="rounded-md border border-line bg-transparent px-1.75 py-1.25 text-[10px] font-bold text-blue hover:border-blue hover:bg-blue-soft" onClick={() => edit(index)}>Edit</button><button className="rounded-md border border-line bg-transparent px-1.75 py-1.25 text-[10px] font-bold text-brown hover:border-brown hover:bg-brown-soft" onClick={() => remove(index)}>Remove</button></span></div>) : <div className="grid min-h-48 place-items-center p-8 text-center"><div><span className="mx-auto grid size-12 place-items-center rounded-2xl bg-blue-soft text-blue"><Icon name="grid" size={22} /></span><h3 className="mt-4 font-display text-[16px]">No organizations yet</h3><p className="mt-1 text-xs text-muted">Create your first organization to keep your finances separate.</p></div></div>}
 				</div>
 			</section>
 		</>

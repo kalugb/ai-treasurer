@@ -13,6 +13,8 @@ import NotFound from './pages/NotFound'
 export default function App() {
 	const [page, setPage] = useState('dashboard')
 	const [sidebar, setSidebar] = useState(15)
+	const [hasOrganization, setHasOrganization] = useState(false)
+	const organization = hasOrganization ? { id: 'selected', name: 'Selected organization' } : null
 	useEffect(() => {
 		const move = (event) => {
 			if (!window.__resizing) return
@@ -29,13 +31,13 @@ export default function App() {
 	}, [])
 
 	const content = page === 'dashboard'
-		? <Dashboard goTo={setPage} />
+		? <Dashboard goTo={setPage} organization={organization} onOrganizationChange={setHasOrganization} />
 		: page === 'organization'
 			? <Organization />
 			: page === 'folders'
-				? <Folders />
+			? <Folders organization={organization} onOrganizationChange={setHasOrganization} />
 				: page === 'teams'
-					? <TeamManagement />
+					? <TeamManagement organization={organization} onOrganizationChange={setHasOrganization} />
 					: page === 'agent'
 						? <Agent />
 						: page === 'settings'

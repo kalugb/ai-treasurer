@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import Icon from '../components/Icon'
 import { button } from '../components/button'
 import { dashboardAPI } from '../api/dashboard'
+import { OrganizationContext, OrganizationRequiredEmptyState } from '../components/OrganizationContext'
 
-export default function Dashboard({ goTo }) {
+export default function Dashboard({ goTo, organization, onOrganizationChange }) {
 	const [dashboard, setDashboard] = useState(null)
 
 	useEffect(() => {
@@ -22,7 +23,8 @@ export default function Dashboard({ goTo }) {
 				date: "2025-03-19",
 			}
 
-			await dashboardAPI.testPost(testData)
+			const res2 = await dashboardAPI.testPost(testData)
+			console.log('POST request response:', res2)
 
 		} catch (error) {
 			console.error('Error occurred while testing axios:', error)
@@ -31,6 +33,11 @@ export default function Dashboard({ goTo }) {
 
 	if (!dashboard) return <p className="text-sm text-muted">Loading overview…</p>
 	const receipts = dashboard.recent_receipts
+	if (!organization) return <>
+		<header className="mb-9"><p className="mb-2.5 text-[11px] font-bold tracking-widest uppercase text-muted">Overview</p><h1 className="font-display text-[clamp(28px,3vw,42px)] leading-[1.08] tracking-tighter text-ink">Financial overview</h1><p className="mt-3 text-[13px] leading-[1.55] text-muted">Your financial snapshot appears after you choose an organization.</p></header>
+		<OrganizationContext organization={organization} onChange={onOrganizationChange} />
+		<OrganizationRequiredEmptyState />
+	</>
 
 	return (
 		<>
@@ -45,6 +52,7 @@ export default function Dashboard({ goTo }) {
 					Ask AI Agent
 				</button>
 			</header>
+			<OrganizationContext organization={organization} onChange={onOrganizationChange} />
 
 			<section className="mb-3.5 grid grid-cols-3 gap-3.5 max-[820px]:grid-cols-1" aria-label="Financial summary">
 				<article className="min-h-37.5 rounded-[14px] border border-blue bg-blue p-5.5 text-white max-[820px]:min-h-auto max-[560px]:p-4">
@@ -75,7 +83,7 @@ export default function Dashboard({ goTo }) {
 						<table className="w-full border-collapse text-xs whitespace-nowrap">
 							<thead><tr><th className="pb-3 pr-3 pl-0 text-left text-[10px] font-bold tracking-[0.06em] uppercase text-muted">Date</th><th className="pb-3 pr-3 pl-0 text-left text-[10px] font-bold tracking-[0.06em] uppercase text-muted">Merchant</th><th className="pb-3 pr-3 pl-0 text-left text-[10px] font-bold tracking-[0.06em] uppercase text-muted">Category</th><th className="pb-3 pr-3 pl-0 text-left text-[10px] font-bold tracking-[0.06em] uppercase text-muted">Amount</th><th className="pb-3 pr-3 pl-0 text-left text-[10px] font-bold tracking-[0.06em] uppercase text-muted">Status</th></tr></thead>
 							<tbody>
-								{receipts.map((receipt) => (
+								{receipts.length ? receipts.map((receipt) => (
 									<tr key={receipt.id}>
 										<td className="border-t border-line py-3.25 pr-3 pl-0 text-muted">{receipt.date}</td>
 										<td className="border-t border-line py-3.25 pr-3 pl-0 text-muted"><span className="flex items-center gap-2 font-semibold text-ink"><span className="grid size-6.25 place-items-center rounded-[7px] bg-brown-soft text-[11px] text-brown">{receipt.merchant[0]}</span>{receipt.merchant}</span></td>
@@ -83,7 +91,19 @@ export default function Dashboard({ goTo }) {
 										<td className="border-t border-line py-3.25 pr-3 pl-0 text-right font-semibold text-ink">${receipt.amount.toFixed(2)}</td>
 										<td className="border-t border-line py-3.25 pr-3 pl-0 text-muted"><span className="inline-flex rounded-[20px] bg-green-soft px-2 py-1.25 text-[10px] font-bold text-green">Reviewed</span></td>
 									</tr>
-								))}
+								)) : (
+									<tr>
+										<td className="border-t border-line p-0" colSpan="5">
+											<div className="grid min-h-48 place-items-center p-8 text-center">
+												<div>
+													<span className="mx-auto grid size-11 place-items-center rounded-xl bg-blue-soft text-blue"><Icon name="receipt" size={20} /></span>
+													<h3 className="mt-4 font-display text-[16px]">No receipts yet</h3>
+													<p className="mt-1 text-xs text-muted">Add your first receipt to start tracking your spending.</p>
+												</div>
+											</div>
+										</td>
+									</tr>
+								)}
 							</tbody>
 						</table>
 					</div>

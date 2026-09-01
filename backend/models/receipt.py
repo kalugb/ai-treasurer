@@ -8,3 +8,4 @@ class Receipt(BaseModel):
     date: str
     amount: float
     category: str
+    source: str = "manual"
