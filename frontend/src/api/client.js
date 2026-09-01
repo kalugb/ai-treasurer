@@ -7,6 +7,25 @@ const client = axios.create({
 })
 
 export async function request(path, options) {
-  const response = await client({ url: path, ...options })
+  const response = await client({ 
+    url: path, 
+    ...options 
+  })
+  
+  return response.status === 204 ? null : response.data
+}
+
+export async function requestWithFile(path, formData, options = {}) {
+  const response = await client({
+    url: path,
+    method: 'POST',
+    data: formData,
+    ...options,
+    headers: {
+      'Content-Type': undefined,
+      ...options.headers,
+    }
+  })
+
   return response.status === 204 ? null : response.data
 }
