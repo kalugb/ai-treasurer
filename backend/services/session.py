@@ -1,37 +1,33 @@
-import time
+import json
 import uuid
 from typing import Any
 
+import redis.asyncio as redis
+
+
 class SessionStore:
-    def __init__(self, ttl_seconds: int = 3600):
-        self._store: dict[str, dict[str, Any]] = {} # swap to redis in future
-        self._expiry: dict[str, float] = {} # swap to redis in future
+    def __init__(self, redis_url: str, ttl_seconds: int = 3600):
+        self._redis = redis.from_url(redis_url, decode_responses=True)
         self.ttl = ttl_seconds
-        
-    def create(self) -> str:
+
+    async def create(self) -> str:
         session_id = str(uuid.uuid4())
-        self._store[session_id] = {}
-        self._expiry[session_id] = time.time() + self.ttl
-        
+        await self._redis.set(session_id, json.dumps({}), ex=self.ttl)
         return session_id
-    
-    def get(self, session_id: str) -> dict[str, Any] | None:
-        if session_id not in self._store:
-            return None
-        
-        if time.time() > self._expiry[session_id]:
-            self.delete(session_id)
-            
-            return None
-        
-        return self._store[session_id]
-    
-    def set(self, session_id: str, key: str, value: Any):
-        if session_id in self._store:
-            self._store[session_id][key] = value
-            self._expiry[session_id] = time.time() + self.ttl
-            
-    def delete(self, session_id: str):
-        self._store.pop(session_id, None)
-        self._expiry.pop(session_id, None)
-    
+
+    async def get(self, session_id: str) -> dict[str, Any] | None:
+        raw = await self._redis.get(session_id)
+        return json.loads(raw) if raw else None
+
+    async def set(self, session_id: str, key: str, value: Any):
+        session = await self.get(session_id)
+        if session is None:
+            return
+        session[key] = value
+        await self._redis.set(session_id, json.dumps(session), ex=self.ttl)
+
+    async def delete(self, session_id: str):
+        await self._redis.delete(session_id)
+
+    async def close(self):
+        await self._redis.close()

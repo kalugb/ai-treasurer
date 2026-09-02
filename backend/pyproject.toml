@@ -16,6 +16,7 @@ dependencies = [
     "langchain-nvidia-ai-endpoints>=1.4.3",
     "pymongo>=4.17.0",
     "python-dotenv>=1.2.2",
+    "redis>=8.1.0",
     "supabase>=2.31.0",
     "uvicorn[standard]>=0.52.1",
 ]
