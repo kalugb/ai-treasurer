@@ -24,7 +24,7 @@ def test_post(request: TestPostRequest):
     }
     
     return {
-        "message": f"Received data: {request.dict()}.",
+        "message": f"Received data: {request.model_dump()}.",
         "mock_data": mock_data
     }
     
