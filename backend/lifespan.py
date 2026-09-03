@@ -2,7 +2,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 import asyncio
     
-from services.session import SessionStore
+from services.redis.redis_client import get_redis_client
+from services.redis.session import SessionStore
+from services.redis.cache import CacheStore
 
 from services.mongodb.mongodb_connect import connect_to_mongodb
 # from supabase.supabase_connect import connect_to_supabase'
@@ -48,10 +50,10 @@ async def lifespan(app: FastAPI):
     # do this trick to unpack the clients tuple into individual variables
     mongodb_client, mongodb_database_client = clients
     
-    app.state.sessions = SessionStore(
-        redis_url=os.getenv("REDIS_URL", "redis://localhost:6379/0"),
-        ttl_seconds=3600
-    )
+    redis_client = await get_redis_client()
+    
+    app.state.sessions = SessionStore(redis_client)
+    app.state.cache = CacheStore(redis_client)
     app.state.mongo = mongodb_database_client
     # app.state.llm_inference = llm_inference
     # app.state.supabase = supabase_client
@@ -62,4 +64,4 @@ async def lifespan(app: FastAPI):
     if mongodb_client:
         mongodb_client.close()
         
-    await app.state.sessions.close()
+    await redis_client.close()
