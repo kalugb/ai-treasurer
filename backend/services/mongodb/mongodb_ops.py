@@ -1,6 +1,6 @@
 from pymongo import MongoClient
 
-def createSomething(database_client: MongoClient, doc_to_create: dict, collection_name: str, create_many: bool = False):
+def create(database_client: MongoClient, doc_to_create: dict, collection_name: str, create_many: bool = False):
     collection = database_client[collection_name]
     
     if not create_many:
@@ -10,7 +10,7 @@ def createSomething(database_client: MongoClient, doc_to_create: dict, collectio
         result = collection.insert_many(doc_to_create)
         return result.inserted_ids
     
-def readSomething(database_client: MongoClient, query: dict | None, collection_name: str, read_many: bool = False):
+def read(database_client: MongoClient, query: dict | None, collection_name: str, read_many: bool = False):
     collection = database_client[collection_name]
     
     if not read_many:
@@ -20,7 +20,7 @@ def readSomething(database_client: MongoClient, query: dict | None, collection_n
         result = collection.find(query)
         return list(result)
     
-def updateSomething(database_client: MongoClient, query: dict, update_data: dict, collection_name: str, update_many: bool = False):
+def update(database_client: MongoClient, query: dict, update_data: dict, collection_name: str, update_many: bool = False):
     collection = database_client[collection_name]
     
     if not update_many:
@@ -30,7 +30,7 @@ def updateSomething(database_client: MongoClient, query: dict, update_data: dict
         result = collection.update_many(query, {"$set": update_data})
         return result.modified_count
     
-def deleteSomething(database_client: MongoClient, query: dict, collection_name: str, delete_many: bool = False):
+def delete(database_client: MongoClient, query: dict, collection_name: str, delete_many: bool = False):
     collection = database_client[collection_name]
     
     if not delete_many:
@@ -44,7 +44,7 @@ if __name__ == "__main__":
     from mongodb_connect import connect_to_mongodb
     
     database = connect_to_mongodb()
-    results = readSomething(
+    results = read(
         database_client=database,
         query=None,
         collection_name="organizations",

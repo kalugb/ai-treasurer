@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import dashboard, teams
+from routers import dashboard, teams, organization
 from lifespan import lifespan
 
 app = FastAPI(title="AI Treasurer Mock API", lifespan=lifespan)
@@ -14,3 +14,4 @@ app.add_middleware(
 
 app.include_router(dashboard.router)
 app.include_router(teams.router)
+app.include_router(organization.router)
