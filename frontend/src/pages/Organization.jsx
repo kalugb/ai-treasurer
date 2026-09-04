@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import Icon from '../components/Icon'
 import { button } from '../components/button'
+import { organizationAPI } from '../api/organization'
 
 export default function Organization() {
 	const [organizations, setOrganizations] = useState([])
@@ -8,12 +9,35 @@ export default function Organization() {
 	const [editing, setEditing] = useState(null)
 	const [showModal, setShowModal] = useState(false)
 	const [toast, setToast] = useState(null)
+	const hasFetched = useRef(false)
 
 	useEffect(() => {
 		if (!toast) return undefined
 		const timer = window.setTimeout(() => setToast(null), 4000)
 		return () => window.clearTimeout(timer)
 	}, [toast])
+
+	useEffect(() => {
+		if (hasFetched.current) return
+		hasFetched.current = true
+
+		const fetchOrganizations = async () => {
+			try {
+				// for now, treat public ip addr as ownerId before auth is implemented
+				// const ipRes = await fetch('https://api.ipify.org?format=json');
+				// const ipData = await ipRes.json();
+				const ownerId = "1"
+
+				const res = await organizationAPI.getOrganization(ownerId);
+				console.log(res);
+			} catch (error) {
+				console.error('Error fetching organizations:', error)
+				// setToast({ type: 'error', message: 'Failed to fetch organizations. Please try again later.' })
+			}
+		}
+
+		fetchOrganizations()
+	}, [])
 
 	const save = (event) => {
 		event.preventDefault()

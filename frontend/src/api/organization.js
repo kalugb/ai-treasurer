@@ -1,9 +1,9 @@
 import { request } from './client'
 
-async function getOrganization() {
+async function getOrganization(ownerId) {
     return request(
         '/api/organizations', 
-        { method: 'GET' }
+        { method: 'GET', params: { ownerId } }
     )
 }
 
