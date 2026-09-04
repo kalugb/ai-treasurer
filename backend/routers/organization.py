@@ -22,7 +22,6 @@ async def get_organization(ownerId: str, mongo: MongoClient = Depends(get_mongo)
     cache_key = cache.key_builder(ownerId, CACHE_KEY_NAME)
     cached_data = await cache.get(cache_key)
     if cached_data is not None:
-        cached_data.append({"source": "cache"})
         return cached_data
 
     # If not in cache, query the database
@@ -35,7 +34,6 @@ async def get_organization(ownerId: str, mongo: MongoClient = Depends(get_mongo)
     # Save to cache
     await cache.set(cache_key, organization)
     
-    organization.append({"source": "database"})
     return organization
 
 @router.post("/organizations")

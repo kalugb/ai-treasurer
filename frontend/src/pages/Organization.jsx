@@ -9,6 +9,7 @@ export default function Organization() {
 	const [editing, setEditing] = useState(null)
 	const [showModal, setShowModal] = useState(false)
 	const [toast, setToast] = useState(null)
+	const [loading, setLoading] = useState(true)
 	const hasFetched = useRef(false)
 
 	useEffect(() => {
@@ -29,15 +30,34 @@ export default function Organization() {
 				const ownerId = "1"
 
 				const res = await organizationAPI.getOrganization(ownerId);
-				console.log(res);
+				// backend returns [{ org_name, owner_id, created_at, ... }]
+				const items = Array.isArray(res)
+					? res.map((org) => ({
+						name: org?.org_name ?? org?.name ?? org?.orgName ?? null,
+						createdAt: org?.created_at ?? org?.createdAt ?? null,
+					})).filter((o) => o.name)
+					: []
+				setOrganizations(items);
 			} catch (error) {
-				console.error('Error fetching organizations:', error)
-				// setToast({ type: 'error', message: 'Failed to fetch organizations. Please try again later.' })
+				// 404 means no orgs yet - show empty state, not error
+				if (error?.response?.status !== 404) {
+					console.error('Error fetching organizations:', error)
+					setToast({ type: 'error', message: 'Failed to fetch organizations. Please try again later.' })
+				}
+			} finally {
+				setLoading(false)
 			}
 		}
 
 		fetchOrganizations()
 	}, [])
+
+	const formatCreatedAt = (value) => {
+		if (!value) return null
+		const d = new Date(value)
+		if (Number.isNaN(d.getTime())) return String(value)
+		return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+	}
 
 	const save = (event) => {
 		event.preventDefault()
@@ -46,13 +66,15 @@ export default function Organization() {
 			setToast({ type: 'error', message: 'Organization creation failed. Enter an organization name.' })
 			return
 		}
-		if (organizations.some((organization, index) => index !== editing && organization.toLowerCase() === value.toLowerCase())) {
+		if (organizations.some((org, index) => index !== editing && org.name.toLowerCase() === value.toLowerCase())) {
 			setToast({ type: 'error', message: `Organization ${value} creation failed. That name already exists.` })
 			return
 		}
-		setOrganizations((current) => editing === null
-			? [...current, value]
-			: current.map((organization, index) => index === editing ? value : organization))
+		if (editing === null) {
+			setOrganizations((current) => [...current, { name: value, createdAt: new Date().toISOString() }])
+		} else {
+			setOrganizations((current) => current.map((org, index) => index === editing ? { ...org, name: value } : org))
+		}
 		setToast({ type: 'success', message: editing === null ? `Organization ${value} is created successfully.` : `Organization ${value} is updated successfully.` })
 		setName('')
 		setEditing(null)
@@ -61,7 +83,7 @@ export default function Organization() {
 
 	const edit = (index) => {
 		setEditing(index)
-		setName(organizations[index])
+		setName(organizations[index]?.name ?? '')
 		setShowModal(true)
 	}
 
@@ -87,9 +109,12 @@ export default function Organization() {
 				<button className={button.primary} type="button" onClick={() => setShowModal(true)}><Icon name="plus" size={16} /> Add organization</button>
 			</header>
 			<section className="grid content-start gap-4.5 rounded-[14px] border border-line bg-white p-5.5 max-[560px]:p-4">
-				<div className="flex items-start justify-between gap-4.5"><div><h2 className="font-display text-[17px] tracking-[-0.03em]">Your organizations</h2><p className="mt-1.5 text-[13px] leading-[1.55] text-muted">Local-only for now. Changes are kept in this page while it is open.</p></div><span className="rounded-[20px] bg-blue-soft px-2.25 py-1.5 text-[11px] font-bold text-blue">{organizations.length} {organizations.length === 1 ? 'organization' : 'organizations'}</span></div>
+				<div className="flex items-start justify-between gap-4.5"><div><h2 className="font-display text-[17px] tracking-[-0.03em]">Your organizations</h2><p className="mt-1.5 text-[13px] leading-[1.55] text-muted">{loading ? 'Loading organizations…' : `${organizations.length} from server`}</p></div><span className="rounded-[20px] bg-blue-soft px-2.25 py-1.5 text-[11px] font-bold text-blue">{organizations.length} {organizations.length === 1 ? 'organization' : 'organizations'}</span></div>
 				<div className="grid border-t border-line">
-					{organizations.length ? organizations.map((organization, index) => <div className="flex items-center gap-3 border-t border-line py-4" key={`${organization}-${index}`}><span className="grid size-8.5 shrink-0 place-items-center rounded-lg bg-blue-soft text-blue"><Icon name="grid" size={16} /></span><span className="grid flex-1 gap-1.25"><strong>{organization}</strong><small className="text-xs text-muted">Local organization</small></span><span className="flex items-center gap-2"><button className="rounded-md border border-line bg-transparent px-1.75 py-1.25 text-[10px] font-bold text-blue hover:border-blue hover:bg-blue-soft" onClick={() => edit(index)}>Edit</button><button className="rounded-md border border-line bg-transparent px-1.75 py-1.25 text-[10px] font-bold text-brown hover:border-brown hover:bg-brown-soft" onClick={() => remove(index)}>Remove</button></span></div>) : <div className="grid min-h-48 place-items-center p-8 text-center"><div><span className="mx-auto grid size-12 place-items-center rounded-2xl bg-blue-soft text-blue"><Icon name="grid" size={22} /></span><h3 className="mt-4 font-display text-[16px]">No organizations yet</h3><p className="mt-1 text-xs text-muted">Create your first organization to keep your finances separate.</p></div></div>}
+					{loading ? <div className="grid min-h-48 place-items-center p-8 text-center"><p className="text-sm text-muted">Loading…</p></div> : organizations.length ? organizations.map((org, index) => {
+						const created = formatCreatedAt(org.createdAt)
+						return <div className="flex items-center gap-3 border-t border-line py-4" key={`${org.name}-${index}`}><span className="grid size-8.5 shrink-0 place-items-center rounded-lg bg-blue-soft text-blue"><Icon name="grid" size={16} /></span><span className="grid flex-1 gap-1.25"><strong>{org.name}</strong><small className="text-xs text-muted">{created ? `Created ${created} • Synced from server` : 'Synced from server'}</small></span><span className="flex items-center gap-2"><button className="rounded-md border border-line bg-transparent px-1.75 py-1.25 text-[10px] font-bold text-blue hover:border-blue hover:bg-blue-soft" onClick={() => edit(index)}>Edit</button><button className="rounded-md border border-line bg-transparent px-1.75 py-1.25 text-[10px] font-bold text-brown hover:border-brown hover:bg-brown-soft" onClick={() => remove(index)}>Remove</button></span></div>
+					}) : <div className="grid min-h-48 place-items-center p-8 text-center"><div><span className="mx-auto grid size-12 place-items-center rounded-2xl bg-blue-soft text-blue"><Icon name="grid" size={22} /></span><h3 className="mt-4 font-display text-[16px]">No organizations yet</h3><p className="mt-1 text-xs text-muted">Create your first organization to keep your finances separate.</p></div></div>}
 				</div>
 			</section>
 			{showModal && <div className="fixed inset-0 z-20 grid place-items-center bg-[rgb(28_35_36/38%)] p-5" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && closeModal()}><div className="w-[min(100%,480px)] rounded-[14px] border border-line bg-white p-6 shadow-[0_20px_50px_rgb(28_35_36/18%)]" role="dialog" aria-modal="true" aria-labelledby="organization-modal-title"><div className="mb-6 flex items-start justify-between gap-4"><div><h2 id="organization-modal-title" className="font-display text-[20px] tracking-[-0.03em]">{editing === null ? 'Add organization' : 'Edit organization'}</h2><p className="mt-1.5 text-[13px] leading-6 text-muted">Give this organization a clear, recognizable name.</p></div><button className="rounded-lg px-2 py-1 text-xs font-bold text-blue focus-visible:outline-[3px] focus-visible:outline-blue-ring" type="button" onClick={closeModal}>Close</button></div><form className="grid gap-5" onSubmit={save}><label className="grid gap-2 text-xs font-bold text-ink">Organization name<input className="h-10 w-full rounded-lg border border-line bg-paper px-3 text-[13px] text-ink outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Acme Inc." autoFocus /></label><div className="flex gap-2 border-t border-line pt-5"><button className={button.primary} type="submit">{editing === null ? 'Create organization' : 'Save changes'}</button><button className={button.secondary} type="button" onClick={closeModal}>Cancel</button></div></form></div></div>}
