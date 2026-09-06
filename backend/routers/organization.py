@@ -93,7 +93,12 @@ async def update_organization(org_id: str, payload: UpdateOrganizationRequest, m
     if dup:
         raise HTTPException(status_code=409, detail="Organization name already exists")
     await mongodb_ops.update(mongo, query={"_id": oid}, collection_name=COLLECTION_NAME, update_data={"orgName": org_name})
+    # fan-out orgName to teams
+    await mongodb_ops.update(mongo, query={"orgId": oid}, collection_name="teams", update_data={"orgName": org_name}, update_many=True)
+    # also handle legacy string orgId
+    await mongodb_ops.update(mongo, query={"orgId": org_id}, collection_name="teams", update_data={"orgName": org_name}, update_many=True)
     await cache.delete(cache.key_builder(owner_id_val, CACHE_KEY_NAME))
+    await cache.delete(cache.key_builder(str(oid), "teams"))
     updated = await mongodb_ops.read(mongo, collection_name=COLLECTION_NAME, query={"_id": oid})
     return _to_out(updated)
 
@@ -107,5 +112,9 @@ async def delete_organization(org_id: str, mongo=Depends(get_mongo), cache: Cach
         raise HTTPException(status_code=404, detail="Organization not found")
     owner_id_val = existing.get("ownerId", existing.get("owner_id", existing.get("ownerID")))
     await mongodb_ops.delete(mongo, collection_name=COLLECTION_NAME, query={"_id": oid})
+    # delete orphan teams for this org — fresh start
+    await mongodb_ops.delete(mongo, collection_name="teams", query={"orgId": oid}, delete_many=True)
+    await mongodb_ops.delete(mongo, collection_name="teams", query={"orgId": org_id}, delete_many=True)
     await cache.delete(cache.key_builder(owner_id_val, CACHE_KEY_NAME))
+    await cache.delete(cache.key_builder(str(oid), "teams"))
     return Response(status_code=204)
