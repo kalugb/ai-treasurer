@@ -13,8 +13,20 @@ import NotFound from './pages/NotFound'
 export default function App() {
 	const [page, setPage] = useState('dashboard')
 	const [sidebar, setSidebar] = useState(15)
-	const [hasOrganization, setHasOrganization] = useState(false)
-	const organization = hasOrganization ? { id: 'selected', name: 'Selected organization' } : null
+	const [selectedOrganization, setSelectedOrganization] = useState(() => {
+		try {
+			const raw = sessionStorage.getItem('selectedOrganization')
+			return raw ? JSON.parse(raw) : null
+		} catch {
+			return null
+		}
+	})
+	useEffect(() => {
+		try {
+			if (selectedOrganization) sessionStorage.setItem('selectedOrganization', JSON.stringify(selectedOrganization))
+			else sessionStorage.removeItem('selectedOrganization')
+		} catch { /* ignore */ }
+	}, [selectedOrganization])
 	useEffect(() => {
 		const move = (event) => {
 			if (!window.__resizing) return
@@ -30,14 +42,16 @@ export default function App() {
 		}
 	}, [])
 
+	const goToOrganization = () => setPage('organization')
+
 	const content = page === 'dashboard'
-		? <Dashboard goTo={setPage} organization={organization} onOrganizationChange={setHasOrganization} />
+		? <Dashboard goTo={setPage} organization={selectedOrganization} onGoToOrganization={goToOrganization} />
 		: page === 'organization'
-			? <Organization />
+			? <Organization selectedId={selectedOrganization?.id ?? null} onSelect={setSelectedOrganization} />
 			: page === 'folders'
-			? <Folders organization={organization} onOrganizationChange={setHasOrganization} />
+			? <Folders organization={selectedOrganization} onGoToOrganization={goToOrganization} />
 				: page === 'teams'
-					? <TeamManagement organization={organization} onOrganizationChange={setHasOrganization} />
+					? <TeamManagement organization={selectedOrganization} onGoToOrganization={goToOrganization} />
 					: page === 'agent'
 						? <Agent />
 						: page === 'settings'

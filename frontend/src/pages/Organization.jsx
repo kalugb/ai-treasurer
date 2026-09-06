@@ -3,6 +3,7 @@ import Icon from '../components/Icon'
 import { button } from '../components/button'
 import { organizationAPI } from '../api/organization'
 
+// eslint-disable-next-line no-unused-vars
 const getPublicIP = async () => {
 	try {
 		const response = await fetch('https://api.ipify.org?format=json')
@@ -15,7 +16,7 @@ const getPublicIP = async () => {
 	}
 }
 
-export default function Organization() {
+export default function Organization({ selectedId = null, onSelect }) {
 	const [organizations, setOrganizations] = useState([])
 	const [name, setName] = useState('')
 	const [editingId, setEditingId] = useState(null)
@@ -92,6 +93,9 @@ export default function Organization() {
 			} else {
 				const updated = await organizationAPI.updateOrganization(editingId, { orgName: value })
 				setOrganizations((cur) => cur.map((org) => org.id === editingId ? { ...org, orgName: updated.orgName } : org))
+				if (selectedId === editingId && onSelect) {
+					onSelect({ id: updated.id, orgName: updated.orgName, createdAt: updated.createdAt, ownerId: updated.ownerId })
+				}
 				setToast({ type: 'success', message: `Organization ${value} is updated successfully.` })
 			}
 			setName('')
@@ -122,11 +126,18 @@ export default function Organization() {
 		setName('')
 	}
 
+	const select = (org) => {
+		if (!onSelect) return
+		onSelect({ id: org.id, orgName: org.orgName, createdAt: org.createdAt, ownerId: org.ownerId })
+		setToast({ type: 'success', message: `Organization ${org.orgName} selected.` })
+	}
+
 	const remove = async (id) => {
 		const org = organizations.find((o) => o.id === id)
 		try {
 			await organizationAPI.deleteOrganization(id)
 			setOrganizations((cur) => cur.filter((o) => o.id !== id))
+			if (selectedId === id && onSelect) onSelect(null)
 			if (editingId === id) {
 				setEditingId(null)
 				setName('')
@@ -149,7 +160,8 @@ export default function Organization() {
 				<div className="grid border-t border-line">
 					{loading ? <div className="grid min-h-48 place-items-center p-8 text-center"><p className="text-sm text-muted">Loading…</p></div> : organizations.length ? organizations.map((org) => {
 						const created = formatCreatedAt(org.createdAt)
-						return <div className="flex items-center gap-3 border-t border-line py-4" key={org.id}><span className="grid size-8.5 shrink-0 place-items-center rounded-lg bg-blue-soft text-blue"><Icon name="grid" size={16} /></span><span className="grid flex-1 gap-1.25"><strong>{org.orgName}</strong><small className="text-xs text-muted">{created ? `Created ${created} • Synced from server` : 'Synced from server'}</small></span><span className="flex items-center gap-2"><button className="rounded-md border border-line bg-transparent px-1.75 py-1.25 text-[10px] font-bold text-blue hover:border-blue hover:bg-blue-soft" onClick={() => edit(org.id)}>Edit</button><button className="rounded-md border border-line bg-transparent px-1.75 py-1.25 text-[10px] font-bold text-brown hover:border-brown hover:bg-brown-soft" onClick={() => remove(org.id)}>Remove</button></span></div>
+						const isSelected = org.id === selectedId
+						return <div className={`flex items-center gap-3 border-t border-line py-4 ${isSelected ? 'rounded-lg bg-blue-soft/40 -mx-2 px-2' : ''}`} key={org.id}><span className="grid size-8.5 shrink-0 place-items-center rounded-lg bg-blue-soft text-blue"><Icon name="grid" size={16} /></span><span className="grid flex-1 gap-1.25"><strong className="flex items-center gap-2">{org.orgName}{isSelected && <span className="rounded-full bg-blue px-2 py-0.5 text-[10px] font-bold text-white">Selected</span>}</strong><small className="text-xs text-muted">{created ? `Created ${created} • Synced from server` : 'Synced from server'}</small></span><span className="flex items-center gap-2"><button className={`rounded-md border px-1.75 py-1.25 text-[10px] font-bold ${isSelected ? 'border-blue bg-blue text-white' : 'border-line bg-transparent text-blue hover:border-blue hover:bg-blue-soft'}`} onClick={() => select(org)} disabled={isSelected} aria-pressed={isSelected}>{isSelected ? 'Selected' : 'Select'}</button><button className="rounded-md border border-line bg-transparent px-1.75 py-1.25 text-[10px] font-bold text-blue hover:border-blue hover:bg-blue-soft" onClick={() => edit(org.id)}>Edit</button><button className="rounded-md border border-line bg-transparent px-1.75 py-1.25 text-[10px] font-bold text-brown hover:border-brown hover:bg-brown-soft" onClick={() => remove(org.id)}>Remove</button></span></div>
 					}) : <div className="grid min-h-48 place-items-center p-8 text-center"><div><span className="mx-auto grid size-12 place-items-center rounded-2xl bg-blue-soft text-blue"><Icon name="grid" size={22} /></span><h3 className="mt-4 font-display text-[16px]">No organizations yet</h3><p className="mt-1 text-xs text-muted">Create your first organization to keep your finances separate.</p></div></div>}
 				</div>
 			</section>

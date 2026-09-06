@@ -186,7 +186,7 @@ function usagePercent(team) {
 	return team.budget > 0 ? Math.round((team.used / team.budget) * 100) : 0
 }
 
-export default function TeamManagement({ organization, onOrganizationChange }) {
+export default function TeamManagement({ organization, onGoToOrganization }) {
 	const [teams, setTeams] = useState([])
 	const [editingTeam, setEditingTeam] = useState(null)
 	const [deleteTeam, setDeleteTeam] = useState(null)
@@ -219,8 +219,7 @@ export default function TeamManagement({ organization, onOrganizationChange }) {
 	}
 	if (!organization) return <>
 		<header className="mb-9"><p className="mb-2.5 text-[11px] font-bold tracking-widest text-muted uppercase">Finance / Team management</p><h1 className="font-display text-[clamp(28px,3vw,42px)] leading-[1.08] tracking-tighter text-ink">Team management</h1><p className="mt-3 text-[13px] leading-6 text-muted">Keep budgets, ownership, and team roles in one place.</p></header>
-		<OrganizationContext organization={organization} onChange={onOrganizationChange} />
-		<OrganizationRequiredEmptyState />
+		<OrganizationRequiredEmptyState onGoToOrganization={onGoToOrganization} />
 	</>
 
 	return (
@@ -233,7 +232,7 @@ export default function TeamManagement({ organization, onOrganizationChange }) {
 				</div>
 				<button className={button.primary} type="button" onClick={() => setShowForm(true)}><Icon name="plus" size={16} /> Add team</button>
 			</header>
-			<OrganizationContext organization={organization} onChange={onOrganizationChange} />
+			<OrganizationContext organization={organization} onGoToOrganization={onGoToOrganization} />
 			<section className="grid gap-3">
 				{teams.length ? teams.map((team) => {
 					const percentage = usagePercent(team)

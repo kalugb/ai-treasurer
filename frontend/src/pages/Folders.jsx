@@ -22,7 +22,7 @@ function ReceiptPreview({ receipt, onClose }) {
 	)
 }
 
-export default function Folders({ organization, onOrganizationChange }) {
+export default function Folders({ organization, onGoToOrganization }) {
 	const [teams, setTeams] = useState([])
 	const [teamIndex, setTeamIndex] = useState(0)
 	const [preview, setPreview] = useState(null)
@@ -40,8 +40,7 @@ export default function Folders({ organization, onOrganizationChange }) {
 	const alert = team && remainingPercent < 10
 	if (!organization) return <>
 		<header className="mb-9"><p className="mb-2.5 text-[11px] font-bold tracking-widest text-muted uppercase">Finance / Receipts management</p><h1 className="font-display text-[clamp(28px,3vw,42px)] leading-[1.08] tracking-tighter text-ink">Receipts management</h1><p className="mt-3 text-[13px] leading-6 text-muted">Browse receipts by team in one shared workspace.</p></header>
-		<OrganizationContext organization={organization} onChange={onOrganizationChange} />
-		<OrganizationRequiredEmptyState />
+		<OrganizationRequiredEmptyState onGoToOrganization={onGoToOrganization} />
 	</>
 
 	return (
@@ -50,7 +49,7 @@ export default function Folders({ organization, onOrganizationChange }) {
 				<div><p className="mb-2.5 text-[11px] font-bold tracking-widest text-muted uppercase">Finance / Receipts management</p><h1 className="font-display text-[clamp(28px,3vw,42px)] leading-[1.08] tracking-tighter text-ink">Receipts management</h1><p className="mt-3 text-[13px] leading-6 text-muted">Browse receipts by team in one shared workspace.</p></div>
 				{team && <label className="grid min-w-47.5 gap-2 text-xs font-bold text-ink">Team<select className="h-10 rounded-lg border border-line bg-white px-3 text-[13px] outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" value={selectedIndex} onChange={(event) => setTeamIndex(Number(event.target.value))}>{teams.map((item, index) => <option key={item.id} value={index}>{item.name}</option>)}</select></label>}
 			</header>
-			<OrganizationContext organization={organization} onChange={onOrganizationChange} />
+			<OrganizationContext organization={organization} onGoToOrganization={onGoToOrganization} />
 			{team ? (
 				<>
 					<section className={alert ? 'mb-6 rounded-[14px] border border-red-200 bg-red-50 p-5 text-red-900' : 'mb-6 rounded-[14px] border border-line bg-white p-5'}>

@@ -4,7 +4,7 @@ import { button } from '../components/button'
 import { dashboardAPI } from '../api/dashboard'
 import { OrganizationContext, OrganizationRequiredEmptyState } from '../components/OrganizationContext'
 
-export default function Dashboard({ goTo, organization, onOrganizationChange }) {
+export default function Dashboard({ goTo, organization, onGoToOrganization }) {
 	const [dashboard, setDashboard] = useState(null)
 
 	useEffect(() => {
@@ -34,9 +34,8 @@ export default function Dashboard({ goTo, organization, onOrganizationChange }) 
 	if (!dashboard) return <p className="text-sm text-muted">Loading overview…</p>
 	const receipts = dashboard.recent_receipts
 	if (!organization) return <>
-		<header className="mb-9"><p className="mb-2.5 text-[11px] font-bold tracking-widest uppercase text-muted">Overview</p><h1 className="font-display text-[clamp(28px,3vw,42px)] leading-[1.08] tracking-tighter text-ink">Financial overview</h1><p className="mt-3 text-[13px] leading-[1.55] text-muted">Your financial snapshot appears after you choose an organization.</p></header>
-		<OrganizationContext organization={organization} onChange={onOrganizationChange} />
-		<OrganizationRequiredEmptyState />
+		<header className="mb-9"><p className="mb-2.5 text-[11px] font-bold tracking-widest uppercase text-muted">Financew / Overview</p><h1 className="font-display text-[clamp(28px,3vw,42px)] leading-[1.08] tracking-tighter text-ink">Financial overview</h1><p className="mt-3 text-[13px] leading-[1.55] text-muted">Your financial snapshot appears after you choose an organization.</p></header>
+		<OrganizationRequiredEmptyState onGoToOrganization={onGoToOrganization} />
 	</>
 
 	return (
@@ -52,7 +51,7 @@ export default function Dashboard({ goTo, organization, onOrganizationChange }) 
 					Ask AI Agent
 				</button>
 			</header>
-			<OrganizationContext organization={organization} onChange={onOrganizationChange} />
+			<OrganizationContext organization={organization} onGoToOrganization={onGoToOrganization} />
 
 			<section className="mb-3.5 grid grid-cols-3 gap-3.5 max-[820px]:grid-cols-1" aria-label="Financial summary">
 				<article className="min-h-37.5 rounded-[14px] border border-blue bg-blue p-5.5 text-white max-[820px]:min-h-auto max-[560px]:p-4">
