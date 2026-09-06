@@ -3,6 +3,20 @@ import Icon from '../components/Icon'
 import { button } from '../components/button'
 import { organizationAPI } from '../api/organization'
 
+const getPublicIP = async () => {
+	try {
+		const response = await fetch('https://api.ipify.org?format=json')
+		if (!response.ok) {
+			throw new Error(`Failed to fetch public IP address: ${response.status} ${response.statusText}`)
+		}
+		const data = await response.json()
+		return data.ip
+	} catch (error) {
+		console.error('Error fetching public IP address:', error)
+		return "1"
+	}
+}
+
 export default function Organization() {
 	const [organizations, setOrganizations] = useState([])
 	const [name, setName] = useState('')
@@ -24,10 +38,7 @@ export default function Organization() {
 
 		const fetchOrganizations = async () => {
 			try {
-				// for now, treat public ip addr as ownerId before auth is implemented
-				// const ipRes = await fetch('https://api.ipify.org?format=json');
-				// const ipData = await ipRes.json();
-				const ownerId = "1"
+				const ownerId = await getPublicIP()
 
 				const res = await organizationAPI.getOrganization(ownerId);
 				// backend returns [{ org_name, owner_id, created_at, ... }]
