@@ -1,11 +1,12 @@
-from pydantic import BaseModel, Field
-from datetime import datetime, timezone
+from pydantic import BaseModel, ConfigDict, Field
+
 
 class CreateOrganizationRequest(BaseModel):
-    org_name: str
-    owner_id: str
-    created_at: datetime = Field(default_factory=datetime.now(timezone.utc))
-    
+    model_config = ConfigDict(populate_by_name=True)
+    org_name: str = Field(alias="orgName", min_length=1)
+    owner_id: str = Field(alias="ownerId")
+
+
 class UpdateOrganizationRequest(BaseModel):
-    org_id: str
-    new_org_name: str
+    model_config = ConfigDict(populate_by_name=True)
+    org_name: str = Field(alias="orgName", min_length=1)
