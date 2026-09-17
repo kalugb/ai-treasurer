@@ -27,6 +27,7 @@ class LLMInference:
     async def get_instance(cls):
         self = cls()
         
+        # TODO: change the mistral and nvidia cause they suck ass
         mistral_llm, nvidia_llm = await asyncio.gather(
             load_mistral_llm(),
             load_nvidia_llm()
@@ -41,8 +42,13 @@ class LLMInference:
             model=mistral_llm,
             tools=self.tools, # tools are empty for now, add later
             middleware=[
-                ModelFallbackMiddleware(nvidia_llm),
-                ModelRetryMiddleware(max_retries=2, initial_delay=1.0, backoff_factor=2.0)
+                ModelRetryMiddleware(
+                    max_retries=2,
+                    initial_delay=1,
+                    backoff_factor=2,
+                    on_failure="error"
+                ),
+                ModelFallbackMiddleware(nvidia_llm)
             ]
         )
         
