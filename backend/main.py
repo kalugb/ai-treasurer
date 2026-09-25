@@ -4,10 +4,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from routers import dashboard, teams, organization
 from lifespan import lifespan
 
-app = FastAPI(title="AI Treasurer Mock API", lifespan=lifespan)
+ORIGINS = ["http://localhost:5173", ]
+
+app = FastAPI(title="AI Treasurer Backend", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
