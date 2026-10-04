@@ -11,8 +11,13 @@ import TeamManagement from './pages/TeamManagement'
 import NotFound from './pages/NotFound'
 
 export default function App() {
-	const [page, setPage] = useState('dashboard')
+	const [page, setPage] = useState(() => {
+		try { return sessionStorage.getItem('page') || 'dashboard' } catch { return 'dashboard' }
+	})
 	const [sidebar, setSidebar] = useState(15)
+	useEffect(() => {
+		try { sessionStorage.setItem('page', page) } catch { /* ignore */ }
+	}, [page])
 	const [selectedOrganization, setSelectedOrganization] = useState(() => {
 		try {
 			const raw = sessionStorage.getItem('selectedOrganization')
