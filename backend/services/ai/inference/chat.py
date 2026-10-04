@@ -11,7 +11,8 @@ from datetime import datetime
 load_dotenv()
 
 from services.ai.load_models.load_nvidia import load_nvidia_llm
-from services.ai.load_models.load_mistral import load_mistral_llm
+# from services.ai.load_models.load_mistral import load_mistral_llm
+from services.ai.load_models.load_groq import load_groq_llm
 from services.ai.tools.sample_tool import get_current_time, add_numbers, get_weather
 from services.ai.tools.web_search_tools import web_search
 from services.ai.tools.google_tools import search_drive_files, list_drive_folders, list_folder_contents
@@ -28,8 +29,8 @@ class LLMInference:
         self = cls()
         
         # TODO: change the mistral and nvidia cause they suck ass
-        mistral_llm, nvidia_llm = await asyncio.gather(
-            load_mistral_llm(),
+        groq_llm, nvidia_llm = await asyncio.gather(
+            load_groq_llm(),
             load_nvidia_llm()
         )
         
@@ -39,7 +40,7 @@ class LLMInference:
         ]
         
         self.llm_with_fallback = create_agent(
-            model=mistral_llm,
+            model=groq_llm,
             tools=self.tools, # tools are empty for now, add later
             middleware=[
                 ModelRetryMiddleware(
