@@ -19,6 +19,7 @@ export default function Icon({ name, size = 18 }) {
 		close: <><path d="m6 6 12 12M18 6 6 18" /></>,
 		chevron: <path d="m9 18 6-6-6-6" />,
 		resize: <><path d="M4 12h16M7 9l-3 3 3 3M17 9l3 3-3 3" /><path d="M10 8v8M14 8v8" /></>,
+		edit: <><path d="M11 4H4a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7" /><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L11 15l-4 1 1-4L10.5 2.5Z" /></>,
 	}
 	return (
 		<svg
