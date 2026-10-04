@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import Icon from '../components/Icon'
 import { button } from '../components/button'
 import { teamsAPI } from '../api/teams'
-import { OrganizationContext, OrganizationRequiredEmptyState } from '../components/OrganizationContext'
+import { OrganizationRequiredEmptyState } from '../components/OrganizationContext'
 
 const formatMoney = (amount) => `$${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
@@ -40,6 +40,7 @@ export default function Folders({ organization, onGoToOrganization }) {
 	const remaining = team ? Math.max(0, (team.budget ?? 0) - (team.used ?? 0)) : 0
 	const remainingPercent = team?.budget ? (remaining / team.budget) * 100 : 0
 	const alert = team && remainingPercent < 10
+
 	if (!organization) return <>
 		<header className="mb-9"><p className="mb-2.5 text-[11px] font-bold tracking-widest text-muted uppercase">Finance / Receipts management</p><h1 className="font-display text-[clamp(28px,3vw,42px)] leading-[1.08] tracking-tighter text-ink">Receipts management</h1><p className="mt-3 text-[13px] leading-6 text-muted">Browse receipts by team in one shared workspace.</p></header>
 		<OrganizationRequiredEmptyState onGoToOrganization={onGoToOrganization} />
@@ -51,7 +52,6 @@ export default function Folders({ organization, onGoToOrganization }) {
 				<div><p className="mb-2.5 text-[11px] font-bold tracking-widest text-muted uppercase">Finance / Receipts management</p><h1 className="font-display text-[clamp(28px,3vw,42px)] leading-[1.08] tracking-tighter text-ink">Receipts management</h1><p className="mt-3 text-[13px] leading-6 text-muted">Browse receipts by team in one shared workspace.</p></div>
 				{team && <label className="grid min-w-47.5 gap-2 text-xs font-bold text-ink">Team<select className="h-10 rounded-lg border border-line bg-white px-3 text-[13px] outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" value={selectedIndex} onChange={(event) => setTeamIndex(Number(event.target.value))}>{teams.map((item, index) => <option key={item.id} value={index}>{item.name}</option>)}</select></label>}
 			</header>
-			<OrganizationContext organization={organization} onGoToOrganization={onGoToOrganization} />
 			{team ? (
 				<>
 					<section className={alert ? 'mb-6 rounded-[14px] border border-red-200 bg-red-50 p-5 text-red-900' : 'mb-6 rounded-[14px] border border-line bg-white p-5'}>

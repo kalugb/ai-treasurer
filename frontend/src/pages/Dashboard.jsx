@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import Icon from '../components/Icon'
 import { button } from '../components/button'
 import { dashboardAPI } from '../api/dashboard'
-import { OrganizationContext, OrganizationRequiredEmptyState } from '../components/OrganizationContext'
+import { OrganizationRequiredEmptyState } from '../components/OrganizationContext'
 
 export default function Dashboard({ goTo, organization, onGoToOrganization }) {
 	const [dashboard, setDashboard] = useState(null)
@@ -51,7 +51,6 @@ export default function Dashboard({ goTo, organization, onGoToOrganization }) {
 					Ask AI Agent
 				</button>
 			</header>
-			<OrganizationContext organization={organization} onGoToOrganization={onGoToOrganization} />
 
 			<section className="mb-3.5 grid grid-cols-3 gap-3.5 max-[820px]:grid-cols-1" aria-label="Financial summary">
 				<article className="min-h-37.5 rounded-[14px] border border-blue bg-blue p-5.5 text-white max-[820px]:min-h-auto max-[560px]:p-4">

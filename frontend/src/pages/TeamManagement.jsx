@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import Icon from '../components/Icon'
 import { button } from '../components/button'
 import { teamsAPI } from '../api/teams'
-import { OrganizationContext, OrganizationRequiredEmptyState } from '../components/OrganizationContext'
+import { OrganizationRequiredEmptyState } from '../components/OrganizationContext'
 
 const users = ['Alex Morgan', 'Jamie Lee', 'Sam Rivera', 'Priya Shah', 'Taylor Kim']
 const roles = ['Lead', 'Co-Lead', 'Member']
@@ -277,7 +277,6 @@ export default function TeamManagement({ organization, onGoToOrganization }) {
 				</div>
 				<button className={button.primary} type="button" onClick={() => setShowForm(true)}><Icon name="plus" size={16} /> Add team</button>
 			</header>
-			<OrganizationContext organization={organization} onGoToOrganization={onGoToOrganization} />
 			<section className="grid gap-3">
 				{loading ? <div className="grid min-h-32 place-items-center rounded-[14px] border border-line bg-white p-8"><p className="text-sm text-muted">Loading teams…</p></div> : teams.length ? teams.map((team) => {
 					const percentage = usagePercent(team)

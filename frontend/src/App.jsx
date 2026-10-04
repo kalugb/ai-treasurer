@@ -64,7 +64,7 @@ export default function App() {
 
 	return (
 		<div className="flex min-h-screen bg-paper" style={{ '--sidebar-width': `${sidebar}%` }}>
-			<Sidebar page={page} setPage={setPage} />
+			<Sidebar page={page} setPage={setPage} organization={selectedOrganization} />
 			<main className="mx-auto min-w-0 max-w-360 flex-1 px-[clamp(24px,5vw,72px)] py-13 max-[820px]:px-5 max-[820px]:py-8 max-[560px]:px-3.5 max-[560px]:py-7">{content}</main>
 		</div>
 	)

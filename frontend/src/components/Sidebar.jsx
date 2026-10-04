@@ -3,7 +3,7 @@ import { navGroups } from '../api/mockData'
 
 const navFocus = 'focus-visible:outline-[3px] focus-visible:outline-blue-ring focus-visible:outline-offset-2'
 
-export default function Sidebar({ page, setPage }) {
+export default function Sidebar({ page, setPage, organization }) {
 	return (
 		<div className="sticky top-0 h-svh w-(--sidebar-width) max-w-[50%] min-w-55 shrink-0 max-[560px]:w-14.5 max-[560px]:min-w-14.5">
 			<aside className="flex h-full w-full flex-col overflow-hidden border-r border-line bg-sidebar pt-7 pr-3.5 pb-4.5 pl-3.5 transition-[width] duration-150 ease-out max-[560px]:px-2">
@@ -30,13 +30,22 @@ export default function Sidebar({ page, setPage }) {
 					))}
 				</nav>
 
-				<div className="mt-auto flex min-w-0 items-center gap-2.5 border-t border-line px-2 pt-3 max-[560px]:justify-center max-[560px]:px-0">
-					<div className="grid size-8 shrink-0 place-items-center rounded-full bg-brown-soft text-[11px] font-bold text-brown">AM</div>
-					<div className="overflow-hidden whitespace-nowrap max-[560px]:hidden">
-						<strong className="block overflow-hidden text-xs text-ellipsis">Alex Morgan</strong>
-						<small className="mt-0.75 block overflow-hidden text-[11px] text-ellipsis text-muted">Personal workspace</small>
+				<div className="mt-auto grid gap-3 border-t border-line pt-3">
+					<div className="grid gap-1.5 px-2 max-[560px]:hidden">
+						<span className="px-1 text-[10px] font-bold tracking-[0.12em] uppercase text-muted">Organization</span>
+						<div className="flex items-center gap-2 rounded-lg border border-line bg-white px-2.5 py-2">
+							<span className="grid size-6 shrink-0 place-items-center rounded-md bg-blue-soft text-blue"><Icon name="grid" size={12} /></span>
+							<span className="truncate text-[13px] font-bold text-ink" title={organization?.orgName ?? organization?.name ?? ""}>{organization?.orgName ?? organization?.name ?? "No organization"}</span>
+						</div>
 					</div>
-					<button className="ml-auto text-muted max-[560px]:hidden" aria-label="Open user menu">•••</button>
+					<div className="flex min-w-0 items-center gap-2.5 px-2 max-[560px]:justify-center max-[560px]:px-0">
+						<div className="grid size-8 shrink-0 place-items-center rounded-full bg-brown-soft text-[11px] font-bold text-brown">AM</div>
+						<div className="overflow-hidden whitespace-nowrap max-[560px]:hidden">
+							<strong className="block overflow-hidden text-xs text-ellipsis">Alex Morgan</strong>
+							<small className="mt-0.75 block overflow-hidden text-[11px] text-ellipsis text-muted">Personal workspace</small>
+						</div>
+						<button className="ml-auto text-muted max-[560px]:hidden" aria-label="Open user menu">•••</button>
+					</div>
 				</div>
 			</aside>
 			<button
