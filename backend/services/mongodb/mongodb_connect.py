@@ -25,5 +25,8 @@ def connect_to_mongodb():
     return client, database_client
 
 if __name__ == "__main__":
-    _ = connect_to_mongodb()
+    client, _ = connect_to_mongodb()
     print("Successfully connected to MongoDB.")
+    
+    client.close()
+    print("MongoDB connection closed successfully.")
