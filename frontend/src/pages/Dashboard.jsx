@@ -3,8 +3,10 @@ import Icon from '../components/Icon'
 import { button } from '../components/button'
 import { dashboardAPI } from '../api/dashboard'
 import { OrganizationRequiredEmptyState } from '../components/OrganizationContext'
+import { useSelectedOrganization } from '../hooks/useSelectedOrganization'
 
-export default function Dashboard({ goTo, organization, onGoToOrganization }) {
+export default function Dashboard({ goTo }) {
+	const organization = useSelectedOrganization()
 	const [dashboard, setDashboard] = useState(null)
 
 	useEffect(() => {
@@ -35,7 +37,7 @@ export default function Dashboard({ goTo, organization, onGoToOrganization }) {
 	const receipts = dashboard.recent_receipts
 	if (!organization) return <>
 		<header className="mb-9"><p className="mb-2.5 text-[11px] font-bold tracking-widest uppercase text-muted">Financew / Overview</p><h1 className="font-display text-[clamp(28px,3vw,42px)] leading-[1.08] tracking-tighter text-ink">Financial overview</h1><p className="mt-3 text-[13px] leading-[1.55] text-muted">Your financial snapshot appears after you choose an organization.</p></header>
-		<OrganizationRequiredEmptyState onGoToOrganization={onGoToOrganization} />
+		<OrganizationRequiredEmptyState />
 	</>
 
 	return (

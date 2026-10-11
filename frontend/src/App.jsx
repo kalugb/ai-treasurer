@@ -9,6 +9,7 @@ import Organization from './pages/Organization'
 import Folders from './pages/Folders'
 import TeamManagement from './pages/TeamManagement'
 import NotFound from './pages/NotFound'
+import { dispatchOrgChange } from './hooks/useSelectedOrganization'
 
 export default function App() {
 	const [page, setPage] = useState(() => {
@@ -31,6 +32,7 @@ export default function App() {
 			if (selectedOrganization) sessionStorage.setItem('selectedOrganization', JSON.stringify(selectedOrganization))
 			else sessionStorage.removeItem('selectedOrganization')
 		} catch { /* ignore */ }
+		dispatchOrgChange(selectedOrganization)
 	}, [selectedOrganization])
 	useEffect(() => {
 		const move = (event) => {
@@ -47,16 +49,14 @@ export default function App() {
 		}
 	}, [])
 
-	const goToOrganization = () => setPage('organization')
-
 	const content = page === 'dashboard'
-		? <Dashboard goTo={setPage} organization={selectedOrganization} onGoToOrganization={goToOrganization} />
+		? <Dashboard goTo={setPage} />
 		: page === 'organization'
 			? <Organization selectedId={selectedOrganization?.id ?? null} onSelect={setSelectedOrganization} />
 			: page === 'folders'
-			? <Folders organization={selectedOrganization} onGoToOrganization={goToOrganization} />
+			? <Folders />
 				: page === 'teams'
-					? <TeamManagement organization={selectedOrganization} onGoToOrganization={goToOrganization} />
+					? <TeamManagement />
 					: page === 'agent'
 						? <Agent />
 						: page === 'settings'
@@ -69,7 +69,7 @@ export default function App() {
 
 	return (
 		<div className="flex min-h-screen bg-paper" style={{ '--sidebar-width': `${sidebar}%` }}>
-			<Sidebar page={page} setPage={setPage} organization={selectedOrganization} />
+			<Sidebar page={page} setPage={setPage} />
 			<main className="mx-auto min-w-0 max-w-360 flex-1 px-[clamp(24px,5vw,72px)] py-13 max-[820px]:px-5 max-[820px]:py-8 max-[560px]:px-3.5 max-[560px]:py-7">{content}</main>
 		</div>
 	)

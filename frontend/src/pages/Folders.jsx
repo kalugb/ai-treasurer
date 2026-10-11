@@ -4,6 +4,7 @@ import Icon from '../components/Icon'
 import { button } from '../components/button'
 import { teamsAPI } from '../api/teams'
 import { OrganizationRequiredEmptyState } from '../components/OrganizationContext'
+import { useSelectedOrganization } from '../hooks/useSelectedOrganization'
 
 const formatMoney = (amount) => `$${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
@@ -23,7 +24,8 @@ function ReceiptPreview({ receipt, onClose }) {
 	)
 }
 
-export default function Folders({ organization, onGoToOrganization }) {
+export default function Folders() {
+	const organization = useSelectedOrganization()
 	const [teams, setTeams] = useState([])
 	const [teamIndex, setTeamIndex] = useState(0)
 	const [preview, setPreview] = useState(null)
@@ -57,7 +59,7 @@ export default function Folders({ organization, onGoToOrganization }) {
 
 	if (!organization) return <>
 		<header className="mb-9"><p className="mb-2.5 text-[11px] font-bold tracking-widest text-muted uppercase">Finance / Receipts management</p><h1 className="font-display text-[clamp(28px,3vw,42px)] leading-[1.08] tracking-tighter text-ink">Receipts management</h1><p className="mt-3 text-[13px] leading-6 text-muted">Browse receipts by team in one shared workspace.</p></header>
-		<OrganizationRequiredEmptyState onGoToOrganization={onGoToOrganization} />
+		<OrganizationRequiredEmptyState />
 	</>
 
 	return (

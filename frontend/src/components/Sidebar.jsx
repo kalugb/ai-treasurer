@@ -1,9 +1,11 @@
 import Icon from './Icon'
 import { navGroups } from '../api/mockData'
+import { useSelectedOrganization } from '../hooks/useSelectedOrganization'
 
 const navFocus = 'focus-visible:outline-[3px] focus-visible:outline-blue-ring focus-visible:outline-offset-2'
 
-export default function Sidebar({ page, setPage, organization }) {
+export default function Sidebar({ page, setPage }) {
+	const organization = useSelectedOrganization()
 	return (
 		<div className="sticky top-0 h-svh w-(--sidebar-width) max-w-[50%] min-w-55 shrink-0 max-[560px]:w-14.5 max-[560px]:min-w-14.5">
 			<aside className="flex h-full w-full flex-col overflow-hidden border-r border-line bg-sidebar pt-7 pr-3.5 pb-4.5 pl-3.5 transition-[width] duration-150 ease-out max-[560px]:px-2">

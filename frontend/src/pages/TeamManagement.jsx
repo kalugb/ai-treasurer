@@ -4,6 +4,7 @@ import Icon from '../components/Icon'
 import { button } from '../components/button'
 import { teamsAPI } from '../api/teams'
 import { OrganizationRequiredEmptyState } from '../components/OrganizationContext'
+import { useSelectedOrganization } from '../hooks/useSelectedOrganization'
 
 const users = ['Alex Morgan', 'Jamie Lee', 'Sam Rivera', 'Priya Shah', 'Taylor Kim']
 const roles = ['Lead', 'Co-Lead', 'Member']
@@ -189,7 +190,8 @@ function usagePercent(team) {
 	return team.budget > 0 ? Math.round((team.used / team.budget) * 100) : 0
 }
 
-export default function TeamManagement({ organization, onGoToOrganization }) {
+export default function TeamManagement() {
+	const organization = useSelectedOrganization()
 	const [teams, setTeams] = useState([])
 	const [editingTeam, setEditingTeam] = useState(null)
 	const [deleteTeam, setDeleteTeam] = useState(null)
@@ -263,7 +265,7 @@ export default function TeamManagement({ organization, onGoToOrganization }) {
 	}
 	if (!organization) return <>
 		<header className="mb-9"><p className="mb-2.5 text-[11px] font-bold tracking-widest text-muted uppercase">Finance / Team management</p><h1 className="font-display text-[clamp(28px,3vw,42px)] leading-[1.08] tracking-tighter text-ink">Team management</h1><p className="mt-3 text-[13px] leading-6 text-muted">Keep budgets, ownership, and team roles in one place.</p></header>
-		<OrganizationRequiredEmptyState onGoToOrganization={onGoToOrganization} />
+		<OrganizationRequiredEmptyState />
 	</>
 
 	return (
