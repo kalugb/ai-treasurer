@@ -12,6 +12,14 @@ SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 CREDENTIALS_FILE = Path(__file__).parent.parent.parent / "google_creds" / "credentials.json"
 TOKEN_FILE = Path(__file__).parent.parent.parent / "google_creds" / "token.json"
 
+def remove_existing_drive_token():
+    """Remove the existing token.json file if it exists."""
+    if TOKEN_FILE.exists():
+        TOKEN_FILE.unlink()
+        print("Existing token.json file removed.")
+    else:
+        print("No existing token.json file found to remove.")
+
 
 def get_drive_service():
     """Authenticate and return an authorized Google Drive API service object."""
@@ -45,5 +53,6 @@ def get_drive_service_with_token():
     pass
 
 if __name__ == "__main__":
+    remove_existing_drive_token() 
     service = get_drive_service()
     print("Google Drive service initialized successfully.")
