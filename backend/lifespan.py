@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 import asyncio
     
 from services.redis.redis_client import get_redis_client
@@ -12,6 +12,7 @@ from services.ai.inference.chat import LLMInference
 
 from dotenv import load_dotenv
 import os
+
 load_dotenv()
 
 async def init_mongodb():
@@ -38,6 +39,21 @@ async def init_llm_inference():
         print(f"Failed to initialize LLM Inference: {e}")
         
         return None
+    
+async def temp_check_google_integration() -> bool:
+    from services.google.google_connect import google_drive_service_exists
+    
+    return google_drive_service_exists()
+
+
+def check_services(app: FastAPI):
+    print("Checking service availability...")
+    print(f"MongoDB service: {app.state.mongo is not None}")
+    print(f"Redis cache service: {app.state.cache is not None}")
+    print(f"Session store service: {app.state.sessions is not None}")
+    print(f"LLM Inference service: {app.state.llm_inference is not None}")
+    print(f"Supabase service: {app.state.supabase is not None}")
+    print(f"Google Drive service: {app.state.google_drive_service_connected}")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -49,15 +65,17 @@ async def lifespan(app: FastAPI):
     
     # do this trick to unpack the clients tuple into individual variables
     mongodb_client, mongodb_database_client = clients
-    
     redis_client = await get_redis_client()
+    google_drive_service_connected = await temp_check_google_integration()
     
     app.state.sessions = SessionStore(redis_client)
     app.state.cache = CacheStore(redis_client)
     app.state.mongo = mongodb_database_client
-    # app.state.llm_inference = llm_inference
-    # app.state.supabase = supabase_client
-
+    app.state.llm_inference = None # llm_inference
+    app.state.supabase = None # supabase_client
+    app.state.google_drive_service_connected = google_drive_service_connected
+    
+    check_services(app)
     yield 
 
     # Cleanup services

@@ -12,7 +12,11 @@ SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 CREDENTIALS_FILE = Path(__file__).parent.parent.parent / "google_creds" / "credentials.json"
 TOKEN_FILE = Path(__file__).parent.parent.parent / "google_creds" / "token.json"
 
-def remove_existing_drive_token():
+def google_drive_service_exists() -> bool:
+    """Check if the Google Drive service is already initialized."""
+    return TOKEN_FILE.exists()
+
+def remove_existing_drive_token() -> None:
     """Remove the existing token.json file if it exists."""
     if TOKEN_FILE.exists():
         TOKEN_FILE.unlink()
