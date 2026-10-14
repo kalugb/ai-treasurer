@@ -1,9 +1,9 @@
-import { useState } from 'react'
 import Icon from '../components/Icon'
 import { button } from '../components/button'
+import { useGoogleIntegration } from '../hooks/useGoogleIntegration'
 
 export default function Integration() {
-	const [connected, setConnected] = useState(false)
+	const { connected, loading } = useGoogleIntegration();
 
 	return (
 		<>
@@ -20,9 +20,9 @@ export default function Integration() {
 					<div className="flex-1">
 						<div className="flex items-center gap-2.5"><h2 className="font-display text-[17px] tracking-[-0.03em]">Google</h2><span className={`rounded-[20px] px-2 py-1.25 text-[10px] font-bold ${connected ? 'bg-green-soft text-green' : 'bg-paper text-muted'}`}>{connected ? 'Connected' : 'Available'}</span></div>
 						<p className="mb-4.5 mt-2 max-w-112.5 text-[13px] leading-[1.55] text-muted">Connect Google Drive to import receipt files and keep your records organized.</p>
-						<button className={connected ? button.secondary : button.primary} onClick={() => setConnected((value) => !value)}>
+						<button className={connected ? button.secondary : button.primary} onClick="">
 							<Icon name={connected ? 'plug' : 'plus'} size={16} />
-							{connected ? 'Disconnect' : 'Connect Google'}
+							{loading ? 'Loading...' : connected ? 'Disconnect' : 'Connect Google'}
 						</button>
 					</div>
 				</article>
