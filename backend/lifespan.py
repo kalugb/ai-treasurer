@@ -41,9 +41,12 @@ async def init_llm_inference():
         return None
     
 async def temp_check_google_integration() -> bool:
-    from services.google.google_connect import google_drive_service_exists
+    from services.google.google_connect import google_drive_service_exists, get_drive_service
     
-    return google_drive_service_exists()
+    if google_drive_service_exists():
+        return True, get_drive_service()
+    else:
+        return False, None
 
 
 def check_services(app: FastAPI):
@@ -66,7 +69,7 @@ async def lifespan(app: FastAPI):
     # do this trick to unpack the clients tuple into individual variables
     mongodb_client, mongodb_database_client = clients
     redis_client = await get_redis_client()
-    google_drive_service_connected = await temp_check_google_integration()
+    google_drive_service_connected, google_drive_service = await temp_check_google_integration()
     
     app.state.sessions = SessionStore(redis_client)
     app.state.cache = CacheStore(redis_client)
@@ -74,6 +77,7 @@ async def lifespan(app: FastAPI):
     app.state.llm_inference = None # llm_inference
     app.state.supabase = None # supabase_client
     app.state.google_drive_service_connected = google_drive_service_connected
+    app.state.google_drive_service = google_drive_service
     
     check_services(app)
     yield 

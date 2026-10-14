@@ -1,9 +1,34 @@
 import Icon from '../components/Icon'
 import { button } from '../components/button'
 import { useGoogleIntegration } from '../hooks/useGoogleIntegration'
+import { googleAPI } from '../api/google'
 
 export default function Integration() {
-	const { connected, loading } = useGoogleIntegration();
+	const { connected, setConnected, loading, setLoading } = useGoogleIntegration();
+	
+	const handleGoogleIntegration = async () => {
+		if (connected) {
+			try {
+				setLoading(true);
+				await googleAPI.disconnectGoogleIntegration();
+				setConnected(false);
+			} catch (error) {
+				console.error('Error disconnecting Google integration:', error);
+			} finally {
+				setLoading(false);
+			}
+		} else {
+			try {
+				setLoading(true);
+				await googleAPI.connectGoogleIntegration();
+				setConnected(true);
+			} catch (error) {
+				console.error('Error connecting Google integration:', error);
+			} finally {
+				setLoading(false);
+			}
+		}
+	}
 
 	return (
 		<>
@@ -20,7 +45,7 @@ export default function Integration() {
 					<div className="flex-1">
 						<div className="flex items-center gap-2.5"><h2 className="font-display text-[17px] tracking-[-0.03em]">Google</h2><span className={`rounded-[20px] px-2 py-1.25 text-[10px] font-bold ${connected ? 'bg-green-soft text-green' : 'bg-paper text-muted'}`}>{connected ? 'Connected' : 'Available'}</span></div>
 						<p className="mb-4.5 mt-2 max-w-112.5 text-[13px] leading-[1.55] text-muted">Connect Google Drive to import receipt files and keep your records organized.</p>
-						<button className={connected ? button.secondary : button.primary} onClick="">
+						<button className={connected ? button.secondary : button.primary} onClick={handleGoogleIntegration}>
 							<Icon name={connected ? 'plug' : 'plus'} size={16} />
 							{loading ? 'Loading...' : connected ? 'Disconnect' : 'Connect Google'}
 						</button>

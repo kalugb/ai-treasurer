@@ -11,13 +11,12 @@ export function useGoogleIntegration() {
         const checkIntegration = async () => {
             try {
                 const isIntegrated = await googleAPI.checkGoogleIntegration();
-                if (!cancelled) {
-                    setConnected(isIntegrated);
-                }
+                if (!cancelled) setConnected(isIntegrated.google_drive_service_exists);
+            } catch (error) {
+                console.error('Error checking Google integration:', error);
+                if (!cancelled) setConnected(false);
             } finally {
-                if (!cancelled) {
-                    setLoading(false);
-                }
+                if (!cancelled) setLoading(false);
             }
         }
 
@@ -28,5 +27,5 @@ export function useGoogleIntegration() {
         };
     }, []);
 
-    return { connected, loading };
+    return { connected, setConnected, loading, setLoading };
 }
