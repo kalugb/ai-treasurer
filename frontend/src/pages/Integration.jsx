@@ -45,8 +45,8 @@ export default function Integration() {
 					<div className="flex-1">
 						<div className="flex items-center gap-2.5"><h2 className="font-display text-[17px] tracking-[-0.03em]">Google</h2><span className={`rounded-[20px] px-2 py-1.25 text-[10px] font-bold ${connected ? 'bg-green-soft text-green' : 'bg-paper text-muted'}`}>{connected ? 'Connected' : 'Available'}</span></div>
 						<p className="mb-4.5 mt-2 max-w-112.5 text-[13px] leading-[1.55] text-muted">Connect Google Drive to import receipt files and keep your records organized.</p>
-						<button className={connected ? button.secondary : button.primary} onClick={handleGoogleIntegration}>
-							<Icon name={connected ? 'plug' : 'plus'} size={16} />
+						<button className={loading ? 'inline-flex min-h-10.5 items-center justify-center gap-2 rounded-lg border border-transparent px-3.75 text-[13px] font-bold transition-[transform,background-color,border-color] duration-200 ease-out bg-line hover:bg-line/80 cursor-not-allowed' : connected ? button.secondary : button.primary} onClick={handleGoogleIntegration} disabled={loading}>
+							<Icon name={loading ? 'spinner' : connected ? 'plug' : 'plus'} size={16} />
 							{loading ? 'Loading...' : connected ? 'Disconnect' : 'Connect Google'}
 						</button>
 					</div>
