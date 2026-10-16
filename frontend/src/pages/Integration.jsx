@@ -1,34 +1,52 @@
+import { useState } from 'react';
 import Icon from '../components/Icon'
 import { button } from '../components/button'
 import { useGoogleIntegration } from '../hooks/useGoogleIntegration'
 import { googleAPI } from '../api/google'
+import Modal from '../components/Modal'
+import Toast from '../components/Toast'
 
 export default function Integration() {
 	const { connected, setConnected, loading, setLoading } = useGoogleIntegration();
-	
+	const [showDisconnectModal, setShowDisconnectModal] = useState(false);
+	const [toast, setToast] = useState(null);
+
+	const showToast = (message, type = 'success') => {
+		setToast({ message, type });
+	};
+
 	const handleGoogleIntegration = async () => {
 		if (connected) {
-			try {
-				setLoading(true);
-				await googleAPI.disconnectGoogleIntegration();
-				setConnected(false);
-			} catch (error) {
-				console.error('Error disconnecting Google integration:', error);
-			} finally {
-				setLoading(false);
-			}
+			setShowDisconnectModal(true);
 		} else {
 			try {
 				setLoading(true);
 				await googleAPI.connectGoogleIntegration();
 				setConnected(true);
+				showToast('Google connected successfully');
 			} catch (error) {
 				console.error('Error connecting Google integration:', error);
+				showToast('Failed to connect Google', 'error');
 			} finally {
 				setLoading(false);
 			}
 		}
-	}
+	};
+
+	const confirmDisconnect = async () => {
+		try {
+			setLoading(true);
+			await googleAPI.disconnectGoogleIntegration();
+			setConnected(false);
+			showToast('Google disconnected successfully');
+		} catch (error) {
+			console.error('Error disconnecting Google integration:', error);
+			showToast('Failed to disconnect Google', 'error');
+		} finally {
+			setLoading(false);
+			setShowDisconnectModal(false);
+		}
+	};
 
 	return (
 		<>
@@ -52,6 +70,26 @@ export default function Integration() {
 					</div>
 				</article>
 			</section>
+			<Modal
+				isOpen={showDisconnectModal}
+				onClose={() => setShowDisconnectModal(false)}
+				title="Disconnect Google?"
+			>
+				<p className="text-muted">Are you sure you want to disconnect Google Drive? You'll need to reconnect to import receipts again.</p>
+				<div className="mt-6 flex items-center justify-end gap-3" slot="footer">
+					<button className={button.quiet} onClick={() => setShowDisconnectModal(false)}>Cancel</button>
+					<button className="inline-flex min-h-10.5 items-center justify-center gap-2 rounded-lg border border-transparent px-3.75 text-[13px] font-bold transition-[transform,background-color,border-color] duration-200 ease-out hover:-translate-y-0.25 focus-visible:outline-[3px] focus-visible:outline-blue-ring focus-visible:outline-offset-2 bg-red-soft text-red hover:bg-red-soft/80" onClick={confirmDisconnect} disabled={loading}>
+						Disconnect
+					</button>
+				</div>
+			</Modal>
+			{toast && (
+				<Toast
+					message={toast.message}
+					type={toast.type}
+					onClose={() => setToast(null)}
+				/>
+			)}
 		</>
 	)
 }

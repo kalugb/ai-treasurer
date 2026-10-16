@@ -72,6 +72,21 @@
 	to { transform: rotate(360deg); }
 }
 
+@keyframes slide-in {
+	from {
+		opacity: 0;
+		transform: translateX(100%);
+	}
+	to {
+		opacity: 1;
+		transform: translateX(0);
+	}
+}
+
 @utility animate-spin {
 	animation: spin 1s linear infinite;
+}
+
+@utility animate-slide-in {
+	animation: slide-in 0.3s var(--ease-out) forwards;
 }
