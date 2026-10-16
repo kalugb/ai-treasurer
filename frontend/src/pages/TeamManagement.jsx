@@ -150,16 +150,14 @@ function TeamModal({ team, teams, onClose, onSave, serverError }) {
 					<span className="text-[11px] font-normal text-muted">Optional</span>
 					<div className="flex items-center gap-2">
 						<input className={`${input} flex-1`} value={googleDriveFolderId} onChange={(event) => setGoogleDriveFolderId(event.target.value)} placeholder="e.g. 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms" />
-						{googleDriveFolderId && (
-							<button
-								type="button"
-								className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-red-200 px-3 text-[12px] font-medium text-red-600 transition hover:bg-red-50 focus-visible:outline-[3px] focus-visible:outline-blue-ring"
-								onClick={() => setGoogleDriveFolderId('')}
-								title="Remove current folder ID"
-							>
-								<Icon name="close" size={14} /> Remove
-							</button>
-						)}
+						<button
+							type="button"
+							className="inline-flex h-10 shrink-0 items-center rounded-lg bg-red-50 px-3.5 text-[12px] font-semibold text-red-600 transition enabled:hover:bg-red-100 focus-visible:outline-[3px] focus-visible:outline-blue-ring disabled:cursor-not-allowed disabled:bg-transparent disabled:text-muted disabled:opacity-60"
+							onClick={() => setGoogleDriveFolderId('')}
+							disabled={!googleDriveFolderId}
+						>
+							Remove
+						</button>
 					</div>
 					<p className="text-[11px] text-muted">Find this in the Google Drive folder URL: drive.google.com/drive/folders/<strong>FOLDER_ID</strong></p>
 				</label>
