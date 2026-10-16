@@ -5,13 +5,14 @@ import os
 load_dotenv()
 
 def connect_to_mongodb():
-    MONGODB_URI = os.getenv("MONGODB_URI")
+    MONGODB_URI = os.getenv("LOCAL_MONGODB_URI")
     
     if not MONGODB_URI:
         raise ValueError("MONGODB_URI must be set in the environment variables.")
     
     try:
         client = MongoClient(MONGODB_URI)
+        client.admin.command('ping')  # Check if the connection is successful
     except Exception as e:
         raise ConnectionError(f"Failed to connect to MongoDB: {e}")
     
