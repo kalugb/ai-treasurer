@@ -119,7 +119,7 @@ function TeamModal({ team, teams, onClose, onSave, serverError }) {
 		if (members.length && members.some((member) => !member.name || !member.role.trim())) nextErrors.members = 'Choose a user and role for every member.'
 		setErrors(nextErrors)
 		if (Object.keys(nextErrors).length) return
-		onSave({ id: team?.id, name: trimmedName, budget: budget === '' ? 0 : Number(budget), googleDriveFolderId: googleDriveFolderId.trim() || undefined, members })
+		onSave({ id: team?.id, name: trimmedName, budget: budget === '' ? 0 : Number(budget), googleDriveFolderId: googleDriveFolderId.trim(), members })
 	}
 
 	return (
@@ -148,7 +148,19 @@ function TeamModal({ team, teams, onClose, onSave, serverError }) {
 				<label className={field}>
 					Google Drive folder ID
 					<span className="text-[11px] font-normal text-muted">Optional</span>
-					<input className={input} value={googleDriveFolderId} onChange={(event) => setGoogleDriveFolderId(event.target.value)} placeholder="e.g. 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms" />
+					<div className="flex items-center gap-2">
+						<input className={`${input} flex-1`} value={googleDriveFolderId} onChange={(event) => setGoogleDriveFolderId(event.target.value)} placeholder="e.g. 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms" />
+						{googleDriveFolderId && (
+							<button
+								type="button"
+								className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-red-200 px-3 text-[12px] font-medium text-red-600 transition hover:bg-red-50 focus-visible:outline-[3px] focus-visible:outline-blue-ring"
+								onClick={() => setGoogleDriveFolderId('')}
+								title="Remove current folder ID"
+							>
+								<Icon name="close" size={14} /> Remove
+							</button>
+						)}
+					</div>
 					<p className="text-[11px] text-muted">Find this in the Google Drive folder URL: drive.google.com/drive/folders/<strong>FOLDER_ID</strong></p>
 				</label>
 				<fieldset className="grid gap-3">
@@ -223,6 +235,18 @@ export default function TeamManagement() {
 	useEffect(() => {
 		if (!organization?.id) setTeams([])
 	}, [organization?.id])
+
+	useEffect(() => {
+		const autoEditTeamId = sessionStorage.getItem('autoEditTeamId')
+		if (autoEditTeamId && teams.length > 0) {
+			const teamToEdit = teams.find(t => t.id === autoEditTeamId)
+			if (teamToEdit) {
+				setEditingTeam(teamToEdit)
+				setShowForm(true)
+				sessionStorage.removeItem('autoEditTeamId')
+			}
+		}
+	}, [teams])
 
 	const onSaveTeam = async (team) => {
 		const { id, ...input } = team

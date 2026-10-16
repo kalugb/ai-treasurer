@@ -54,7 +54,7 @@ export default function App() {
 		: page === 'organization'
 			? <Organization selectedId={selectedOrganization?.id ?? null} onSelect={setSelectedOrganization} />
 			: page === 'folders'
-			? <Folders />
+			? <Folders goTo={setPage} />
 				: page === 'teams'
 					? <TeamManagement />
 					: page === 'agent'

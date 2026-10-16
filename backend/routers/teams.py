@@ -143,6 +143,8 @@ async def update_team(team_id: str, payload: UpdateTeamRequest, orgId: str | Non
         update_data["budget"] = float(payload.budget)
     if payload.members is not None:
         update_data["members"] = [m.model_dump() if hasattr(m, "model_dump") else m for m in payload.members]
+    if payload.google_drive_folder_id is not None:
+        update_data["googleDriveFolderId"] = payload.google_drive_folder_id
     if not update_data:
         raise HTTPException(status_code=400, detail="No fields to update")
     await mongodb_ops.update(mongo, query={"_id": team_oid}, collection_name=COLLECTION_NAME, update_data=update_data)
