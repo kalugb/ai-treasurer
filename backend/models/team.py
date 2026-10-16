@@ -13,6 +13,7 @@ class CreateTeamRequest(BaseModel):
     team_name: str = Field(alias="name", min_length=1)
     budget: float | None = Field(default=None, alias="budget")
     members: list[Member] | None = Field(default=None, alias="members")
+    google_drive_folder_id: str | None = Field(default=None, alias="googleDriveFolderId")
 
 
 class UpdateTeamRequest(BaseModel):
@@ -20,3 +21,4 @@ class UpdateTeamRequest(BaseModel):
     team_name: str | None = Field(default=None, alias="name")
     budget: float | None = Field(default=None, alias="budget")
     members: list[Member] | None = Field(default=None, alias="members")
+    google_drive_folder_id: str | None = Field(default=None, alias="googleDriveFolderId")

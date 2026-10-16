@@ -35,6 +35,7 @@ def _to_out(doc: dict) -> dict:
         "budget": doc.get("budget", 0) or 0,
         "used": doc.get("used", 0) or 0,
         "members": doc.get("members", []) or [],
+        "googleDriveFolderId": doc.get("googleDriveFolderId"),
     }
 
 async def _verify_org_owner(mongo, org_id: ObjectId, owner_id: str | None):
@@ -101,6 +102,7 @@ async def create_team(payload: CreateTeamRequest, ownerId: str | None = None, mo
         "budget": payload.budget if payload.budget is not None else 0,
         "used": 0,
         "members": [m.model_dump() for m in (payload.members or [])],
+        "googleDriveFolderId": payload.google_drive_folder_id,
     }
     inserted = await mongodb_ops.create(mongo, doc_to_create=doc, collection_name=COLLECTION_NAME)
     doc["_id"] = inserted
@@ -139,6 +141,8 @@ async def update_team(team_id: str, payload: UpdateTeamRequest, orgId: str | Non
         update_data["budget"] = float(payload.budget)
     if payload.members is not None:
         update_data["members"] = [m.model_dump() if hasattr(m, "model_dump") else m for m in payload.members]
+    if payload.google_drive_folder_id is not None:
+        update_data["googleDriveFolderId"] = payload.google_drive_folder_id
     if not update_data:
         raise HTTPException(status_code=400, detail="No fields to update")
     await mongodb_ops.update(mongo, query={"_id": team_oid}, collection_name=COLLECTION_NAME, update_data=update_data)

@@ -100,6 +100,7 @@ function TeamModal({ team, teams, onClose, onSave, serverError }) {
 	const editing = Boolean(team)
 	const [name, setName] = useState(team?.name || '')
 	const [budget, setBudget] = useState(team?.budget ?? '')
+	const [googleDriveFolderId, setGoogleDriveFolderId] = useState(team?.googleDriveFolderId || '')
 	const [members, setMembers] = useState(team?.members?.length ? team.members : [])
 	const [errors, setErrors] = useState({})
 
@@ -117,7 +118,7 @@ function TeamModal({ team, teams, onClose, onSave, serverError }) {
 		if (members.length && members.some((member) => !member.name || !member.role.trim())) nextErrors.members = 'Choose a user and role for every member.'
 		setErrors(nextErrors)
 		if (Object.keys(nextErrors).length) return
-		onSave({ id: team?.id, name: trimmedName, budget: budget === '' ? 0 : Number(budget), members })
+		onSave({ id: team?.id, name: trimmedName, budget: budget === '' ? 0 : Number(budget), googleDriveFolderId: googleDriveFolderId.trim() || undefined, members })
 	}
 
 	return (
@@ -142,6 +143,12 @@ function TeamModal({ team, teams, onClose, onSave, serverError }) {
 						<input className={`${input} pl-7`} type="number" min="0" step="0.01" value={budget} onChange={(event) => setBudget(event.target.value)} placeholder="0.00" aria-invalid={Boolean(errors.budget)} />
 					</div>
 					{errors.budget && <span className="font-normal text-red-600">{errors.budget}</span>}
+				</label>
+				<label className={field}>
+					Google Drive folder ID
+					<span className="text-[11px] font-normal text-muted">Optional</span>
+					<input className={input} value={googleDriveFolderId} onChange={(event) => setGoogleDriveFolderId(event.target.value)} placeholder="e.g. 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms" />
+					<p className="text-[11px] text-muted">Find this in the Google Drive folder URL: drive.google.com/drive/folders/<strong>FOLDER_ID</strong></p>
 				</label>
 				<fieldset className="grid gap-3">
 					<legend className="text-xs font-bold text-ink">Team members <span className="font-normal text-muted">Optional</span></legend>
