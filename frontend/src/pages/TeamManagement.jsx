@@ -5,6 +5,7 @@ import { button } from '../components/button'
 import { teamsAPI } from '../api/teams'
 import { OrganizationRequiredEmptyState } from '../components/OrganizationContext'
 import { useSelectedOrganization } from '../hooks/useSelectedOrganization'
+import Toast from '../components/Toast'
 
 const users = ['Alex Morgan', 'Jamie Lee', 'Sam Rivera', 'Priya Shah', 'Taylor Kim']
 const roles = ['Lead', 'Co-Lead', 'Member']
@@ -223,12 +224,6 @@ export default function TeamManagement() {
 		if (!organization?.id) setTeams([])
 	}, [organization?.id])
 
-	useEffect(() => {
-		if (!toast) return undefined
-		const t = setTimeout(() => setToast(null), 4000)
-		return () => clearTimeout(t)
-	}, [toast])
-
 	const onSaveTeam = async (team) => {
 		const { id, ...input } = team
 		const payload = id ? input : { ...input, orgId: organization.id, ownerId: organization.ownerId }
@@ -256,6 +251,7 @@ export default function TeamManagement() {
 			setShowForm(false)
 			setEditingTeam(null)
 			setServerError(null)
+			setToast({ type: 'success', message: editingTeam ? `Team "${nextTeam.name}" updated successfully` : `Team "${nextTeam.name}" created successfully` })
 		} catch (e) {
 			if (e?.message?.includes('already exists')) setServerError(e.message)
 			else if (e?.response?.status === 409) setServerError(e.response.data.detail)
@@ -264,8 +260,10 @@ export default function TeamManagement() {
 
 	const removeTeam = async (id) => {
 		try {
+			const team = teams.find(t => t.id === id)
 			await onDeleteTeam(id)
 			setDeleteTeam(null)
+			setToast({ type: 'success', message: team ? `Team "${team.name}" deleted successfully` : 'Team deleted successfully' })
 		} catch (e) {
 			setToast({ type: 'error', message: e?.response?.data?.detail || 'Failed to delete team.' })
 		}
@@ -277,7 +275,14 @@ export default function TeamManagement() {
 
 	return (
 		<>
-			{toast && <div className="fixed top-5 left-1/2 z-30 flex w-[min(100%-2.5rem,520px)] -translate-x-1/2 items-start gap-3 rounded-xl border bg-white p-4 shadow-lg" role="status" aria-live="polite"><span className={`grid size-8 shrink-0 place-items-center rounded-lg ${toast.type === 'success' ? 'bg-green-soft text-green' : 'bg-red-50 text-red-600'}`}><Icon name={toast.type === 'success' ? 'check' : 'close'} size={16} /></span><p className="flex-1 pt-1 text-sm text-ink">{toast.message}</p><button className="rounded-md px-1 text-muted hover:text-ink" type="button" onClick={() => setToast(null)}><Icon name="close" size={16} /></button></div>}
+			{toast && (
+				<Toast
+					message={toast.message}
+					type={toast.type}
+					onClose={() => setToast(null)}
+					duration={5000}
+				/>
+			)}
 			<header className="mb-9 flex items-end justify-between gap-6 max-[820px]:flex-col max-[820px]:items-start">
 				<div>
 					<p className="mb-2.5 text-[11px] font-bold tracking-widest text-muted uppercase">Finance / Team management — {organization.orgName}</p>
