@@ -2,7 +2,7 @@ import { useState } from 'react';
 import Icon from '../components/Icon'
 import { button } from '../components/button'
 import { useGoogleIntegration } from '../hooks/useGoogleIntegration'
-import { googleAPI } from '../api/google'
+import { googleAPI } from '../api/googleConnect'
 import Modal from '../components/Modal'
 import Toast from '../components/Toast'
 

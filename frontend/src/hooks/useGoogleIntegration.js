@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { googleAPI } from '../api/google'
+import { googleAPI } from '../api/googleConnect'
 
 export function useGoogleIntegration() {
     const [connected, setConnected] = useState(false)

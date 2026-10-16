@@ -2,7 +2,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from services.google.google_connect import get_drive_service, remove_existing_drive_token
 
-router = APIRouter(prefix="/api")
+router = APIRouter(prefix="/api/connect")
 
 @router.get("/google-drive-service-exists")
 def check_google_drive_service_exists(request: Request):
@@ -40,3 +40,5 @@ def disconnect_google_drive_service(request: Request):
         "message": "Google Drive service disconnected successfully.",
         "status": "success"
     }
+    
+

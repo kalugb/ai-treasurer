@@ -2,21 +2,21 @@ import { request } from './client';
 
 async function checkGoogleIntegration() {
     return request(
-        "/api/google-drive-service-exists",
+        "/api/connect/google-drive-service-exists",
         { method: "GET" }
     )
 }
 
 async function connectGoogleIntegration() {
     return request(
-        "/api/google-drive-service-connect",
+        "/api/connect/google-drive-service-connect",
         { method: "POST" }
     )
 }
 
 async function disconnectGoogleIntegration() {
     return request(
-        "/api/google-drive-service-disconnect",
+        "/api/connect/google-drive-service-disconnect",
         { method: "DELETE" }
     )
 }
