@@ -75,17 +75,26 @@ export default function Folders({ goTo }) {
 
 	useEffect(() => {
 		if (!organization?.id) { setTeams([]); return }
-		teamsAPI.getTeams(organization.id, organization.ownerId).then((res) => setTeams(Array.isArray(res) ? res : [])).catch(() => setTeams([]))
+		teamsAPI.getTeams(organization.id, organization.ownerId)
+			.then((res) => {
+				const list = Array.isArray(res) ? res : []
+				setTeams(list)
+				const savedIndex = list.findIndex((item) => item.id === readPreference('receipts:team', list.map((item) => item.id), ''))
+				setTeamIndex(savedIndex > 0 ? savedIndex : 0)
+			})
+			.catch(() => setTeams([]))
 	}, [organization?.id, organization?.ownerId])
 
 	useEffect(() => {
 		try {
 			localStorage.setItem('receipts:source', sourceFilter)
 			localStorage.setItem('receipts:dateOrder', dateOrder)
+			const currentTeam = teams[Math.min(teamIndex, teams.length - 1)]
+			if (currentTeam?.id) localStorage.setItem('receipts:team', currentTeam.id)
 		} catch {
 			// storage unavailable; view preferences just won't persist
 		}
-	}, [sourceFilter, dateOrder])
+	}, [sourceFilter, dateOrder, teams, teamIndex])
 
 	const selectedIndex = teams.length ? Math.min(teamIndex, teams.length - 1) : 0
 	const team = teams[selectedIndex]
