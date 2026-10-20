@@ -3,6 +3,8 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from googleapiclient.http import MediaIoBaseDownload
+import io
 import os
 from dotenv import load_dotenv
 
@@ -11,6 +13,21 @@ load_dotenv()
 class GoogleDriveService:
     def __init__(self, service):
         self.service = service
+        
+    def _download_files_bytes(self, file_id):
+        request = self.service.files().get_media(
+            fileId=file_id, 
+            supportsAllDrives=True
+        )
+        
+        buffer = io.BytesIO()
+        downloader = MediaIoBaseDownload(buffer, request)
+        
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+            
+        return buffer.getvalue()
 
     async def get_folder_content_by_id_with_pagination(self, folder_id):
         query = f"'{folder_id}' in parents and trashed = false"
@@ -87,6 +104,8 @@ if __name__ == "__main__":
     import asyncio
     from services.google.google_connect import get_drive_service
     
+    id = None
+    
     async def main():
         drive_service = get_drive_service()
         drive_service_instance = GoogleDriveService(drive_service)
@@ -110,5 +129,7 @@ if __name__ == "__main__":
                 print(f"File Name: {file['name']}, File ID: {file['id']}, MIME Type: {file['mimeType']}, Modified Time: {file.get('modifiedTime', 'N/A')}")
                 
         await print_file_metadata("1AUK8pAGYQgLPyI1DkFV5lzilskcRzJ4_")  # Replace with a valid folder ID
+        
+        
 
     asyncio.run(main())
