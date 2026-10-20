@@ -10,6 +10,15 @@ import Toast from '../components/Toast'
 
 const formatMoney = (amount) => amount == null ? '—' : `$${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
+const readPreference = (key, allowed, fallback) => {
+	try {
+		const value = localStorage.getItem(key)
+		return allowed.includes(value) ? value : fallback
+	} catch {
+		return fallback
+	}
+}
+
 const SYNC_TIMEOUT_MS = 15000
 
 const fetchDriveReceipts = (teamId, refresh = false) =>
@@ -61,12 +70,22 @@ export default function Folders({ goTo }) {
 	const [teams, setTeams] = useState([])
 	const [teamIndex, setTeamIndex] = useState(0)
 	const [preview, setPreview] = useState(null)
-	const [sourceFilter, setSourceFilter] = useState('all')
+	const [sourceFilter, setSourceFilter] = useState(() => readPreference('receipts:source', ['all', 'google', 'manual'], 'all'))
+	const [dateOrder, setDateOrder] = useState(() => readPreference('receipts:dateOrder', ['desc', 'asc'], 'desc'))
 
 	useEffect(() => {
 		if (!organization?.id) { setTeams([]); return }
 		teamsAPI.getTeams(organization.id, organization.ownerId).then((res) => setTeams(Array.isArray(res) ? res : [])).catch(() => setTeams([]))
 	}, [organization?.id, organization?.ownerId])
+
+	useEffect(() => {
+		try {
+			localStorage.setItem('receipts:source', sourceFilter)
+			localStorage.setItem('receipts:dateOrder', dateOrder)
+		} catch {
+			// storage unavailable; view preferences just won't persist
+		}
+	}, [sourceFilter, dateOrder])
 
 	const selectedIndex = teams.length ? Math.min(teamIndex, teams.length - 1) : 0
 	const team = teams[selectedIndex]
@@ -103,7 +122,14 @@ export default function Folders({ goTo }) {
 	}
 
 	const allReceipts = [...(team?.receipts ?? []), ...driveReceipts]
-	const filteredReceipts = allReceipts.filter((receipt) => sourceFilter === 'all' || receipt.source === sourceFilter)
+	const filteredReceipts = allReceipts
+		.filter((receipt) => sourceFilter === 'all' || receipt.source === sourceFilter)
+		.sort((a, b) => {
+			const aDate = a.date === '—' ? '' : a.date
+			const bDate = b.date === '—' ? '' : b.date
+			if (!aDate || !bDate) return aDate ? -1 : bDate ? 1 : 0
+			return dateOrder === 'asc' ? aDate.localeCompare(bDate) : bDate.localeCompare(aDate)
+		})
 	const previewIndex = preview ? filteredReceipts.findIndex((receipt) => receipt.id === preview.id) : -1
 	const remaining = team ? Math.max(0, (team.budget ?? 0) - (team.used ?? 0)) : 0
 	const remainingPercent = team?.budget ? (remaining / team.budget) * 100 : 0
@@ -143,7 +169,7 @@ export default function Folders({ goTo }) {
 						{alert && <p className="mt-4 flex items-center gap-2 text-xs font-bold"><Icon name="insight" size={15} /> Less than 10% of this team’s budget remains.</p>}
 					</section>
 					<section>
-						<div className="mb-4 flex items-center justify-between gap-4"><div><div className="flex flex-wrap items-center gap-3"><h2 className="font-display text-[18px] tracking-[-0.03em]">Team receipts</h2></div><fieldset className="mt-2 w-fit max-w-full"><legend className="text-xs font-bold text-ink">Source</legend><div className="mt-1.5 inline-flex w-fit max-w-full flex-wrap gap-1 rounded-lg border border-line bg-white p-1"><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'all' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'all'} onClick={() => setSourceFilter('all')}>All</button><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'google' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'google'} onClick={() => setSourceFilter('google')}>Google Drive</button><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'manual' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'manual'} onClick={() => setSourceFilter('manual')}>Local upload</button></div></fieldset><p className="mt-2 text-xs text-muted">{filteredReceipts.length} {filteredReceipts.length === 1 ? 'receipt' : 'receipts'}</p></div><div className="flex flex-wrap items-center gap-2">{team?.googleDriveFolderId && sourceFilter !== 'manual' && <button className={`${button.secondary} disabled:opacity-60`} type="button" onClick={handleSync} disabled={syncing}><Icon name={syncing ? 'spinner' : 'sync'} size={15} /> {syncing ? 'Syncing…' : 'Sync Google Drive'}</button>}<button className={button.secondary} type="button"><Icon name="plus" size={15} /> Add receipt</button></div></div>
+						<div className="mb-4 flex items-center justify-between gap-4"><div><div className="flex flex-wrap items-center gap-3"><h2 className="font-display text-[18px] tracking-[-0.03em]">Team receipts</h2></div><div className="mt-2 flex flex-wrap items-end gap-4"><fieldset className="w-fit max-w-full"><legend className="text-xs font-bold text-ink">Source</legend><div className="mt-1.5 inline-flex w-fit max-w-full flex-wrap gap-1 rounded-lg border border-line bg-white p-1"><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'all' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'all'} onClick={() => setSourceFilter('all')}>All</button><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'google' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'google'} onClick={() => setSourceFilter('google')}>Google Drive</button><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'manual' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'manual'} onClick={() => setSourceFilter('manual')}>Local upload</button></div></fieldset><label className="grid gap-1.5 text-xs font-bold text-ink">Sort by date<select className="h-9 rounded-lg border border-line bg-white px-2 text-[12px] outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" value={dateOrder} onChange={(event) => setDateOrder(event.target.value)}><option value="desc">Newest first</option><option value="asc">Oldest first</option></select></label></div><p className="mt-2 text-xs text-muted">{filteredReceipts.length} {filteredReceipts.length === 1 ? 'receipt' : 'receipts'}</p></div><div className="flex flex-wrap items-center gap-2">{team?.googleDriveFolderId && sourceFilter !== 'manual' && <button className={`${button.secondary} disabled:opacity-60`} type="button" onClick={handleSync} disabled={syncing}><Icon name={syncing ? 'spinner' : 'sync'} size={15} /> {syncing ? 'Syncing…' : 'Sync Google Drive'}</button>}<button className={button.secondary} type="button"><Icon name="plus" size={15} /> Add receipt</button></div></div>
 						{needsGDriveSetup ? (
 							<div className="grid min-h-55 place-items-center rounded-[14px] border border-dashed border-line bg-white p-8 text-center">
 								<div className="max-w-md">
