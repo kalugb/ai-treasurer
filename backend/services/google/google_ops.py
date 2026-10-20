@@ -38,7 +38,7 @@ class GoogleDriveService:
             response = self.service.files().list(
                 q=query,
                 spaces="drive",
-                fields="nextPageToken, files(id, name, mimeType, size, modifiedTime)",
+                fields="nextPageToken, files(id, name, mimeType, size, modifiedTime, thumbnailLink)",
                 pageToken=page_token,
                 supportsAllDrives=True,
                 includeItemsFromAllDrives=True,

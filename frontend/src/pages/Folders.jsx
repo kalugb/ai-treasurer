@@ -3,10 +3,11 @@ import { useEffect, useState } from 'react'
 import Icon from '../components/Icon'
 import { button } from '../components/button'
 import { teamsAPI } from '../api/teams'
+import { request } from '../api/client'
 import { OrganizationRequiredEmptyState } from '../components/OrganizationContext'
 import { useSelectedOrganization } from '../hooks/useSelectedOrganization'
 
-const formatMoney = (amount) => `$${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+const formatMoney = (amount) => amount == null ? '—' : `$${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 function ReceiptPreview({ receipt, onClose }) {
 	if (!receipt) return null
@@ -17,7 +18,7 @@ function ReceiptPreview({ receipt, onClose }) {
 					<div><p className="text-[11px] font-bold tracking-widest text-muted uppercase">Receipt preview</p><h2 id="receipt-preview-title" className="mt-1 font-display text-[20px] tracking-[-0.03em]">{receipt.merchant}</h2></div>
 					<button className="rounded-lg px-2 py-1 text-xs font-bold text-blue focus-visible:outline-[3px] focus-visible:outline-blue-ring" type="button" onClick={onClose}>Close</button>
 				</div>
-				<div className="grid min-h-47.5 place-items-center rounded-xl border border-line bg-paper text-blue"><Icon name="receipt" size={48} /></div>
+				<div className="relative grid min-h-47.5 place-items-center overflow-hidden rounded-xl border border-line bg-paper text-blue"><Icon name="receipt" size={48} />{receipt.thumbnail && <img src={receipt.thumbnail} alt="" className="absolute inset-0 h-full w-full object-contain" onError={(event) => { event.currentTarget.style.display = 'none' }} />}</div>
 				<div className="mt-5 grid grid-cols-2 gap-4 text-[13px]"><div><span className="block text-xs text-muted">Filename</span><strong className="mt-1 block truncate">{receipt.filename}</strong></div><div><span className="block text-xs text-muted">Amount</span><strong className="mt-1 block">{formatMoney(receipt.amount)}</strong></div><div><span className="block text-xs text-muted">Date</span><strong className="mt-1 block">{receipt.date}</strong></div><div><span className="block text-xs text-muted">Category</span><strong className="mt-1 block">{receipt.category}</strong></div></div>
 			</div>
 		</div>
@@ -38,7 +39,31 @@ export default function Folders({ goTo }) {
 
 	const selectedIndex = teams.length ? Math.min(teamIndex, teams.length - 1) : 0
 	const team = teams[selectedIndex]
-	const filteredReceipts = (team?.receipts ?? []).filter((receipt) => sourceFilter === 'all' || receipt.source === sourceFilter) ?? []
+	const [driveReceipts, setDriveReceipts] = useState([])
+
+	useEffect(() => {
+		if (!team?.id || !team.googleDriveFolderId) { setDriveReceipts([]); return }
+		let cancelled = false
+		request(`/api/google-drive/teams/${team.id}/receipts`)
+			.then((files) => {
+				if (cancelled) return
+				setDriveReceipts(files
+					.filter((file) => file.mimeType !== 'application/vnd.google-apps.folder')
+					.map((file) => ({
+						id: file.id,
+						filename: file.name,
+						date: file.modifiedTime ? file.modifiedTime.slice(0, 10) : '—',
+						amount: null,
+						category: 'Google Drive',
+						source: 'google',
+						thumbnail: file.thumbnailLink ?? null,
+					})))
+			})
+			.catch(() => { if (!cancelled) setDriveReceipts([]) })
+		return () => { cancelled = true }
+	}, [team?.id, team?.googleDriveFolderId])
+
+	const filteredReceipts = [...(team?.receipts ?? []), ...driveReceipts].filter((receipt) => sourceFilter === 'all' || receipt.source === sourceFilter)
 	const remaining = team ? Math.max(0, (team.budget ?? 0) - (team.used ?? 0)) : 0
 	const remainingPercent = team?.budget ? (remaining / team.budget) * 100 : 0
 	const alert = team && remainingPercent < 10
@@ -82,7 +107,7 @@ export default function Folders({ goTo }) {
 									</button>
 								</div>
 							</div>
-						) : filteredReceipts.length ? <div className="grid grid-cols-2 gap-4 min-[700px]:grid-cols-3 min-[1050px]:grid-cols-5">{filteredReceipts.map((receipt) => <button className="group min-w-0 text-left focus-visible:outline-[3px] focus-visible:outline-blue-ring" type="button" key={receipt.id} onClick={() => setPreview(receipt)}><div className="grid aspect-[1.15] place-items-center rounded-[14px] border border-line bg-white text-blue shadow-sm transition group-hover:-translate-y-0.5 group-hover:border-blue group-hover:shadow-md"><Icon name="receipt" size={34} /></div><strong className="mt-3 block overflow-hidden text-ellipsis whitespace-nowrap text-[13px] text-ink">{receipt.filename}</strong><span className="mt-1 block truncate text-xs text-muted">{receipt.date} · {formatMoney(receipt.amount)}</span></button>)}</div> : <div className="grid min-h-55 place-items-center rounded-[14px] border border-dashed border-line bg-white p-8 text-center"><div><span className="mx-auto grid size-11 place-items-center rounded-xl bg-blue-soft text-blue"><Icon name="folder" size={20} /></span><h3 className="mt-4 font-display text-[16px]">{(team?.receipts ?? []).length ? 'No matching receipts' : 'No receipts yet'}</h3><p className="mt-1 text-xs text-muted">{(team?.receipts ?? []).length ? 'Try another source filter.' : `Add the first receipt for ${team.name} to see it here.`}</p></div></div>}
+						) : filteredReceipts.length ? <div className="grid grid-cols-2 gap-4 min-[700px]:grid-cols-3 min-[1050px]:grid-cols-5">{filteredReceipts.map((receipt) => <button className="group min-w-0 text-left focus-visible:outline-[3px] focus-visible:outline-blue-ring" type="button" key={receipt.id} onClick={() => setPreview(receipt)}><div className="relative grid aspect-[1.15] place-items-center overflow-hidden rounded-[14px] border border-line bg-white text-blue shadow-sm transition group-hover:-translate-y-0.5 group-hover:border-blue group-hover:shadow-md"><Icon name="receipt" size={34} />{receipt.thumbnail && <img src={receipt.thumbnail} alt="" loading="lazy" className="absolute inset-0 h-full w-full object-cover" onError={(event) => { event.currentTarget.style.display = 'none' }} />}</div><strong className="mt-3 block overflow-hidden text-ellipsis whitespace-nowrap text-[13px] text-ink">{receipt.filename}</strong><span className="mt-1 block truncate text-xs text-muted">{receipt.date} · {formatMoney(receipt.amount)}</span></button>)}</div> : <div className="grid min-h-55 place-items-center rounded-[14px] border border-dashed border-line bg-white p-8 text-center"><div><span className="mx-auto grid size-11 place-items-center rounded-xl bg-blue-soft text-blue"><Icon name="folder" size={20} /></span><h3 className="mt-4 font-display text-[16px]">{(team?.receipts ?? []).length ? 'No matching receipts' : 'No receipts yet'}</h3><p className="mt-1 text-xs text-muted">{(team?.receipts ?? []).length ? 'Try another source filter.' : `Add the first receipt for ${team.name} to see it here.`}</p></div></div>}
 					</section>
 				</>
 			) : <div className="grid min-h-80 place-items-center rounded-[14px] border border-line bg-white p-8 text-center"><div className="max-w-md"><span className="mx-auto grid size-14 place-items-center rounded-2xl bg-blue-soft text-blue"><Icon name="users" size={24} /></span><h2 className="mt-5 font-display text-[20px] tracking-[-0.03em]">Create a team to manage receipts</h2><p className="mt-2 text-[13px] leading-6 text-muted">Receipts are organized by team. Add your first team in Team Management to get started.</p></div></div>}

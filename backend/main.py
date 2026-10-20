@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import dashboard, teams, organization, google_connect
+from routers import dashboard, teams, organization, google_connect, google_drive
 from lifespan import lifespan
 
 ORIGINS = ["http://localhost:5173", ]
@@ -18,3 +18,4 @@ app.include_router(dashboard.router)
 app.include_router(teams.router)
 app.include_router(organization.router)
 app.include_router(google_connect.router)
+app.include_router(google_drive.router)
