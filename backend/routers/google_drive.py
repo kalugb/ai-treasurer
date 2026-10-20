@@ -29,7 +29,7 @@ def get_folder_content_by_path(request: Request, folder_id: str):
 
 
 @router.get("/teams/{team_id}/receipts")
-async def get_team_receipts(team_id: str, request: Request):
+async def get_team_receipts(team_id: str, request: Request, refresh: bool = False):
     mongo = request.app.state.mongo
     if mongo is None:
         raise HTTPException(status_code=503, detail="Database not available")
@@ -48,7 +48,7 @@ async def get_team_receipts(team_id: str, request: Request):
 
     cache = request.app.state.cache
     cache_key = cache.key_builder(folder_id, CACHE_KEY_NAME)
-    cached = await cache.get(cache_key)
+    cached = None if refresh else await cache.get(cache_key)
     if cached is not None:
         return cached
 

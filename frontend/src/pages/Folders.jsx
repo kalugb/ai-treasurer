@@ -6,8 +6,28 @@ import { teamsAPI } from '../api/teams'
 import { request } from '../api/client'
 import { OrganizationRequiredEmptyState } from '../components/OrganizationContext'
 import { useSelectedOrganization } from '../hooks/useSelectedOrganization'
+import Toast from '../components/Toast'
 
 const formatMoney = (amount) => amount == null ? '—' : `$${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
+const SYNC_TIMEOUT_MS = 15000
+
+const fetchDriveReceipts = (teamId, refresh = false) =>
+	request(`/api/google-drive/teams/${teamId}/receipts`, {
+		...(refresh ? { params: { refresh: true } } : {}),
+		timeout: SYNC_TIMEOUT_MS,
+	})
+		.then((files) => files
+			.filter((file) => file.mimeType !== 'application/vnd.google-apps.folder')
+			.map((file) => ({
+				id: file.id,
+				filename: file.name,
+				date: file.modifiedTime ? file.modifiedTime.slice(0, 10) : '—',
+				amount: null,
+				category: 'Google Drive',
+				source: 'google',
+				thumbnail: file.thumbnailLink ?? null,
+			})))
 
 function ReceiptPreview({ receipt, onClose }) {
 	if (!receipt) return null
@@ -40,28 +60,36 @@ export default function Folders({ goTo }) {
 	const selectedIndex = teams.length ? Math.min(teamIndex, teams.length - 1) : 0
 	const team = teams[selectedIndex]
 	const [driveReceipts, setDriveReceipts] = useState([])
+	const [syncing, setSyncing] = useState(false)
+	const [toast, setToast] = useState(null)
 
 	useEffect(() => {
 		if (!team?.id || !team.googleDriveFolderId) { setDriveReceipts([]); return }
 		let cancelled = false
-		request(`/api/google-drive/teams/${team.id}/receipts`)
-			.then((files) => {
-				if (cancelled) return
-				setDriveReceipts(files
-					.filter((file) => file.mimeType !== 'application/vnd.google-apps.folder')
-					.map((file) => ({
-						id: file.id,
-						filename: file.name,
-						date: file.modifiedTime ? file.modifiedTime.slice(0, 10) : '—',
-						amount: null,
-						category: 'Google Drive',
-						source: 'google',
-						thumbnail: file.thumbnailLink ?? null,
-					})))
-			})
+		fetchDriveReceipts(team.id)
+			.then((receipts) => { if (!cancelled) setDriveReceipts(receipts) })
 			.catch(() => { if (!cancelled) setDriveReceipts([]) })
 		return () => { cancelled = true }
 	}, [team?.id, team?.googleDriveFolderId])
+
+	const handleSync = async () => {
+		if (!team?.id || syncing) return
+		setSyncing(true)
+		try {
+			setDriveReceipts(await fetchDriveReceipts(team.id, true))
+			setToast({ message: 'Google Drive synced.', type: 'success' })
+		} catch (error) {
+			const timedOut = error?.code === 'ECONNABORTED' || error?.code === 'ETIMEDOUT'
+			setToast({
+				message: timedOut
+					? `Sync timed out after ${SYNC_TIMEOUT_MS / 1000}s. Try again.`
+					: 'Sync failed. Check the Google Drive connection.',
+				type: 'error',
+			})
+		} finally {
+			setSyncing(false)
+		}
+	}
 
 	const filteredReceipts = [...(team?.receipts ?? []), ...driveReceipts].filter((receipt) => sourceFilter === 'all' || receipt.source === sourceFilter)
 	const remaining = team ? Math.max(0, (team.budget ?? 0) - (team.used ?? 0)) : 0
@@ -95,7 +123,7 @@ export default function Folders({ goTo }) {
 						{alert && <p className="mt-4 flex items-center gap-2 text-xs font-bold"><Icon name="insight" size={15} /> Less than 10% of this team’s budget remains.</p>}
 					</section>
 					<section>
-						<div className="mb-4 flex items-center justify-between gap-4"><div><div className="flex flex-wrap items-center gap-3"><h2 className="font-display text-[18px] tracking-[-0.03em]">Team receipts</h2></div><fieldset className="mt-2 w-fit max-w-full"><legend className="text-xs font-bold text-ink">Source</legend><div className="mt-1.5 inline-flex w-fit max-w-full flex-wrap gap-1 rounded-lg border border-line bg-white p-1"><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'all' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'all'} onClick={() => setSourceFilter('all')}>All</button><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'google' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'google'} onClick={() => setSourceFilter('google')}>Google Drive</button><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'manual' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'manual'} onClick={() => setSourceFilter('manual')}>Local upload</button></div></fieldset><p className="mt-2 text-xs text-muted">{filteredReceipts.length} {filteredReceipts.length === 1 ? 'receipt' : 'receipts'}</p></div><button className={button.secondary} type="button"><Icon name="plus" size={15} /> Add receipt</button></div>
+						<div className="mb-4 flex items-center justify-between gap-4"><div><div className="flex flex-wrap items-center gap-3"><h2 className="font-display text-[18px] tracking-[-0.03em]">Team receipts</h2></div><fieldset className="mt-2 w-fit max-w-full"><legend className="text-xs font-bold text-ink">Source</legend><div className="mt-1.5 inline-flex w-fit max-w-full flex-wrap gap-1 rounded-lg border border-line bg-white p-1"><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'all' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'all'} onClick={() => setSourceFilter('all')}>All</button><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'google' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'google'} onClick={() => setSourceFilter('google')}>Google Drive</button><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'manual' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'manual'} onClick={() => setSourceFilter('manual')}>Local upload</button></div></fieldset><p className="mt-2 text-xs text-muted">{filteredReceipts.length} {filteredReceipts.length === 1 ? 'receipt' : 'receipts'}</p></div><div className="flex flex-wrap items-center gap-2">{team?.googleDriveFolderId && sourceFilter !== 'manual' && <button className={`${button.secondary} disabled:opacity-60`} type="button" onClick={handleSync} disabled={syncing}><Icon name={syncing ? 'spinner' : 'sync'} size={15} /> {syncing ? 'Syncing…' : 'Sync Google Drive'}</button>}<button className={button.secondary} type="button"><Icon name="plus" size={15} /> Add receipt</button></div></div>
 						{needsGDriveSetup ? (
 							<div className="grid min-h-55 place-items-center rounded-[14px] border border-dashed border-line bg-white p-8 text-center">
 								<div className="max-w-md">
@@ -112,6 +140,7 @@ export default function Folders({ goTo }) {
 				</>
 			) : <div className="grid min-h-80 place-items-center rounded-[14px] border border-line bg-white p-8 text-center"><div className="max-w-md"><span className="mx-auto grid size-14 place-items-center rounded-2xl bg-blue-soft text-blue"><Icon name="users" size={24} /></span><h2 className="mt-5 font-display text-[20px] tracking-[-0.03em]">Create a team to manage receipts</h2><p className="mt-2 text-[13px] leading-6 text-muted">Receipts are organized by team. Add your first team in Team Management to get started.</p></div></div>}
 			<ReceiptPreview receipt={preview} onClose={() => setPreview(null)} />
+			{toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 		</>
 	)
 }
