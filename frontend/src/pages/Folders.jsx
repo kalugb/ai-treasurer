@@ -29,17 +29,28 @@ const fetchDriveReceipts = (teamId, refresh = false) =>
 				thumbnail: file.thumbnailLink ? `${API_BASE_URL}/api/google-drive/teams/${teamId}/receipts/${file.id}/thumbnail` : null,
 			})))
 
-function ReceiptPreview({ receipt, onClose }) {
+function ReceiptPreview({ receipt, onClose, onPrev, onNext, index, total }) {
+	const [loadedSrc, setLoadedSrc] = useState(null)
+	const [errorSrc, setErrorSrc] = useState(null)
+
 	if (!receipt) return null
+	const previewSrc = receipt.thumbnail ? `${receipt.thumbnail}?size=640` : null
+	const imageError = Boolean(previewSrc) && errorSrc === previewSrc
+	const imageLoading = Boolean(previewSrc) && !imageError && loadedSrc !== previewSrc
 	return (
 		<div className="fixed inset-0 z-20 grid place-items-center bg-[rgb(28_35_36/38%)] p-5" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-			<div className="w-[min(100%,500px)] rounded-[14px] border border-line bg-white p-6 shadow-[0_20px_50px_rgb(28_35_36/18%)]" role="dialog" aria-modal="true" aria-labelledby="receipt-preview-title">
-				<div className="mb-5 flex items-start justify-between gap-4">
+			<div className="max-h-[92vh] w-[min(100%,900px)] overflow-y-auto rounded-[14px] border border-line bg-white p-5 shadow-[0_20px_50px_rgb(28_35_36/18%)]" role="dialog" aria-modal="true" aria-labelledby="receipt-preview-title">
+				<div className="mb-4 flex items-start justify-between gap-4">
 					<div><p className="text-[11px] font-bold tracking-widest text-muted uppercase">Receipt preview</p><h2 id="receipt-preview-title" className="mt-1 font-display text-[20px] tracking-[-0.03em]">{receipt.merchant}</h2></div>
-					<button className="rounded-lg px-2 py-1 text-xs font-bold text-blue focus-visible:outline-[3px] focus-visible:outline-blue-ring" type="button" onClick={onClose}>Close</button>
+					<div className="flex items-center gap-3">{imageLoading && <Icon name="spinner" size={14} />}<span className="text-xs font-bold text-muted">{index + 1} / {total}</span><button className="rounded-lg px-2 py-1 text-xs font-bold text-blue focus-visible:outline-[3px] focus-visible:outline-blue-ring" type="button" onClick={onClose}>Close</button></div>
 				</div>
-				<div className="relative grid min-h-47.5 place-items-center overflow-hidden rounded-xl border border-line bg-paper text-blue"><Icon name="receipt" size={48} />{receipt.thumbnail && <img src={receipt.thumbnail} alt="" decoding="async" className="absolute inset-0 h-full w-full object-contain" onError={(event) => { event.currentTarget.style.display = 'none' }} />}</div>
-				<div className="mt-5 grid grid-cols-2 gap-4 text-[13px]"><div><span className="block text-xs text-muted">Filename</span><strong className="mt-1 block truncate">{receipt.filename}</strong></div><div><span className="block text-xs text-muted">Amount</span><strong className="mt-1 block">{formatMoney(receipt.amount)}</strong></div><div><span className="block text-xs text-muted">Date</span><strong className="mt-1 block">{receipt.date}</strong></div><div><span className="block text-xs text-muted">Category</span><strong className="mt-1 block">{receipt.category}</strong></div></div>
+				<div className="relative grid h-[min(70vh,640px)] place-items-center overflow-hidden rounded-xl border border-line bg-paper text-blue">
+					{imageLoading ? <Icon name="spinner" size={32} /> : <Icon name="receipt" size={48} />}
+					{previewSrc && !imageError && <img src={previewSrc} alt="" decoding="async" className={`absolute inset-0 h-full w-full object-contain transition-opacity ${imageLoading ? 'opacity-40' : 'opacity-100'}`} onLoad={() => setLoadedSrc(previewSrc)} onError={() => setErrorSrc(previewSrc)} />}
+					<button className="absolute top-1/2 left-3 grid size-10 -translate-y-1/2 place-items-center rounded-full border border-line bg-white text-blue shadow-md transition hover:bg-blue-soft disabled:cursor-not-allowed disabled:opacity-40" type="button" aria-label="Previous receipt" onClick={onPrev} disabled={index <= 0}><span className="rotate-180"><Icon name="chevron" size={18} /></span></button>
+					<button className="absolute top-1/2 right-3 grid size-10 -translate-y-1/2 place-items-center rounded-full border border-line bg-white text-blue shadow-md transition hover:bg-blue-soft disabled:cursor-not-allowed disabled:opacity-40" type="button" aria-label="Next receipt" onClick={onNext} disabled={index >= total - 1}><Icon name="chevron" size={18} /></button>
+				</div>
+				<div className="mt-4 grid grid-cols-2 gap-4 text-[13px] min-[560px]:grid-cols-4"><div><span className="block text-xs text-muted">Filename</span><strong className="mt-1 block truncate">{receipt.filename}</strong></div><div><span className="block text-xs text-muted">Amount</span><strong className="mt-1 block">{formatMoney(receipt.amount)}</strong></div><div><span className="block text-xs text-muted">Date</span><strong className="mt-1 block">{receipt.date}</strong></div><div><span className="block text-xs text-muted">Category</span><strong className="mt-1 block">{receipt.category}</strong></div></div>
 			</div>
 		</div>
 	)
@@ -91,10 +102,19 @@ export default function Folders({ goTo }) {
 		}
 	}
 
-	const filteredReceipts = [...(team?.receipts ?? []), ...driveReceipts].filter((receipt) => sourceFilter === 'all' || receipt.source === sourceFilter)
+	const allReceipts = [...(team?.receipts ?? []), ...driveReceipts]
+	const filteredReceipts = allReceipts.filter((receipt) => sourceFilter === 'all' || receipt.source === sourceFilter)
+	const previewIndex = preview ? filteredReceipts.findIndex((receipt) => receipt.id === preview.id) : -1
 	const remaining = team ? Math.max(0, (team.budget ?? 0) - (team.used ?? 0)) : 0
 	const remainingPercent = team?.budget ? (remaining / team.budget) * 100 : 0
 	const alert = team && remainingPercent < 10
+
+	useEffect(() => {
+		if (!preview) return
+		const previousOverflow = document.body.style.overflow
+		document.body.style.overflow = 'hidden'
+		return () => { document.body.style.overflow = previousOverflow }
+	}, [preview])
 
 	const needsGDriveSetup = sourceFilter === 'google' && team && !team.googleDriveFolderId
 
@@ -135,11 +155,18 @@ export default function Folders({ goTo }) {
 									</button>
 								</div>
 							</div>
-						) : filteredReceipts.length ? <div className="grid grid-cols-2 gap-4 min-[700px]:grid-cols-3 min-[1050px]:grid-cols-5">{filteredReceipts.map((receipt) => <button className="group min-w-0 text-left focus-visible:outline-[3px] focus-visible:outline-blue-ring" type="button" key={receipt.id} onClick={() => setPreview(receipt)}><div className="relative grid aspect-[1.15] place-items-center overflow-hidden rounded-[14px] border border-line bg-white text-blue shadow-sm transition group-hover:-translate-y-0.5 group-hover:border-blue group-hover:shadow-md"><Icon name="receipt" size={34} />{receipt.thumbnail && <img src={receipt.thumbnail} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" onError={(event) => { event.currentTarget.style.display = 'none' }} />}</div><strong className="mt-3 block overflow-hidden text-ellipsis whitespace-nowrap text-[13px] text-ink">{receipt.filename}</strong><span className="mt-1 block truncate text-xs text-muted">{receipt.date} · {formatMoney(receipt.amount)}</span></button>)}</div> : <div className="grid min-h-55 place-items-center rounded-[14px] border border-dashed border-line bg-white p-8 text-center"><div><span className="mx-auto grid size-11 place-items-center rounded-xl bg-blue-soft text-blue"><Icon name="folder" size={20} /></span><h3 className="mt-4 font-display text-[16px]">{(team?.receipts ?? []).length ? 'No matching receipts' : 'No receipts yet'}</h3><p className="mt-1 text-xs text-muted">{(team?.receipts ?? []).length ? 'Try another source filter.' : `Add the first receipt for ${team.name} to see it here.`}</p></div></div>}
+						) : filteredReceipts.length ? <div className="grid grid-cols-2 gap-4 min-[700px]:grid-cols-3 min-[1050px]:grid-cols-5">{filteredReceipts.map((receipt) => <button className="group min-w-0 text-left focus-visible:outline-[3px] focus-visible:outline-blue-ring" type="button" key={receipt.id} onClick={() => setPreview(receipt)}><div className="relative grid aspect-[1.15] place-items-center overflow-hidden rounded-[14px] border border-line bg-white text-blue shadow-sm transition group-hover:-translate-y-0.5 group-hover:border-blue group-hover:shadow-md"><Icon name="receipt" size={34} />{receipt.thumbnail && <img src={receipt.thumbnail} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" onError={(event) => { event.currentTarget.style.display = 'none' }} />}</div><strong className="mt-3 block overflow-hidden text-ellipsis whitespace-nowrap text-[13px] text-ink">{receipt.filename}</strong><span className="mt-1 block truncate text-xs text-muted">{receipt.date} · {formatMoney(receipt.amount)}</span></button>)}</div> : <div className="grid min-h-55 place-items-center rounded-[14px] border border-dashed border-line bg-white p-8 text-center"><div><span className="mx-auto grid size-11 place-items-center rounded-xl bg-blue-soft text-blue"><Icon name="folder" size={20} /></span><h3 className="mt-4 font-display text-[16px]">{allReceipts.length ? 'No matching receipts' : 'No receipts yet'}</h3><p className="mt-1 text-xs text-muted">{allReceipts.length ? 'Try another source filter.' : `Add the first receipt for ${team.name} to see it here.`}</p></div></div>}
 					</section>
 				</>
 			) : <div className="grid min-h-80 place-items-center rounded-[14px] border border-line bg-white p-8 text-center"><div className="max-w-md"><span className="mx-auto grid size-14 place-items-center rounded-2xl bg-blue-soft text-blue"><Icon name="users" size={24} /></span><h2 className="mt-5 font-display text-[20px] tracking-[-0.03em]">Create a team to manage receipts</h2><p className="mt-2 text-[13px] leading-6 text-muted">Receipts are organized by team. Add your first team in Team Management to get started.</p></div></div>}
-			<ReceiptPreview receipt={preview} onClose={() => setPreview(null)} />
+			<ReceiptPreview
+				receipt={preview}
+				onClose={() => setPreview(null)}
+				onPrev={() => previewIndex > 0 && setPreview(filteredReceipts[previewIndex - 1])}
+				onNext={() => previewIndex < filteredReceipts.length - 1 && setPreview(filteredReceipts[previewIndex + 1])}
+				index={previewIndex}
+				total={filteredReceipts.length}
+			/>
 			{toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 		</>
 	)

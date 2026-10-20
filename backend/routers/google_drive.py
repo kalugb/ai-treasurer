@@ -1,3 +1,4 @@
+import re
 import urllib.request
 
 from bson import ObjectId
@@ -63,8 +64,9 @@ async def _folder_files(request: Request, folder_id: str, refresh: bool = False)
     return files
 
 
-def _download_thumbnail(url: str):
-    with urllib.request.urlopen(url, timeout=10) as response:
+def _download_thumbnail(url: str, size: int):
+    # Drive returns links like "...=s220"; swap the size for a sharper preview
+    with urllib.request.urlopen(re.sub(r'=(s|w)\d+(-h\d+)?$', f'=s{size}', url), timeout=10) as response:
         return response.read(), response.headers.get_content_type()
 
 
@@ -75,7 +77,7 @@ async def get_team_receipts(team_id: str, request: Request, refresh: bool = Fals
 
 
 @router.get("/teams/{team_id}/receipts/{file_id}/thumbnail")
-async def get_team_receipt_thumbnail(team_id: str, file_id: str, request: Request):
+async def get_team_receipt_thumbnail(team_id: str, file_id: str, request: Request, size: int = 220):
     folder_id = await _team_folder_id(request, team_id)
     files = await _folder_files(request, folder_id)
     file = next((item for item in files if item.get("id") == file_id), None)
@@ -87,7 +89,7 @@ async def get_team_receipt_thumbnail(team_id: str, file_id: str, request: Reques
         raise HTTPException(status_code=404, detail="No thumbnail available for this file")
 
     try:
-        image, content_type = await run_in_threadpool(_download_thumbnail, thumbnail_url)
+        image, content_type = await run_in_threadpool(_download_thumbnail, thumbnail_url, max(64, min(size, 1024)))
     except Exception:
         raise HTTPException(status_code=502, detail="Could not fetch thumbnail from Google Drive")
 
