@@ -14,7 +14,7 @@ class GoogleDriveService:
     def __init__(self, service):
         self.service = service
         
-    def _download_files_bytes(self, file_id):
+    def download_files_bytes(self, file_id):
         request = self.service.files().get_media(
             fileId=file_id, 
             supportsAllDrives=True
@@ -29,7 +29,7 @@ class GoogleDriveService:
             
         return buffer.getvalue()
 
-    async def get_folder_content_by_id_with_pagination(self, folder_id):
+    def get_folder_content_by_id_with_pagination(self, folder_id):
         query = f"'{folder_id}' in parents and trashed = false"
         files = []
         page_token = None
@@ -53,7 +53,7 @@ class GoogleDriveService:
             
         return files
 
-    async def get_folder_content_by_path(self, folder_path: str):
+    def get_folder_content_by_path(self, folder_path: str):
         parts = [p.replace("'", "\\") for p in folder_path.strip("/").split("/") if p]
         if not parts:
             raise ValueError("Invalid folder path provided.")
@@ -97,7 +97,7 @@ class GoogleDriveService:
         
         folder_id = folder_metadata["id"]
         
-        return await self.get_folder_content_by_id_with_pagination(folder_id)
+        return self.get_folder_content_by_id_with_pagination(folder_id)
 
 
 if __name__ == "__main__":
@@ -112,7 +112,7 @@ if __name__ == "__main__":
         
         async def print_file_metadata(folder_id):
             # Example usage: Get metadata by folder ID
-            metadata_by_id = await drive_service_instance.get_folder_content_by_id_with_pagination(folder_id)
+            metadata_by_id = drive_service_instance.get_folder_content_by_id_with_pagination(folder_id)
             # print("Metadata by ID:", metadata_by_id)
             print("Test fetching google drive by id")
             print(f"Total count: {len(metadata_by_id)}")
@@ -121,7 +121,7 @@ if __name__ == "__main__":
 
         async def print_file_metadata_by_path(folder_path):
             # Example usage: Get metadata by folder path
-            metadata_by_path = await drive_service_instance.get_folder_content_by_path(folder_path)
+            metadata_by_path = drive_service_instance.get_folder_content_by_path(folder_path)
             # print("Metadata by Path:", metadata_by_path)
             print("\n\nTest fetching google drive by path")
             print(f"Total count: {len(metadata_by_path)}")
