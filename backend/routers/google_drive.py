@@ -1,6 +1,8 @@
+import urllib.request
+
 from bson import ObjectId
 from bson.errors import InvalidId
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 from starlette.concurrency import run_in_threadpool
 
 from services.google.google_ops import GoogleDriveService
@@ -9,6 +11,7 @@ from services.mongodb import mongodb_ops
 router = APIRouter(prefix="/api/google-drive")
 COLLECTION_NAME = "departments"
 CACHE_KEY_NAME = "google-drive-receipts"
+THUMBNAIL_CACHE_SECONDS = 86400
 
 
 def get_google_drive_service_instance(request: Request):
@@ -28,8 +31,7 @@ def get_folder_content_by_path(request: Request, folder_id: str):
     return drive_service_instance.get_folder_content_by_path(folder_id)
 
 
-@router.get("/teams/{team_id}/receipts")
-async def get_team_receipts(team_id: str, request: Request, refresh: bool = False):
+async def _team_folder_id(request: Request, team_id: str) -> str:
     mongo = request.app.state.mongo
     if mongo is None:
         raise HTTPException(status_code=503, detail="Database not available")
@@ -45,15 +47,49 @@ async def get_team_receipts(team_id: str, request: Request, refresh: bool = Fals
     folder_id = team.get("googleDriveFolderId") or team.get("google_drive_folder_id")
     if not folder_id:
         raise HTTPException(status_code=400, detail="Team has no Google Drive folder configured")
+    return folder_id
 
+
+async def _folder_files(request: Request, folder_id: str, refresh: bool = False):
     cache = request.app.state.cache
     cache_key = cache.key_builder(folder_id, CACHE_KEY_NAME)
     cached = None if refresh else await cache.get(cache_key)
     if cached is not None:
         return cached
 
-    # resolved from the stored team, so the client cannot point us at an arbitrary folder
     drive = get_google_drive_service_instance(request)
     files = await run_in_threadpool(drive.get_folder_content_by_id_with_pagination, folder_id)
     await cache.set(cache_key, files)
     return files
+
+
+def _download_thumbnail(url: str):
+    with urllib.request.urlopen(url, timeout=10) as response:
+        return response.read(), response.headers.get_content_type()
+
+
+@router.get("/teams/{team_id}/receipts")
+async def get_team_receipts(team_id: str, request: Request, refresh: bool = False):
+    folder_id = await _team_folder_id(request, team_id)
+    return await _folder_files(request, folder_id, refresh)
+
+
+@router.get("/teams/{team_id}/receipts/{file_id}/thumbnail")
+async def get_team_receipt_thumbnail(team_id: str, file_id: str, request: Request):
+    folder_id = await _team_folder_id(request, team_id)
+    files = await _folder_files(request, folder_id)
+    file = next((item for item in files if item.get("id") == file_id), None)
+    if file is None:
+        raise HTTPException(status_code=404, detail="Receipt not found in this team's folder")
+
+    thumbnail_url = file.get("thumbnailLink")
+    if not thumbnail_url:
+        raise HTTPException(status_code=404, detail="No thumbnail available for this file")
+
+    try:
+        image, content_type = await run_in_threadpool(_download_thumbnail, thumbnail_url)
+    except Exception:
+        raise HTTPException(status_code=502, detail="Could not fetch thumbnail from Google Drive")
+
+    # stable URL + long browser cache: Drive's own thumbnailLink changes every fetch
+    return Response(content=image, media_type=content_type, headers={"Cache-Control": f"public, max-age={THUMBNAIL_CACHE_SECONDS}"})
