@@ -21,7 +21,6 @@ def _ping_supabase(timeout=5.0):
         )
         ms = (time.perf_counter() - start) * 1000
         r.raise_for_status()
-        print(f"Ping OK: {r.status_code} in {ms:.0f} ms")
         return True
     except Exception as e:
         print("Ping failed:", e)
@@ -35,6 +34,7 @@ async def get_supabase_client() -> Client:
         raise ConnectionError("Supabase is not reachable")
     
     return supabase_client
+
 
 if __name__ == "__main__":
     import asyncio

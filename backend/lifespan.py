@@ -7,7 +7,7 @@ from services.redis.session import SessionStore
 from services.redis.cache import CacheStore
 
 from services.mongodb.mongodb_connect import connect_to_mongodb
-# from supabase.supabase_connect import connect_to_supabase'
+from services.supabase.supabase_connect import get_supabase_client
 from services.ai.inference.chat import LLMInference
 
 from dotenv import load_dotenv
@@ -27,7 +27,15 @@ async def init_mongodb():
         return None, None
     
 async def init_supabase():
-    pass
+    try:
+        supabase_client = await get_supabase_client()
+        print("Successfully connected to Supabase.")
+        
+        return supabase_client
+    except Exception as e:
+        print(f"Failed to connect to Supabase: {e}")
+        
+        return None
 
 async def init_llm_inference():
     try:
@@ -64,14 +72,14 @@ def check_services(app: FastAPI):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    clients, = await asyncio.gather(
+    mongo_clients, supabase_client = await asyncio.gather(
         init_mongodb(),
         # init_llm_inference(),
-        # init_supabase()
+        init_supabase()
     )
     
     # do this trick to unpack the clients tuple into individual variables
-    mongodb_client, mongodb_database_client = clients
+    mongodb_client, mongodb_database_client = mongo_clients
     redis_client = await get_redis_client()
     google_drive_service_connected, google_drive_service_instance = await temp_check_google_integration()
     
@@ -79,7 +87,7 @@ async def lifespan(app: FastAPI):
     app.state.cache = CacheStore(redis_client)
     app.state.mongo = mongodb_database_client
     app.state.llm_inference = None # llm_inference
-    app.state.supabase = None # supabase_client
+    app.state.supabase = supabase_client
     app.state.google_drive_service_connected = google_drive_service_connected
     app.state.google_drive_service_instance = google_drive_service_instance
     
