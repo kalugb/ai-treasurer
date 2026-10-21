@@ -12,14 +12,12 @@ key: str = os.getenv("SUPABASE_PUBLISHABLE_KEY")
 supabase: Client = create_client(url, key)
     
 def _ping_supabase(timeout=5.0):
-    start = time.perf_counter()
     try:
         r = httpx.get(
             f"{url}/auth/v1/health",
             headers={"apikey": key},
             timeout=timeout,
         )
-        ms = (time.perf_counter() - start) * 1000
         r.raise_for_status()
         return True
     except Exception as e:
