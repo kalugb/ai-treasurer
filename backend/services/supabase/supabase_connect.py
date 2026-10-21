@@ -35,8 +35,10 @@ async def get_supabase_client() -> Client:
 
 if __name__ == "__main__":
     import asyncio
+    import time
     
     async def main():
+        start = time.time()
         client = await get_supabase_client()
         print("Supabase client created:", client)
         
@@ -45,6 +47,9 @@ if __name__ == "__main__":
             bucket_name = "receipts"
             buckets = client.storage.from_(bucket_name).list()
             print(f"File in bucket {bucket_name}:", buckets)
+            end = time.time()
+            
+            print(f"Time taken to retrieve file in bucket {bucket_name}: {end - start:.2f} seconds")
         except Exception as e:
             print(f"Error retrieving file in bucket {bucket_name}:", e)
         
