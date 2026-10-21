@@ -1,7 +1,6 @@
 from supabase import create_client, Client
 from dotenv import load_dotenv
 import os
-import time
 import httpx
 
 load_dotenv()
