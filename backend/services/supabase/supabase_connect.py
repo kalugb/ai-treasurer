@@ -10,7 +10,7 @@ key: str = os.getenv("SUPABASE_PUBLISHABLE_KEY")
 
 supabase: Client = create_client(url, key)
     
-def _ping_supabase(timeout=5.0):
+def _ping_supabase(timeout=15.0):
     try:
         r = httpx.get(
             f"{url}/auth/v1/health",
