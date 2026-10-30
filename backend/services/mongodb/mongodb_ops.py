@@ -40,5 +40,9 @@ async def delete(database_client: MongoClient, collection_name: str, query: dict
         result = collection.delete_many(query)
         return result.deleted_count
 
-    
-    
+
+async def upsert_preserving(database_client: MongoClient, collection_name: str, match: dict, set_fields: dict, insert_defaults: dict):
+    # $set refreshes synced fields; $setOnInsert only applies on first insert, so manual fields (e.g. receiptAmount) survive re-syncs
+    collection = database_client[collection_name]
+    result = collection.update_one(match, {"$set": set_fields, "$setOnInsert": insert_defaults}, upsert=True)
+    return "inserted" if result.upserted_id is not None else "updated"

@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import Icon from '../components/Icon'
 import { button } from '../components/button'
 import { teamsAPI } from '../api/teams'
-import { API_BASE_URL, request } from '../api/client'
+import { receiptsAPI, SYNC_TIMEOUT_MS } from '../api/receipts'
 import { OrganizationRequiredEmptyState } from '../components/OrganizationContext'
 import { useSelectedOrganization } from '../hooks/useSelectedOrganization'
 import Toast from '../components/Toast'
@@ -19,31 +19,27 @@ const readPreference = (key, allowed, fallback) => {
 	}
 }
 
-const SYNC_TIMEOUT_MS = 15000
+// UI source filter uses 'google'/'manual'; backend persists 'google_drive'/'local_upload'
+const toSource = (createdFrom) => createdFrom === 'local_upload' ? 'manual' : 'google'
 
-const fetchDriveReceipts = (teamId, refresh = false) =>
-	request(`/api/google-drive/teams/${teamId}/receipts`, {
-		...(refresh ? { params: { refresh: true } } : {}),
-		timeout: SYNC_TIMEOUT_MS,
-	})
-		.then((files) => files
-			.filter((file) => file.mimeType !== 'application/vnd.google-apps.folder')
-			.map((file) => ({
-				id: file.id,
-				filename: file.name,
-				date: file.modifiedTime ? file.modifiedTime.slice(0, 10) : '—',
-				amount: null,
-				category: 'Google Drive',
-				source: 'google',
-				thumbnail: file.thumbnailLink ? `${API_BASE_URL}/api/google-drive/teams/${teamId}/receipts/${file.id}/thumbnail` : null,
-			})))
+const fetchDriveReceipts = (teamId) =>
+	receiptsAPI.getReceipts(teamId)
+		.then((docs) => (docs ?? []).map((doc) => ({
+			id: doc.id,
+			filename: doc.receiptName,
+			date: doc.createdAt ? doc.createdAt.slice(0, 10) : '—',
+			amount: doc.receiptAmount,
+			category: doc.createdFrom === 'local_upload' ? 'Local upload' : 'Google Drive',
+			source: toSource(doc.createdFrom),
+			thumbnail: doc.url ?? null,
+		})))
 
 function ReceiptPreview({ receipt, onClose, onPrev, onNext, index, total }) {
 	const [loadedSrc, setLoadedSrc] = useState(null)
 	const [errorSrc, setErrorSrc] = useState(null)
 
 	if (!receipt) return null
-	const previewSrc = receipt.thumbnail ? `${receipt.thumbnail}?size=640` : null
+	const previewSrc = receipt.thumbnail ?? null
 	const imageError = Boolean(previewSrc) && errorSrc === previewSrc
 	const imageLoading = Boolean(previewSrc) && !imageError && loadedSrc !== previewSrc
 	return (
@@ -103,20 +99,21 @@ export default function Folders({ goTo }) {
 	const [toast, setToast] = useState(null)
 
 	useEffect(() => {
-		if (!team?.id || !team.googleDriveFolderId) { setDriveReceipts([]); return }
+		if (!team?.id) { setDriveReceipts([]); return }
 		let cancelled = false
 		fetchDriveReceipts(team.id)
 			.then((receipts) => { if (!cancelled) setDriveReceipts(receipts) })
 			.catch(() => { if (!cancelled) setDriveReceipts([]) })
 		return () => { cancelled = true }
-	}, [team?.id, team?.googleDriveFolderId])
+	}, [team?.id])
 
 	const handleSync = async () => {
 		if (!team?.id || syncing) return
 		setSyncing(true)
 		try {
-			setDriveReceipts(await fetchDriveReceipts(team.id, true))
-			setToast({ message: 'Google Drive synced.', type: 'success' })
+			const summary = await receiptsAPI.sync(team.id)
+			setDriveReceipts(await fetchDriveReceipts(team.id))
+			setToast({ message: `Synced: ${summary.inserted} new, ${summary.updated} updated.`, type: 'success' })
 		} catch (error) {
 			const timedOut = error?.code === 'ECONNABORTED' || error?.code === 'ETIMEDOUT'
 			setToast({

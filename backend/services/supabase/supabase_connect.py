@@ -7,8 +7,28 @@ load_dotenv()
 
 url: str = os.getenv("SUPABASE_URL")  
 key: str = os.getenv("SUPABASE_PUBLISHABLE_KEY")
+secret_key: str = os.getenv("SUPABASE_SECRET_KEY")
 
 supabase: Client = create_client(url, key)
+
+_storage_client: Client | None = None
+
+
+def get_storage_client() -> Client:
+    # storage writes need the service-role key; the publishable key is blocked by RLS. Server-side only.
+    global _storage_client
+    if _storage_client is None:
+        if not secret_key:
+            raise ValueError("SUPABASE_SECRET_KEY must be set for storage writes.")
+        _storage_client = create_client(url, secret_key)
+    return _storage_client
+
+
+def new_storage_client() -> Client:
+    # a fresh client (own httpx connection) for use in a dedicated worker thread; the shared one is not thread-safe
+    if not secret_key:
+        raise ValueError("SUPABASE_SECRET_KEY must be set for storage writes.")
+    return create_client(url, secret_key)
     
 def _ping_supabase(timeout=15.0):
     try:
