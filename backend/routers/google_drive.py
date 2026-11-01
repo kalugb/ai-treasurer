@@ -1,18 +1,23 @@
+import json
 import re
 import urllib.request
+from datetime import datetime, timezone
 
 from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import APIRouter, HTTPException, Request, Response
 from starlette.concurrency import run_in_threadpool
 
+from models.receipt import ReceiptUpdate
 from services.google.google_ops import GoogleDriveService
 from services.mongodb import mongodb_ops
 
 router = APIRouter(prefix="/api/google-drive")
-COLLECTION_NAME = "departments"
-CACHE_KEY_NAME = "google-drive-receipts"
+TEAMS_COLLECTION = "departments"
+RECEIPTS_COLLECTION = "receipts"
+CACHE_KEY_NAME = "receipts"
 THUMBNAIL_CACHE_SECONDS = 86400
+FOLDER_MIME = "application/vnd.google-apps.folder"
 
 
 def get_google_drive_service_instance(request: Request):
@@ -26,65 +31,204 @@ def get_google_drive_service_instance(request: Request):
     raise HTTPException(status_code=503, detail="Google Drive service is not connected")
 
 
-def get_folder_content_by_path(request: Request, folder_id: str):
-    drive_service_instance = get_google_drive_service_instance(request)
-
-    return drive_service_instance.get_folder_content_by_path(folder_id)
-
-
-async def _team_folder_id(request: Request, team_id: str) -> str:
+def _get_mongo(request: Request):
     mongo = request.app.state.mongo
     if mongo is None:
         raise HTTPException(status_code=503, detail="Database not available")
+    return mongo
+
+
+async def _team_ids(request: Request, team_id: str):
+    """Resolve a team to (department_oid, org_oid, google_drive_folder_id)."""
+    mongo = _get_mongo(request)
     try:
         team_oid = ObjectId(team_id)
     except (InvalidId, TypeError):
         raise HTTPException(status_code=400, detail="Invalid team id")
 
-    team = await mongodb_ops.read(mongo, collection_name=COLLECTION_NAME, query={"_id": team_oid})
+    team = await mongodb_ops.read(mongo, collection_name=TEAMS_COLLECTION, query={"_id": team_oid})
     if team is None:
         raise HTTPException(status_code=404, detail="Team not found")
 
+    org_id = team.get("orgId") or team.get("orgID")
     folder_id = team.get("googleDriveFolderId") or team.get("google_drive_folder_id")
-    if not folder_id:
-        raise HTTPException(status_code=400, detail="Team has no Google Drive folder configured")
-    return folder_id
+    return team_oid, org_id, folder_id
 
 
-async def _folder_files(request: Request, folder_id: str, refresh: bool = False):
-    cache = request.app.state.cache
-    cache_key = cache.key_builder(folder_id, CACHE_KEY_NAME)
-    cached = None if refresh else await cache.get(cache_key)
-    if cached is not None:
-        return cached
-
-    drive = get_google_drive_service_instance(request)
-    files = await run_in_threadpool(drive.get_folder_content_by_id_with_pagination, folder_id)
-    await cache.set(cache_key, files)
-    return files
+def _thumbnail_url(team_id: str, file_id: str) -> str:
+    # stable backend-proxied URL; Drive's own thumbnailLink expires/changes between syncs
+    return f"/api/google-drive/teams/{team_id}/receipts/{file_id}/thumbnail"
 
 
-def _download_thumbnail(url: str, size: int):
-    # Drive returns links like "...=s220"; swap the size for a sharper preview
-    with urllib.request.urlopen(re.sub(r'=(s|w)\d+(-h\d+)?$', f'=s{size}', url), timeout=10) as response:
-        return response.read(), response.headers.get_content_type()
+def _to_out(team_id: str, doc: dict) -> dict:
+    metadata = {}
+    raw_meta = doc.get("receiptMetadata")
+    if isinstance(raw_meta, str) and raw_meta:
+        try:
+            metadata = json.loads(raw_meta)
+        except json.JSONDecodeError:
+            metadata = {}
+    modified = metadata.get("modifiedTime")
+    file_id = doc.get("googleDriveFileId", "")
+    return {
+        "id": str(doc.get("_id", "")),
+        "googleDriveFileId": file_id,
+        "receiptName": doc.get("receiptName", ""),
+        "receiptAmount": doc.get("receiptAmount") or 0.0,
+        "description": doc.get("description"),
+        "label": doc.get("label"),
+        "date": modified[:10] if isinstance(modified, str) and modified else None,
+        "source": doc.get("createdFrom", "google_drive"),
+        "thumbnail": _thumbnail_url(team_id, file_id) if file_id else None,
+    }
+
+
+async def _read_receipts(request: Request, dept_oid: ObjectId):
+    mongo = _get_mongo(request)
+    return await mongodb_ops.read(
+        mongo, collection_name=RECEIPTS_COLLECTION, query={"departmentID": dept_oid}, read_many=True
+    )
 
 
 @router.get("/teams/{team_id}/receipts")
 async def get_team_receipts(team_id: str, request: Request, refresh: bool = False):
-    folder_id = await _team_folder_id(request, team_id)
-    return await _folder_files(request, folder_id, refresh)
+    """Cache-first read: Redis -> Mongo. Never calls Google Drive.
+    `refresh=true` skips the cache read and re-reads Mongo (picks up out-of-band DB edits)."""
+    dept_oid, _org_id, _folder_id = await _team_ids(request, team_id)
+    cache = request.app.state.cache
+    cache_key = cache.key_builder(str(dept_oid), CACHE_KEY_NAME)
+
+    if not refresh:
+        cached = await cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+    docs = await _read_receipts(request, dept_oid)
+    receipts = [_to_out(team_id, doc) for doc in docs]
+    if receipts:  # don't cache empty teams so a first sync shows up immediately
+        await cache.set(cache_key, receipts)
+    elif refresh:  # a refresh that empties the list should also clear any stale cache
+        await cache.delete(cache_key)
+    return receipts
+
+
+@router.post("/teams/{team_id}/receipts/sync")
+async def sync_team_receipts(team_id: str, request: Request):
+    """The only path that reads Google Drive. Reconciles Mongo against the Drive folder:
+    insert new files, refresh Drive fields on existing (preserving manual fields),
+    hard-delete receipts whose Drive file is gone."""
+    dept_oid, org_id, folder_id = await _team_ids(request, team_id)
+    if not folder_id:
+        raise HTTPException(status_code=400, detail="Team has no Google Drive folder configured")
+
+    mongo = _get_mongo(request)
+    drive = get_google_drive_service_instance(request)
+    files = await run_in_threadpool(drive.get_folder_content_by_id_with_pagination, folder_id)
+    files = [f for f in files if f.get("mimeType") != FOLDER_MIME]
+
+    now = datetime.now(timezone.utc)
+    inserted = updated = 0
+    drive_ids = set()
+
+    for f in files:
+        file_id = f.get("id")
+        if not file_id:
+            continue
+        drive_ids.add(file_id)
+        metadata = {
+            "mimeType": f.get("mimeType"),
+            "size": f.get("size"),
+            "modifiedTime": f.get("modifiedTime"),
+            "thumbnailLink": f.get("thumbnailLink"),
+        }
+        matched, _ = await mongodb_ops.upsert_preserving(
+            mongo,
+            RECEIPTS_COLLECTION,
+            match={"departmentID": dept_oid, "googleDriveFileId": file_id},
+            set_fields={
+                "receiptName": f.get("name", ""),
+                "receiptMetadata": json.dumps(metadata),
+            },
+            insert_defaults={
+                "orgID": org_id,
+                "createdAt": now,
+                "createdFrom": "google_drive",
+                "receiptAmount": 0.0,
+                "description": None,
+                "label": None,
+                "snapshot": None,
+            },
+        )
+        if matched:
+            updated += 1
+        else:
+            inserted += 1
+
+    # hard-delete Mongo receipts whose Drive file no longer exists (image removed from Drive)
+    existing = await _read_receipts(request, dept_oid)
+    stale_ids = [d["googleDriveFileId"] for d in existing if d.get("googleDriveFileId") not in drive_ids]
+    deleted = 0
+    if stale_ids:
+        deleted = await mongodb_ops.delete(
+            mongo,
+            collection_name=RECEIPTS_COLLECTION,
+            query={"departmentID": dept_oid, "googleDriveFileId": {"$in": stale_ids}},
+            delete_many=True,
+        )
+
+    cache = request.app.state.cache
+    await cache.delete(cache.key_builder(str(dept_oid), CACHE_KEY_NAME))
+    return {"inserted": inserted, "updated": updated, "deleted": deleted, "total": len(files)}
+
+
+@router.patch("/teams/{team_id}/receipts/{file_id}")
+async def update_team_receipt(team_id: str, file_id: str, payload: ReceiptUpdate, request: Request):
+    """Persist user-editable fields (amount, description, label) on a receipt."""
+    dept_oid, _org_id, _folder_id = await _team_ids(request, team_id)
+    mongo = _get_mongo(request)
+
+    fields = payload.model_dump(exclude_none=True)
+    if not fields:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    match = {"departmentID": dept_oid, "googleDriveFileId": file_id}
+    modified = await mongodb_ops.update(mongo, query=match, collection_name=RECEIPTS_COLLECTION, update_data=fields)
+
+    doc = await mongodb_ops.read(mongo, collection_name=RECEIPTS_COLLECTION, query=match)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Receipt not found")
+
+    cache = request.app.state.cache
+    await cache.delete(cache.key_builder(str(dept_oid), CACHE_KEY_NAME))
+    return _to_out(team_id, doc)
+
+
+def _download_thumbnail(url: str, size: int):
+    # Drive returns links like "...=s220"; swap the size for a sharper preview
+    with urllib.request.urlopen(re.sub(r"=(s|w)\d+(-h\d+)?$", f"=s{size}", url), timeout=10) as response:
+        return response.read(), response.headers.get_content_type()
 
 
 @router.get("/teams/{team_id}/receipts/{file_id}/thumbnail")
 async def get_team_receipt_thumbnail(team_id: str, file_id: str, request: Request, size: int = 220):
-    folder_id = await _team_folder_id(request, team_id)
-    files = await _folder_files(request, folder_id)
-    file = next((item for item in files if item.get("id") == file_id), None)
-    if file is None:
-        raise HTTPException(status_code=404, detail="Receipt not found in this team's folder")
+    dept_oid, _org_id, _folder_id = await _team_ids(request, team_id)
+    mongo = _get_mongo(request)
 
-    thumbnail_url = file.get("thumbnailLink")
+    doc = await mongodb_ops.read(
+        mongo,
+        collection_name=RECEIPTS_COLLECTION,
+        query={"departmentID": dept_oid, "googleDriveFileId": file_id},
+    )
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Receipt not found")
+
+    thumbnail_url = None
+    raw_meta = doc.get("receiptMetadata")
+    if isinstance(raw_meta, str) and raw_meta:
+        try:
+            thumbnail_url = json.loads(raw_meta).get("thumbnailLink")
+        except json.JSONDecodeError:
+            thumbnail_url = None
     if not thumbnail_url:
         raise HTTPException(status_code=404, detail="No thumbnail available for this file")
 

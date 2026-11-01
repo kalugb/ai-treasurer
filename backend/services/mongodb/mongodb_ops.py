@@ -30,6 +30,13 @@ async def update(database_client: MongoClient, query: dict, collection_name: str
         result = collection.update_many(query, {"$set": update_data})
         return result.modified_count
     
+async def upsert_preserving(database_client: MongoClient, collection_name: str, match: dict, set_fields: dict, insert_defaults: dict):
+    # $set refreshes fields on every call; $setOnInsert only applies on first insert,
+    # so manually-entered fields (receiptAmount, description, label, snapshot, createdAt) survive re-syncs.
+    collection = database_client[collection_name]
+    result = collection.update_one(match, {"$set": set_fields, "$setOnInsert": insert_defaults}, upsert=True)
+    return result.matched_count, result.upserted_id
+
 async def delete(database_client: MongoClient, collection_name: str, query: dict, delete_many: bool = False):
     collection = database_client[collection_name]
     

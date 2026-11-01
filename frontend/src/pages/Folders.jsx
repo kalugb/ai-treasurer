@@ -3,7 +3,8 @@ import { useEffect, useState } from 'react'
 import Icon from '../components/Icon'
 import { button } from '../components/button'
 import { teamsAPI } from '../api/teams'
-import { API_BASE_URL, request } from '../api/client'
+import { API_BASE_URL } from '../api/client'
+import { receiptsAPI } from '../api/receipts'
 import { OrganizationRequiredEmptyState } from '../components/OrganizationContext'
 import { useSelectedOrganization } from '../hooks/useSelectedOrganization'
 import Toast from '../components/Toast'
@@ -19,38 +20,73 @@ const readPreference = (key, allowed, fallback) => {
 	}
 }
 
-const SYNC_TIMEOUT_MS = 15000
+// backend returns persisted receipts; map to the shape the UI renders
+const toReceipt = (r) => ({
+	id: r.googleDriveFileId,
+	googleDriveFileId: r.googleDriveFileId,
+	filename: r.receiptName,
+	label: r.label ?? null,
+	description: r.description ?? null,
+	date: r.date || '—',
+	amount: r.receiptAmount ?? 0,
+	category: 'Google Drive',
+	source: r.source === 'local_upload' ? 'manual' : 'google',
+	thumbnail: r.thumbnail ? `${API_BASE_URL}${r.thumbnail}` : null,
+})
 
-const fetchDriveReceipts = (teamId, refresh = false) =>
-	request(`/api/google-drive/teams/${teamId}/receipts`, {
-		...(refresh ? { params: { refresh: true } } : {}),
-		timeout: SYNC_TIMEOUT_MS,
-	})
-		.then((files) => files
-			.filter((file) => file.mimeType !== 'application/vnd.google-apps.folder')
-			.map((file) => ({
-				id: file.id,
-				filename: file.name,
-				date: file.modifiedTime ? file.modifiedTime.slice(0, 10) : '—',
-				amount: null,
-				category: 'Google Drive',
-				source: 'google',
-				thumbnail: file.thumbnailLink ? `${API_BASE_URL}/api/google-drive/teams/${teamId}/receipts/${file.id}/thumbnail` : null,
-			})))
+const fetchReceipts = (teamId, refresh = false) => receiptsAPI.getReceipts(teamId, refresh).then((list) => (Array.isArray(list) ? list.map(toReceipt) : []))
 
-function ReceiptPreview({ receipt, onClose, onPrev, onNext, index, total }) {
+function ReceiptPreview({ receipt, onClose, onPrev, onNext, index, total, onSave }) {
 	const [loadedSrc, setLoadedSrc] = useState(null)
 	const [errorSrc, setErrorSrc] = useState(null)
+	const [amount, setAmount] = useState('')
+	const [label, setLabel] = useState('')
+	const [description, setDescription] = useState('')
+	const [saving, setSaving] = useState(false)
+	const [saveError, setSaveError] = useState(null)
+
+	useEffect(() => {
+		setAmount(receipt?.amount == null ? '' : String(receipt.amount))
+		setLabel(receipt?.label ?? '')
+		setDescription(receipt?.description ?? '')
+		setSaveError(null)
+		// reset the form only when switching to a different receipt, not on every field refresh
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [receipt?.id])
 
 	if (!receipt) return null
 	const previewSrc = receipt.thumbnail ? `${receipt.thumbnail}?size=640` : null
 	const imageError = Boolean(previewSrc) && errorSrc === previewSrc
 	const imageLoading = Boolean(previewSrc) && !imageError && loadedSrc !== previewSrc
+
+	const handleSave = async (event) => {
+		event.preventDefault()
+		if (saving) return
+		const trimmed = amount.trim()
+		const parsedAmount = trimmed === '' ? null : Number(trimmed)
+		if (parsedAmount != null && (Number.isNaN(parsedAmount) || parsedAmount < 0)) {
+			setSaveError('Enter a valid non-negative amount.')
+			return
+		}
+		setSaving(true)
+		setSaveError(null)
+		try {
+			await onSave(receipt.googleDriveFileId, {
+				receiptAmount: parsedAmount,
+				label: label.trim() || null,
+				description: description.trim() || null,
+			})
+		} catch {
+			setSaveError('Could not save. Try again.')
+		} finally {
+			setSaving(false)
+		}
+	}
 	return (
 		<div className="fixed inset-0 z-20 grid place-items-center bg-[rgb(28_35_36/38%)] p-5" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
 			<div className="max-h-[92vh] w-[min(100%,900px)] overflow-y-auto rounded-[14px] border border-line bg-white p-5 shadow-[0_20px_50px_rgb(28_35_36/18%)]" role="dialog" aria-modal="true" aria-labelledby="receipt-preview-title">
 				<div className="mb-4 flex items-start justify-between gap-4">
-					<div><p className="text-[11px] font-bold tracking-widest text-muted uppercase">Receipt preview</p><h2 id="receipt-preview-title" className="mt-1 font-display text-[20px] tracking-[-0.03em]">{receipt.merchant}</h2></div>
+					<div><p className="text-[11px] font-bold tracking-widest text-muted uppercase">Receipt preview</p><h2 id="receipt-preview-title" className="mt-1 font-display text-[20px] tracking-[-0.03em]">{receipt.label || receipt.filename}</h2></div>
 					<div className="flex items-center gap-3">{imageLoading && <Icon name="spinner" size={14} />}<span className="text-xs font-bold text-muted">{index + 1} / {total}</span><button className="rounded-lg px-2 py-1 text-xs font-bold text-blue focus-visible:outline-[3px] focus-visible:outline-blue-ring" type="button" onClick={onClose}>Close</button></div>
 				</div>
 				<div className="relative grid h-[min(70vh,640px)] place-items-center overflow-hidden rounded-xl border border-line bg-paper text-blue">
@@ -60,6 +96,16 @@ function ReceiptPreview({ receipt, onClose, onPrev, onNext, index, total }) {
 					<button className="absolute top-1/2 right-3 grid size-10 -translate-y-1/2 place-items-center rounded-full border border-line bg-white text-blue shadow-md transition hover:bg-blue-soft disabled:cursor-not-allowed disabled:opacity-40" type="button" aria-label="Next receipt" onClick={onNext} disabled={index >= total - 1}><Icon name="chevron" size={18} /></button>
 				</div>
 				<div className="mt-4 grid grid-cols-2 gap-4 text-[13px] min-[560px]:grid-cols-4"><div><span className="block text-xs text-muted">Filename</span><strong className="mt-1 block truncate">{receipt.filename}</strong></div><div><span className="block text-xs text-muted">Amount</span><strong className="mt-1 block">{formatMoney(receipt.amount)}</strong></div><div><span className="block text-xs text-muted">Date</span><strong className="mt-1 block">{receipt.date}</strong></div><div><span className="block text-xs text-muted">Category</span><strong className="mt-1 block">{receipt.category}</strong></div></div>
+				<form className="mt-5 border-t border-line pt-4" onSubmit={handleSave}>
+					<p className="mb-3 text-[11px] font-bold tracking-widest text-muted uppercase">Edit details</p>
+					<div className="grid gap-3 min-[560px]:grid-cols-2">
+						<label className="grid gap-1.5 text-xs font-bold text-ink">Amount<input className="h-10 rounded-lg border border-line bg-white px-3 text-[13px] outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" type="number" min="0" step="0.01" inputMode="decimal" placeholder="0.00" value={amount} onChange={(event) => setAmount(event.target.value)} /></label>
+						<label className="grid gap-1.5 text-xs font-bold text-ink">Label (optional)<input className="h-10 rounded-lg border border-line bg-white px-3 text-[13px] outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" type="text" placeholder="e.g. Team lunch" value={label} onChange={(event) => setLabel(event.target.value)} /></label>
+					</div>
+					<label className="mt-3 grid gap-1.5 text-xs font-bold text-ink">Notes (optional)<textarea className="min-h-20 rounded-lg border border-line bg-white px-3 py-2 text-[13px] outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" placeholder="Personal notes about this receipt" value={description} onChange={(event) => setDescription(event.target.value)} /></label>
+					{saveError && <p className="mt-2 text-xs font-bold text-red-700">{saveError}</p>}
+					<div className="mt-3 flex justify-end"><button className={`${button.primary} disabled:opacity-60`} type="submit" disabled={saving}><Icon name={saving ? 'spinner' : 'check'} size={15} /> {saving ? 'Saving…' : 'Save details'}</button></div>
+				</form>
 			</div>
 		</div>
 	)
@@ -100,28 +146,51 @@ export default function Folders({ goTo }) {
 	const team = teams[selectedIndex]
 	const [driveReceipts, setDriveReceipts] = useState([])
 	const [syncing, setSyncing] = useState(false)
+	const [refreshing, setRefreshing] = useState(false)
 	const [toast, setToast] = useState(null)
 
 	useEffect(() => {
-		if (!team?.id || !team.googleDriveFolderId) { setDriveReceipts([]); return }
+		if (!team?.id) { setDriveReceipts([]); return }
 		let cancelled = false
-		fetchDriveReceipts(team.id)
+		fetchReceipts(team.id)
 			.then((receipts) => { if (!cancelled) setDriveReceipts(receipts) })
 			.catch(() => { if (!cancelled) setDriveReceipts([]) })
 		return () => { cancelled = true }
-	}, [team?.id, team?.googleDriveFolderId])
+	}, [team?.id])
+
+	const handleSaveReceipt = async (fileId, patch) => {
+		const updated = await receiptsAPI.updateReceipt(team.id, fileId, patch)
+		const mapped = toReceipt(updated)
+		setDriveReceipts((list) => list.map((r) => r.googleDriveFileId === fileId ? mapped : r))
+		setPreview((current) => current && current.googleDriveFileId === fileId ? mapped : current)
+		setToast({ message: 'Receipt details saved.', type: 'success' })
+	}
+
+	const handleRefresh = async () => {
+		if (!team?.id || refreshing) return
+		setRefreshing(true)
+		try {
+			setDriveReceipts(await fetchReceipts(team.id, true))
+			setToast({ message: 'Receipts refreshed.', type: 'success' })
+		} catch {
+			setToast({ message: 'Refresh failed.', type: 'error' })
+		} finally {
+			setRefreshing(false)
+		}
+	}
 
 	const handleSync = async () => {
 		if (!team?.id || syncing) return
 		setSyncing(true)
 		try {
-			setDriveReceipts(await fetchDriveReceipts(team.id, true))
-			setToast({ message: 'Google Drive synced.', type: 'success' })
+			const result = await receiptsAPI.sync(team.id)
+			setDriveReceipts(await fetchReceipts(team.id))
+			setToast({ message: `Synced: ${result.inserted} new, ${result.updated} updated, ${result.deleted} removed.`, type: 'success' })
 		} catch (error) {
 			const timedOut = error?.code === 'ECONNABORTED' || error?.code === 'ETIMEDOUT'
 			setToast({
 				message: timedOut
-					? `Sync timed out after ${SYNC_TIMEOUT_MS / 1000}s. Try again.`
+					? 'Sync timed out. Try again.'
 					: 'Sync failed. Check the Google Drive connection.',
 				type: 'error',
 			})
@@ -178,7 +247,7 @@ export default function Folders({ goTo }) {
 						{alert && <p className="mt-4 flex items-center gap-2 text-xs font-bold"><Icon name="insight" size={15} /> Less than 10% of this team’s budget remains.</p>}
 					</section>
 					<section>
-						<div className="mb-4 flex items-center justify-between gap-4"><div><div className="flex flex-wrap items-center gap-3"><h2 className="font-display text-[18px] tracking-[-0.03em]">Team receipts</h2></div><div className="mt-2 flex flex-wrap items-end gap-4"><fieldset className="w-fit max-w-full"><legend className="text-xs font-bold text-ink">Source</legend><div className="mt-1.5 inline-flex w-fit max-w-full flex-wrap gap-1 rounded-lg border border-line bg-white p-1"><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'all' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'all'} onClick={() => setSourceFilter('all')}>All</button><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'google' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'google'} onClick={() => setSourceFilter('google')}>Google Drive</button><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'manual' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'manual'} onClick={() => setSourceFilter('manual')}>Local upload</button></div></fieldset><label className="grid gap-1.5 text-xs font-bold text-ink">Sort by date<select className="h-9 rounded-lg border border-line bg-white px-2 text-[12px] outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" value={dateOrder} onChange={(event) => setDateOrder(event.target.value)}><option value="desc">Newest first</option><option value="asc">Oldest first</option></select></label></div><p className="mt-2 text-xs text-muted">{filteredReceipts.length} {filteredReceipts.length === 1 ? 'receipt' : 'receipts'}</p></div><div className="flex flex-wrap items-center gap-2">{team?.googleDriveFolderId && sourceFilter !== 'manual' && <button className={`${button.secondary} disabled:opacity-60`} type="button" onClick={handleSync} disabled={syncing}><Icon name={syncing ? 'spinner' : 'sync'} size={15} /> {syncing ? 'Syncing…' : 'Sync Google Drive'}</button>}<button className={button.secondary} type="button"><Icon name="plus" size={15} /> Add receipt</button></div></div>
+						<div className="mb-4 flex items-center justify-between gap-4"><div><div className="flex flex-wrap items-center gap-3"><h2 className="font-display text-[18px] tracking-[-0.03em]">Team receipts</h2></div><div className="mt-2 flex flex-wrap items-end gap-4"><fieldset className="w-fit max-w-full"><legend className="text-xs font-bold text-ink">Source</legend><div className="mt-1.5 inline-flex w-fit max-w-full flex-wrap gap-1 rounded-lg border border-line bg-white p-1"><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'all' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'all'} onClick={() => setSourceFilter('all')}>All</button><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'google' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'google'} onClick={() => setSourceFilter('google')}>Google Drive</button><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'manual' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'manual'} onClick={() => setSourceFilter('manual')}>Local upload</button></div></fieldset><label className="grid gap-1.5 text-xs font-bold text-ink">Sort by date<select className="h-9 rounded-lg border border-line bg-white px-2 text-[12px] outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" value={dateOrder} onChange={(event) => setDateOrder(event.target.value)}><option value="desc">Newest first</option><option value="asc">Oldest first</option></select></label></div><p className="mt-2 text-xs text-muted">{filteredReceipts.length} {filteredReceipts.length === 1 ? 'receipt' : 'receipts'}</p></div><div className="flex flex-wrap items-center gap-2">{team && <button className={`${button.secondary} disabled:opacity-60`} type="button" onClick={handleRefresh} disabled={refreshing} title="Re-read from the database (picks up external edits)"><Icon name={refreshing ? 'spinner' : 'sync'} size={15} /> {refreshing ? 'Refreshing…' : 'Refresh'}</button>}{team?.googleDriveFolderId && sourceFilter !== 'manual' && <button className={`${button.secondary} disabled:opacity-60`} type="button" onClick={handleSync} disabled={syncing}><Icon name={syncing ? 'spinner' : 'sync'} size={15} /> {syncing ? 'Syncing…' : 'Sync Google Drive'}</button>}<button className={button.secondary} type="button"><Icon name="plus" size={15} /> Add receipt</button></div></div>
 						{needsGDriveSetup ? (
 							<div className="grid min-h-55 place-items-center rounded-[14px] border border-dashed border-line bg-white p-8 text-center">
 								<div className="max-w-md">
@@ -201,6 +270,7 @@ export default function Folders({ goTo }) {
 				onNext={() => previewIndex < filteredReceipts.length - 1 && setPreview(filteredReceipts[previewIndex + 1])}
 				index={previewIndex}
 				total={filteredReceipts.length}
+				onSave={handleSaveReceipt}
 			/>
 			{toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 		</>
