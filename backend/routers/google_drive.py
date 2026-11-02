@@ -7,6 +7,7 @@ from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import APIRouter, HTTPException, Request, Response
 from starlette.concurrency import run_in_threadpool
+from starlette.responses import StreamingResponse
 
 from models.receipt import ReceiptUpdate
 from services.google.google_ops import GoogleDriveService
@@ -112,11 +113,10 @@ async def get_team_receipts(team_id: str, request: Request, refresh: bool = Fals
     return receipts
 
 
-@router.post("/teams/{team_id}/receipts/sync")
-async def sync_team_receipts(team_id: str, request: Request):
+async def _run_sync(request: Request, team_id: str) -> dict:
     """The only path that reads Google Drive. Reconciles Mongo against the Drive folder:
     insert new files, refresh Drive fields on existing (preserving manual fields),
-    hard-delete receipts whose Drive file is gone."""
+    hard-delete receipts whose Drive file is gone. Returns {inserted, updated, deleted, total}."""
     dept_oid, org_id, folder_id = await _team_ids(request, team_id)
     if not folder_id:
         raise HTTPException(status_code=400, detail="Team has no Google Drive folder configured")
@@ -179,6 +179,37 @@ async def sync_team_receipts(team_id: str, request: Request):
     cache = request.app.state.cache
     await cache.delete(cache.key_builder(str(dept_oid), CACHE_KEY_NAME))
     return {"inserted": inserted, "updated": updated, "deleted": deleted, "total": len(files)}
+
+
+@router.post("/teams/{team_id}/receipts/sync")
+async def sync_team_receipts(team_id: str, request: Request):
+    """Blocking sync (back-compat / SSE-less fallback). See `_run_sync`."""
+    return await _run_sync(request, team_id)
+
+
+def _sse(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+
+@router.get("/teams/{team_id}/receipts/sync/stream")
+async def sync_team_receipts_stream(team_id: str, request: Request):
+    """SSE variant: runs the sync and streams `started` then `done`/`error`.
+    The whole job runs inside this request; closing the connection stops it."""
+    async def event_source():
+        yield _sse("started", {"teamId": team_id})
+        try:
+            result = await _run_sync(request, team_id)
+            yield _sse("done", result)
+        except HTTPException as exc:
+            yield _sse("error", {"detail": exc.detail, "status": exc.status_code})
+        except Exception:
+            yield _sse("error", {"detail": "Sync failed. Check the Google Drive connection.", "status": 500})
+
+    return StreamingResponse(
+        event_source(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.patch("/teams/{team_id}/receipts/{file_id}")

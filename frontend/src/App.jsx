@@ -10,6 +10,8 @@ import Folders from './pages/Folders'
 import TeamManagement from './pages/TeamManagement'
 import NotFound from './pages/NotFound'
 import { dispatchOrgChange } from './hooks/useSelectedOrganization'
+import { SyncStatusProvider } from './context/SyncStatusContext'
+import SyncStatusPill from './components/SyncStatusPill'
 
 export default function App() {
 	const [page, setPage] = useState(() => {
@@ -68,9 +70,12 @@ export default function App() {
 									: <MockPage key={page} type={page} />
 
 	return (
-		<div className="flex min-h-screen bg-paper" style={{ '--sidebar-width': `${sidebar}%` }}>
-			<Sidebar page={page} setPage={setPage} />
-			<main className="mx-auto min-w-0 max-w-360 flex-1 px-[clamp(24px,5vw,72px)] py-13 max-[820px]:px-5 max-[820px]:py-8 max-[560px]:px-3.5 max-[560px]:py-7">{content}</main>
-		</div>
+		<SyncStatusProvider>
+			<div className="flex min-h-screen bg-paper" style={{ '--sidebar-width': `${sidebar}%` }}>
+				<Sidebar page={page} setPage={setPage} />
+				<main className="mx-auto min-w-0 max-w-360 flex-1 px-[clamp(24px,5vw,72px)] py-13 max-[820px]:px-5 max-[820px]:py-8 max-[560px]:px-3.5 max-[560px]:py-7">{content}</main>
+			</div>
+			<SyncStatusPill />
+		</SyncStatusProvider>
 	)
 }

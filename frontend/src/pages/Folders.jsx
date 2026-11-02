@@ -7,6 +7,7 @@ import { API_BASE_URL } from '../api/client'
 import { receiptsAPI } from '../api/receipts'
 import { OrganizationRequiredEmptyState } from '../components/OrganizationContext'
 import { useSelectedOrganization } from '../hooks/useSelectedOrganization'
+import { useSyncStatus } from '../context/syncStatus'
 import Toast from '../components/Toast'
 
 const formatMoney = (amount) => amount == null ? '—' : `$${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -145,9 +146,10 @@ export default function Folders({ goTo }) {
 	const selectedIndex = teams.length ? Math.min(teamIndex, teams.length - 1) : 0
 	const team = teams[selectedIndex]
 	const [driveReceipts, setDriveReceipts] = useState([])
-	const [syncing, setSyncing] = useState(false)
 	const [refreshing, setRefreshing] = useState(false)
 	const [toast, setToast] = useState(null)
+	const { status: syncStatus, teamId: syncTeamId, completedAt, startSync } = useSyncStatus()
+	const syncing = syncStatus === 'syncing' && syncTeamId === team?.id
 
 	useEffect(() => {
 		if (!team?.id) { setDriveReceipts([]); return }
@@ -157,6 +159,16 @@ export default function Folders({ goTo }) {
 			.catch(() => { if (!cancelled) setDriveReceipts([]) })
 		return () => { cancelled = true }
 	}, [team?.id])
+
+	// when a sync for the currently-viewed team completes, refetch its receipts
+	useEffect(() => {
+		if (!team?.id || completedAt === 0 || syncTeamId !== team.id || syncStatus !== 'done') return
+		let cancelled = false
+		fetchReceipts(team.id)
+			.then((receipts) => { if (!cancelled) setDriveReceipts(receipts) })
+			.catch(() => { /* pill already reported the outcome */ })
+		return () => { cancelled = true }
+	}, [completedAt, team?.id, syncTeamId, syncStatus])
 
 	const handleSaveReceipt = async (fileId, patch) => {
 		const updated = await receiptsAPI.updateReceipt(team.id, fileId, patch)
@@ -179,24 +191,10 @@ export default function Folders({ goTo }) {
 		}
 	}
 
-	const handleSync = async () => {
-		if (!team?.id || syncing) return
-		setSyncing(true)
-		try {
-			const result = await receiptsAPI.sync(team.id)
-			setDriveReceipts(await fetchReceipts(team.id))
-			setToast({ message: `Synced: ${result.inserted} new, ${result.updated} updated, ${result.deleted} removed.`, type: 'success' })
-		} catch (error) {
-			const timedOut = error?.code === 'ECONNABORTED' || error?.code === 'ETIMEDOUT'
-			setToast({
-				message: timedOut
-					? 'Sync timed out. Try again.'
-					: 'Sync failed. Check the Google Drive connection.',
-				type: 'error',
-			})
-		} finally {
-			setSyncing(false)
-		}
+	// background SSE sync; the global pill shows progress/result on any page
+	const handleSync = () => {
+		if (!team?.id) return
+		startSync(team.id)
 	}
 
 	const allReceipts = [...(team?.receipts ?? []), ...driveReceipts]
@@ -209,7 +207,9 @@ export default function Folders({ goTo }) {
 			return dateOrder === 'asc' ? aDate.localeCompare(bDate) : bDate.localeCompare(aDate)
 		})
 	const previewIndex = preview ? filteredReceipts.findIndex((receipt) => receipt.id === preview.id) : -1
-	const remaining = team ? Math.max(0, (team.budget ?? 0) - (team.used ?? 0)) : 0
+	// total spent is the sum of actual receipt amounts, not the stale stored team.used
+	const used = allReceipts.reduce((sum, receipt) => sum + (receipt.amount ?? 0), 0)
+	const remaining = team ? Math.max(0, (team.budget ?? 0) - used) : 0
 	const remainingPercent = team?.budget ? (remaining / team.budget) * 100 : 0
 	const alert = team && remainingPercent < 10
 
@@ -243,7 +243,7 @@ export default function Folders({ goTo }) {
 			{team ? (
 				<>
 					<section className={alert ? 'mb-6 rounded-[14px] border border-red-200 bg-red-50 p-5 text-red-900' : 'mb-6 rounded-[14px] border border-line bg-white p-5'}>
-						<div className="flex items-end justify-between gap-5 max-[560px]:flex-col max-[560px]:items-start"><div><p className="text-[11px] font-bold tracking-widest uppercase opacity-70">{team.name} · budget summary</p><p className="mt-2 font-display text-[24px] tracking-[-0.04em]">{formatMoney(team.used)} <span className="font-body text-sm font-normal opacity-70">spent</span></p></div><div className="text-left min-[561px]:text-right"><p className="text-xs opacity-70">Remaining budget</p><p className="mt-1 font-display text-[20px]">{formatMoney(remaining)}</p></div></div>
+						<div className="flex items-end justify-between gap-5 max-[560px]:flex-col max-[560px]:items-start"><div><p className="text-[11px] font-bold tracking-widest uppercase opacity-70">{team.name} · budget summary</p><p className="mt-2 font-display text-[24px] tracking-[-0.04em]">{formatMoney(used)} <span className="font-body text-sm font-normal opacity-70">spent</span></p></div><div className="text-left min-[561px]:text-right"><p className="text-xs opacity-70">Remaining budget</p><p className="mt-1 font-display text-[20px]">{formatMoney(remaining)}</p></div></div>
 						{alert && <p className="mt-4 flex items-center gap-2 text-xs font-bold"><Icon name="insight" size={15} /> Less than 10% of this team’s budget remains.</p>}
 					</section>
 					<section>

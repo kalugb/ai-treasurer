@@ -1,7 +1,10 @@
-import { request } from './client'
+import { request, API_BASE_URL } from './client'
 
 // Drive sync lists + reconciles the whole folder; allow generous time for large folders.
 export const SYNC_TIMEOUT_MS = 120000
+
+// absolute URL for the SSE stream (EventSource can't use the axios client)
+export const syncStreamUrl = (teamId) => `${API_BASE_URL}/api/google-drive/teams/${teamId}/receipts/sync/stream`
 
 export const receiptsAPI = {
 	getReceipts: (teamId, refresh = false) =>
