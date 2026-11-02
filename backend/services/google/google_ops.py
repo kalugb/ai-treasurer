@@ -1,9 +1,11 @@
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
+from google_auth_httplib2 import AuthorizedHttp
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseDownload
+import httplib2
 import io
 import os
 from dotenv import load_dotenv
@@ -19,7 +21,11 @@ class GoogleDriveService:
             fileId=file_id, 
             supportsAllDrives=True
         )
-        
+        # The shared service object wraps a single httplib2.Http, which is NOT thread-safe:
+        # concurrent downloads (e.g. a grid of thumbnails) collide on the one socket and raise
+        # SSL WRONG_VERSION_NUMBER / read timeouts. Give each download its own transport.
+        request.http = AuthorizedHttp(self.service._http.credentials, http=httplib2.Http())
+
         buffer = io.BytesIO()
         downloader = MediaIoBaseDownload(buffer, request)
         
