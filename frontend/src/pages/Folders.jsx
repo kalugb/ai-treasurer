@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/set-state-in-effect */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Icon from '../components/Icon'
 import { button } from '../components/button'
 import { teamsAPI } from '../api/teams'
@@ -45,15 +45,47 @@ function ReceiptPreview({ receipt, onClose, onPrev, onNext, index, total, onSave
 	const [description, setDescription] = useState('')
 	const [saving, setSaving] = useState(false)
 	const [saveError, setSaveError] = useState(null)
+	const [zoom, setZoom] = useState({ scale: 1, tx: 0, ty: 0 })
+	const [dragging, setDragging] = useState(false)
+	const dragRef = useRef(null)
 
 	useEffect(() => {
 		setAmount(receipt?.amount == null ? '' : String(receipt.amount))
 		setLabel(receipt?.label ?? '')
 		setDescription(receipt?.description ?? '')
 		setSaveError(null)
+		setZoom({ scale: 1, tx: 0, ty: 0 })
+		dragRef.current = null
+		setDragging(false)
 		// reset the form only when switching to a different receipt, not on every field refresh
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [receipt?.id])
+
+	// wheel zooms toward the cursor; translate is adjusted so the point under the cursor stays put. clamped 1x–5x
+	const handleWheel = (event) => {
+		event.preventDefault()
+		const rect = event.currentTarget.getBoundingClientRect()
+		const cx = event.clientX - rect.left - rect.width / 2
+		const cy = event.clientY - rect.top - rect.height / 2
+		setZoom((current) => {
+			const scale = Math.min(5, Math.max(1, current.scale - event.deltaY * 0.0015))
+			if (scale <= 1) return { scale: 1, tx: 0, ty: 0 }
+			const ratio = scale / current.scale
+			return { scale, tx: cx - (cx - current.tx) * ratio, ty: cy - (cy - current.ty) * ratio }
+		})
+	}
+
+	const handlePointerDown = (event) => {
+		if (zoom.scale <= 1) return
+		event.currentTarget.setPointerCapture(event.pointerId)
+		dragRef.current = { x: event.clientX, y: event.clientY, tx: zoom.tx, ty: zoom.ty }
+		setDragging(true)
+	}
+	const handlePointerMove = (event) => {
+		if (!dragRef.current) return
+		setZoom((current) => ({ ...current, tx: dragRef.current.tx + (event.clientX - dragRef.current.x), ty: dragRef.current.ty + (event.clientY - dragRef.current.y) }))
+	}
+	const handlePointerUp = () => { dragRef.current = null; setDragging(false) }
 
 	if (!receipt) return null
 	const previewSrc = receipt.thumbnail ? `${receipt.thumbnail}?size=640` : null
@@ -85,28 +117,31 @@ function ReceiptPreview({ receipt, onClose, onPrev, onNext, index, total, onSave
 	}
 	return (
 		<div className="fixed inset-0 z-20 grid place-items-center bg-[rgb(28_35_36/38%)] p-5" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-			<div className="max-h-[92vh] w-[min(100%,900px)] overflow-y-auto rounded-[14px] border border-line bg-white p-5 shadow-[0_20px_50px_rgb(28_35_36/18%)]" role="dialog" aria-modal="true" aria-labelledby="receipt-preview-title">
-				<div className="mb-4 flex items-start justify-between gap-4">
+			<div className="flex max-h-[92vh] w-[min(100%,1100px)] flex-col overflow-hidden rounded-[14px] border border-line bg-white shadow-[0_20px_50px_rgb(28_35_36/18%)]" role="dialog" aria-modal="true" aria-labelledby="receipt-preview-title">
+				<div className="flex items-start justify-between gap-4 border-b border-line p-5">
 					<div><p className="text-[11px] font-bold tracking-widest text-muted uppercase">Receipt preview</p><h2 id="receipt-preview-title" className="mt-1 font-display text-[20px] tracking-[-0.03em]">{receipt.label || receipt.filename}</h2></div>
 					<div className="flex items-center gap-3">{imageLoading && <Icon name="spinner" size={14} />}<span className="text-xs font-bold text-muted">{index + 1} / {total}</span><button className="rounded-lg px-2 py-1 text-xs font-bold text-blue focus-visible:outline-[3px] focus-visible:outline-blue-ring" type="button" onClick={onClose}>Close</button></div>
 				</div>
-				<div className="relative grid h-[min(70vh,640px)] place-items-center overflow-hidden rounded-xl border border-line bg-paper text-blue">
-					{imageLoading ? <Icon name="spinner" size={32} /> : <Icon name="receipt" size={48} />}
-					{previewSrc && !imageError && <img src={previewSrc} alt="" decoding="async" className={`absolute inset-0 h-full w-full object-contain transition-opacity ${imageLoading ? 'opacity-40' : 'opacity-100'}`} onLoad={() => setLoadedSrc(previewSrc)} onError={() => setErrorSrc(previewSrc)} />}
-					<button className="absolute top-1/2 left-3 grid size-10 -translate-y-1/2 place-items-center rounded-full border border-line bg-white text-blue shadow-md transition hover:bg-blue-soft disabled:cursor-not-allowed disabled:opacity-40" type="button" aria-label="Previous receipt" onClick={onPrev} disabled={index <= 0}><span className="rotate-180"><Icon name="chevron" size={18} /></span></button>
-					<button className="absolute top-1/2 right-3 grid size-10 -translate-y-1/2 place-items-center rounded-full border border-line bg-white text-blue shadow-md transition hover:bg-blue-soft disabled:cursor-not-allowed disabled:opacity-40" type="button" aria-label="Next receipt" onClick={onNext} disabled={index >= total - 1}><Icon name="chevron" size={18} /></button>
-				</div>
-				<div className="mt-4 grid grid-cols-2 gap-4 text-[13px] min-[560px]:grid-cols-4"><div><span className="block text-xs text-muted">Filename</span><strong className="mt-1 block truncate">{receipt.filename}</strong></div><div><span className="block text-xs text-muted">Amount</span><strong className="mt-1 block">{formatMoney(receipt.amount)}</strong></div><div><span className="block text-xs text-muted">Date</span><strong className="mt-1 block">{receipt.date}</strong></div><div><span className="block text-xs text-muted">Category</span><strong className="mt-1 block">{receipt.category}</strong></div></div>
-				<form className="mt-5 border-t border-line pt-4" onSubmit={handleSave}>
-					<p className="mb-3 text-[11px] font-bold tracking-widest text-muted uppercase">Edit details</p>
-					<div className="grid gap-3 min-[560px]:grid-cols-2">
-						<label className="grid gap-1.5 text-xs font-bold text-ink">Amount<input className="h-10 rounded-lg border border-line bg-white px-3 text-[13px] outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" type="number" min="0" step="0.01" inputMode="decimal" placeholder="0.00" value={amount} onChange={(event) => setAmount(event.target.value)} /></label>
-						<label className="grid gap-1.5 text-xs font-bold text-ink">Label (optional)<input className="h-10 rounded-lg border border-line bg-white px-3 text-[13px] outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" type="text" placeholder="e.g. Team lunch" value={label} onChange={(event) => setLabel(event.target.value)} /></label>
+				<div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden min-[760px]:grid-cols-[1.3fr_1fr]">
+					<div className="relative grid min-h-[40vh] place-items-center overflow-hidden border-b border-line bg-paper text-blue min-[760px]:min-h-0 min-[760px]:border-r min-[760px]:border-b-0" onWheel={previewSrc && !imageError ? handleWheel : undefined}>
+						{imageLoading ? <Icon name="spinner" size={32} /> : <Icon name="receipt" size={48} />}
+						{previewSrc && !imageError && <img src={previewSrc} alt="" decoding="async" draggable={false} className={`absolute inset-0 h-full w-full touch-none object-contain transition-opacity ${imageLoading ? 'opacity-40' : 'opacity-100'}`} style={{ transform: `translate(${zoom.tx}px, ${zoom.ty}px) scale(${zoom.scale})`, cursor: zoom.scale > 1 ? (dragging ? 'grabbing' : 'grab') : 'zoom-in' }} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp} onLoad={() => setLoadedSrc(previewSrc)} onError={() => setErrorSrc(previewSrc)} />}
+						{zoom.scale > 1 && <span className="absolute bottom-3 left-3 rounded-full bg-[rgb(28_35_36/70%)] px-2.5 py-1 text-[11px] font-bold text-white">{zoom.scale.toFixed(1)}×</span>}
+						<button className="absolute top-1/2 left-3 grid size-10 -translate-y-1/2 place-items-center rounded-full border border-line bg-white text-blue shadow-md transition hover:bg-blue-soft disabled:cursor-not-allowed disabled:opacity-40" type="button" aria-label="Previous receipt" onClick={onPrev} disabled={index <= 0}><span className="rotate-180"><Icon name="chevron" size={18} /></span></button>
+						<button className="absolute top-1/2 right-3 grid size-10 -translate-y-1/2 place-items-center rounded-full border border-line bg-white text-blue shadow-md transition hover:bg-blue-soft disabled:cursor-not-allowed disabled:opacity-40" type="button" aria-label="Next receipt" onClick={onNext} disabled={index >= total - 1}><Icon name="chevron" size={18} /></button>
 					</div>
-					<label className="mt-3 grid gap-1.5 text-xs font-bold text-ink">Notes (optional)<textarea className="min-h-20 rounded-lg border border-line bg-white px-3 py-2 text-[13px] outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" placeholder="Personal notes about this receipt" value={description} onChange={(event) => setDescription(event.target.value)} /></label>
-					{saveError && <p className="mt-2 text-xs font-bold text-red-700">{saveError}</p>}
-					<div className="mt-3 flex justify-end"><button className={`${button.primary} disabled:opacity-60`} type="submit" disabled={saving}><Icon name={saving ? 'spinner' : 'check'} size={15} /> {saving ? 'Saving…' : 'Save details'}</button></div>
-				</form>
+					<div className="min-h-0 overflow-y-auto p-5">
+						<div className="grid grid-cols-3 gap-4 text-[13px]"><div><span className="block text-xs text-muted">Date</span><strong className="mt-1 block">{receipt.date}</strong></div><div><span className="block text-xs text-muted">Category</span><strong className="mt-1 block">{receipt.category}</strong></div><div><span className="block text-xs text-muted">Filename</span><strong className="mt-1 block truncate" title={receipt.filename}>{receipt.filename}</strong></div></div>
+						<form className="mt-5 border-t border-line pt-4" onSubmit={handleSave}>
+							<p className="mb-3 text-[11px] font-bold tracking-widest text-muted uppercase">Edit details</p>
+							<label className="grid gap-1.5 text-xs font-bold text-ink">Amount<input className="h-10 rounded-lg border border-line bg-white px-3 text-[13px] outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" type="number" min="0" step="0.01" inputMode="decimal" placeholder="0.00" value={amount} onChange={(event) => setAmount(event.target.value)} /></label>
+							<label className="mt-3 grid gap-1.5 text-xs font-bold text-ink">Label (optional)<input className="h-10 rounded-lg border border-line bg-white px-3 text-[13px] outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" type="text" placeholder="e.g. Team lunch" value={label} onChange={(event) => setLabel(event.target.value)} /></label>
+							<label className="mt-3 grid gap-1.5 text-xs font-bold text-ink">Notes (optional)<textarea className="min-h-24 rounded-lg border border-line bg-white px-3 py-2 text-[13px] outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" placeholder="Personal notes about this receipt" value={description} onChange={(event) => setDescription(event.target.value)} /></label>
+							{saveError && <p className="mt-2 text-xs font-bold text-red-700">{saveError}</p>}
+							<div className="mt-4 flex justify-end"><button className={`${button.primary} disabled:opacity-60`} type="submit" disabled={saving}><Icon name={saving ? 'spinner' : 'check'} size={15} /> {saving ? 'Saving…' : 'Save details'}</button></div>
+						</form>
+					</div>
+				</div>
 			</div>
 		</div>
 	)
