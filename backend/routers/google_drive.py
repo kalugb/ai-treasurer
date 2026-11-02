@@ -1,6 +1,4 @@
 import json
-import re
-import urllib.request
 from datetime import datetime, timezone
 
 from bson import ObjectId
@@ -234,14 +232,11 @@ async def update_team_receipt(team_id: str, file_id: str, payload: ReceiptUpdate
     return _to_out(team_id, doc)
 
 
-def _download_thumbnail(url: str, size: int):
-    # Drive returns links like "...=s220"; swap the size for a sharper preview
-    with urllib.request.urlopen(re.sub(r"=(s|w)\d+(-h\d+)?$", f"=s{size}", url), timeout=10) as response:
-        return response.read(), response.headers.get_content_type()
-
-
 @router.get("/teams/{team_id}/receipts/{file_id}/thumbnail")
 async def get_team_receipt_thumbnail(team_id: str, file_id: str, request: Request, size: int = 220):
+    # size is ignored: the authenticated Drive API serves the full file bytes.
+    # Drive's own thumbnailLink (lh3.googleusercontent.com) 403s for an unauthenticated
+    # server fetch, so we download the real file via files().get_media instead.
     dept_oid, _org_id, _folder_id = await _team_ids(request, team_id)
     mongo = _get_mongo(request)
 
@@ -253,20 +248,21 @@ async def get_team_receipt_thumbnail(team_id: str, file_id: str, request: Reques
     if doc is None:
         raise HTTPException(status_code=404, detail="Receipt not found")
 
-    thumbnail_url = None
+    content_type = "application/octet-stream"
     raw_meta = doc.get("receiptMetadata")
     if isinstance(raw_meta, str) and raw_meta:
         try:
-            thumbnail_url = json.loads(raw_meta).get("thumbnailLink")
+            content_type = json.loads(raw_meta).get("mimeType") or content_type
         except json.JSONDecodeError:
-            thumbnail_url = None
-    if not thumbnail_url:
-        raise HTTPException(status_code=404, detail="No thumbnail available for this file")
+            pass
+    if not content_type.startswith("image/"):
+        raise HTTPException(status_code=415, detail="Preview is only available for image receipts")
 
+    drive = get_google_drive_service_instance(request)
     try:
-        image, content_type = await run_in_threadpool(_download_thumbnail, thumbnail_url, max(64, min(size, 1024)))
+        image = await run_in_threadpool(drive.download_files_bytes, file_id)
     except Exception:
-        raise HTTPException(status_code=502, detail="Could not fetch thumbnail from Google Drive")
+        raise HTTPException(status_code=502, detail="Could not fetch receipt image from Google Drive")
 
-    # stable URL + long browser cache: Drive's own thumbnailLink changes every fetch
+    # stable URL + long browser cache
     return Response(content=image, media_type=content_type, headers={"Cache-Control": f"public, max-age={THUMBNAIL_CACHE_SECONDS}"})
