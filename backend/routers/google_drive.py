@@ -1,6 +1,8 @@
+import io
 import json
 from datetime import datetime, timezone
 
+import pypdfium2 as pdfium
 from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import APIRouter, HTTPException, Request, Response
@@ -232,6 +234,22 @@ async def update_team_receipt(team_id: str, file_id: str, payload: ReceiptUpdate
     return _to_out(team_id, doc)
 
 
+def _receipt_image_bytes(drive, file_id: str, is_pdf: bool) -> bytes:
+    """Download the receipt file; for PDFs render the first page to PNG so an <img> can show it.
+    Runs in a threadpool (blocking Drive + pdfium calls)."""
+    data = drive.download_files_bytes(file_id)
+    if not is_pdf:
+        return data
+    pdf = pdfium.PdfDocument(data)
+    try:
+        bitmap = pdf[0].render(scale=2)  # ~144 DPI, enough for a preview
+        buffer = io.BytesIO()
+        bitmap.to_pil().save(buffer, format="PNG")
+        return buffer.getvalue()
+    finally:
+        pdf.close()
+
+
 @router.get("/teams/{team_id}/receipts/{file_id}/thumbnail")
 async def get_team_receipt_thumbnail(team_id: str, file_id: str, request: Request, size: int = 220):
     # size is ignored: the authenticated Drive API serves the full file bytes.
@@ -255,14 +273,18 @@ async def get_team_receipt_thumbnail(team_id: str, file_id: str, request: Reques
             content_type = json.loads(raw_meta).get("mimeType") or content_type
         except json.JSONDecodeError:
             pass
-    if not content_type.startswith("image/"):
-        raise HTTPException(status_code=415, detail="Preview is only available for image receipts")
+
+    is_pdf = content_type == "application/pdf"
+    if not content_type.startswith("image/") and not is_pdf:
+        raise HTTPException(status_code=415, detail="Preview is only available for image or PDF receipts")
 
     drive = get_google_drive_service_instance(request)
     try:
-        image = await run_in_threadpool(drive.download_files_bytes, file_id)
+        image = await run_in_threadpool(_receipt_image_bytes, drive, file_id, is_pdf)
     except Exception:
         raise HTTPException(status_code=502, detail="Could not fetch receipt image from Google Drive")
+    if is_pdf:
+        content_type = "image/png"
 
     # stable URL + long browser cache
     return Response(content=image, media_type=content_type, headers={"Cache-Control": f"public, max-age={THUMBNAIL_CACHE_SECONDS}"})
