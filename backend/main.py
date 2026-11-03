@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from routers import dashboard, teams, organization, google_connect, google_drive
 from lifespan import lifespan
 
-ORIGINS = ["http://localhost:5173", ]
+ORIGINS = ["http://localhost:5173", "http://localhost:8080", "http://localhost:80", ]
 
 app = FastAPI(title="AI Treasurer Backend", lifespan=lifespan)
 app.add_middleware(
