@@ -1,17 +1,19 @@
 import io
 import json
+import os
 from datetime import datetime, timezone
 
 import pypdfium2 as pdfium
 from bson import ObjectId
 from bson.errors import InvalidId
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, File, Form, HTTPException, Request, Response, UploadFile
 from starlette.concurrency import run_in_threadpool
 from starlette.responses import StreamingResponse
 
 from models.receipt import ReceiptUpdate
 from services.google.google_ops import GoogleDriveService
 from services.mongodb import mongodb_ops
+from services.supabase import supabase_ops
 
 router = APIRouter(prefix="/api/google-drive")
 TEAMS_COLLECTION = "departments"
@@ -19,6 +21,7 @@ RECEIPTS_COLLECTION = "receipts"
 CACHE_KEY_NAME = "receipts"
 THUMBNAIL_CACHE_SECONDS = 86400
 FOLDER_MIME = "application/vnd.google-apps.folder"
+ALLOWED_UPLOAD_TYPES = ("image/", "application/pdf")
 
 
 def get_google_drive_service_instance(request: Request):
@@ -62,6 +65,23 @@ def _thumbnail_url(team_id: str, file_id: str) -> str:
 
 
 def _to_out(team_id: str, doc: dict) -> dict:
+    created_from = doc.get("createdFrom", "google_drive")
+    if created_from == "local_upload":
+        # local receipts have no Drive id; the UI/routes key off this field, so surface the Mongo _id
+        file_id = str(doc.get("_id", ""))
+        created = doc.get("createdAt")
+        date = created.date().isoformat() if hasattr(created, "date") else None
+        return {
+            "id": file_id,
+            "googleDriveFileId": file_id,
+            "receiptName": doc.get("receiptName", ""),
+            "receiptAmount": doc.get("receiptAmount") or 0.0,
+            "description": doc.get("description"),
+            "label": doc.get("label"),
+            "date": date,
+            "source": "local_upload",
+            "thumbnail": _thumbnail_url(team_id, file_id) if file_id else None,
+        }
     metadata = {}
     raw_meta = doc.get("receiptMetadata")
     if isinstance(raw_meta, str) and raw_meta:
@@ -88,6 +108,24 @@ async def _read_receipts(request: Request, dept_oid: ObjectId):
     mongo = _get_mongo(request)
     return await mongodb_ops.read(
         mongo, collection_name=RECEIPTS_COLLECTION, query={"departmentID": dept_oid}, read_many=True
+    )
+
+
+async def _find_receipt(request: Request, dept_oid: ObjectId, file_id: str):
+    """Resolve a receipt by the path `file_id`: a Drive id (google) or a stringified Mongo _id (local)."""
+    mongo = _get_mongo(request)
+    doc = await mongodb_ops.read(
+        mongo, collection_name=RECEIPTS_COLLECTION,
+        query={"departmentID": dept_oid, "googleDriveFileId": file_id},
+    )
+    if doc is not None:
+        return doc
+    try:
+        oid = ObjectId(file_id)
+    except (InvalidId, TypeError):
+        return None
+    return await mongodb_ops.read(
+        mongo, collection_name=RECEIPTS_COLLECTION, query={"departmentID": dept_oid, "_id": oid},
     )
 
 
@@ -222,24 +260,85 @@ async def update_team_receipt(team_id: str, file_id: str, payload: ReceiptUpdate
     if not fields:
         raise HTTPException(status_code=400, detail="No fields to update")
 
-    match = {"departmentID": dept_oid, "googleDriveFileId": file_id}
-    modified = await mongodb_ops.update(mongo, query=match, collection_name=RECEIPTS_COLLECTION, update_data=fields)
-
-    doc = await mongodb_ops.read(mongo, collection_name=RECEIPTS_COLLECTION, query=match)
+    doc = await _find_receipt(request, dept_oid, file_id)
     if doc is None:
         raise HTTPException(status_code=404, detail="Receipt not found")
+
+    await mongodb_ops.update(mongo, query={"_id": doc["_id"]}, collection_name=RECEIPTS_COLLECTION, update_data=fields)
+    doc = await mongodb_ops.read(mongo, collection_name=RECEIPTS_COLLECTION, query={"_id": doc["_id"]})
 
     cache = request.app.state.cache
     await cache.delete(cache.key_builder(str(dept_oid), CACHE_KEY_NAME))
     return _to_out(team_id, doc)
 
 
-def _receipt_image_bytes(drive, file_id: str, is_pdf: bool) -> bytes:
-    """Download the receipt file; for PDFs render the first page to PNG so an <img> can show it.
-    Runs in a threadpool (blocking Drive + pdfium calls)."""
-    data = drive.download_files_bytes(file_id)
-    if not is_pdf:
-        return data
+@router.post("/teams/{team_id}/receipts/upload")
+async def upload_team_receipt(
+    team_id: str,
+    request: Request,
+    file: UploadFile = File(...),
+    receiptName: str = Form(...),
+    receiptAmount: float = Form(...),
+    description: str | None = Form(None),
+):
+    """Upload a local receipt: store the file in Supabase, metadata in Mongo (createdFrom=local_upload)."""
+    dept_oid, org_id, _folder_id = await _team_ids(request, team_id)
+    mongo = _get_mongo(request)
+
+    content_type = file.content_type or "application/octet-stream"
+    if not content_type.startswith("image/") and content_type != "application/pdf":
+        raise HTTPException(status_code=415, detail="Only image or PDF receipts can be uploaded")
+    if receiptAmount < 0:
+        raise HTTPException(status_code=422, detail="Amount must be non-negative")
+
+    data = await file.read()
+    now = datetime.now(timezone.utc)
+    # insert first to get the _id, then upload to a path keyed by it, then backfill storagePath
+    doc = {
+        "departmentID": dept_oid,
+        "orgID": org_id,
+        "receiptName": receiptName,
+        "receiptAmount": float(receiptAmount),
+        "description": description,
+        "createdAt": now,
+        "createdFrom": "local_upload",
+        "label": None,
+        "snapshot": None,
+        "receiptMetadata": json.dumps({"mimeType": content_type, "size": len(data)}),
+    }
+    receipt_id = await mongodb_ops.create(mongo, doc_to_create=doc, collection_name=RECEIPTS_COLLECTION)
+
+    ext = os.path.splitext(file.filename or "")[1]
+    storage_path = f"{dept_oid}/{receipt_id}{ext}"
+    try:
+        await run_in_threadpool(supabase_ops.upload_receipt, storage_path, data, content_type)
+    except Exception:
+        # roll back the orphan Mongo doc so the two stores stay consistent
+        await mongodb_ops.delete(mongo, collection_name=RECEIPTS_COLLECTION, query={"_id": receipt_id})
+        raise HTTPException(status_code=502, detail="Could not store the receipt file")
+
+    await mongodb_ops.update(
+        mongo, query={"_id": receipt_id}, collection_name=RECEIPTS_COLLECTION, update_data={"storagePath": storage_path}
+    )
+    doc = await mongodb_ops.read(mongo, collection_name=RECEIPTS_COLLECTION, query={"_id": receipt_id})
+
+    cache = request.app.state.cache
+    await cache.delete(cache.key_builder(str(dept_oid), CACHE_KEY_NAME))
+    return _to_out(team_id, doc)
+
+
+def _drive_version(raw_meta) -> str:
+    """Drive modifiedTime as a cache-version token; a re-synced file changes it and busts the cache."""
+    if isinstance(raw_meta, str) and raw_meta:
+        try:
+            return json.loads(raw_meta).get("modifiedTime") or ""
+        except json.JSONDecodeError:
+            return ""
+    return ""
+
+
+def _render_pdf_first_page(data: bytes) -> bytes:
+    """Rasterize a PDF's first page to PNG so an <img> can show it."""
     pdf = pdfium.PdfDocument(data)
     try:
         bitmap = pdf[0].render(scale=2)  # ~144 DPI, enough for a preview
@@ -250,19 +349,25 @@ def _receipt_image_bytes(drive, file_id: str, is_pdf: bool) -> bytes:
         pdf.close()
 
 
+def _drive_image_bytes(drive, file_id: str, is_pdf: bool) -> bytes:
+    """Download a Drive receipt (blocking); rasterize PDFs. Runs in a threadpool."""
+    data = drive.download_files_bytes(file_id)
+    return _render_pdf_first_page(data) if is_pdf else data
+
+
+def _local_image_bytes(storage_path: str, is_pdf: bool) -> bytes:
+    """Download a local receipt from Supabase (blocking); rasterize PDFs. Runs in a threadpool."""
+    data = supabase_ops.download_receipt(storage_path)
+    return _render_pdf_first_page(data) if is_pdf else data
+
+
 @router.get("/teams/{team_id}/receipts/{file_id}/thumbnail")
 async def get_team_receipt_thumbnail(team_id: str, file_id: str, request: Request, size: int = 220):
-    # size is ignored: the authenticated Drive API serves the full file bytes.
-    # Drive's own thumbnailLink (lh3.googleusercontent.com) 403s for an unauthenticated
-    # server fetch, so we download the real file via files().get_media instead.
+    # size is ignored: the full file bytes are served (Drive's own thumbnailLink 403s for a
+    # server fetch). Bytes are cached in Redis so repeat views skip the download + PDF render.
     dept_oid, _org_id, _folder_id = await _team_ids(request, team_id)
-    mongo = _get_mongo(request)
 
-    doc = await mongodb_ops.read(
-        mongo,
-        collection_name=RECEIPTS_COLLECTION,
-        query={"departmentID": dept_oid, "googleDriveFileId": file_id},
-    )
+    doc = await _find_receipt(request, dept_oid, file_id)
     if doc is None:
         raise HTTPException(status_code=404, detail="Receipt not found")
 
@@ -278,11 +383,24 @@ async def get_team_receipt_thumbnail(team_id: str, file_id: str, request: Reques
     if not content_type.startswith("image/") and not is_pdf:
         raise HTTPException(status_code=415, detail="Preview is only available for image or PDF receipts")
 
-    drive = get_google_drive_service_instance(request)
-    try:
-        image = await run_in_threadpool(_receipt_image_bytes, drive, file_id, is_pdf)
-    except Exception:
-        raise HTTPException(status_code=502, detail="Could not fetch receipt image from Google Drive")
+    is_local = doc.get("createdFrom") == "local_upload"
+    cache = request.app.state.cache
+    # version token invalidates the cached bytes when the source file changes
+    version = doc.get("storagePath", "") if is_local else _drive_version(raw_meta)
+    cache_key = cache.key_builder(str(doc["_id"]), f"thumb:{version}")
+
+    image = await cache.get_bytes(cache_key)
+    if image is None:
+        try:
+            if is_local:
+                image = await run_in_threadpool(_local_image_bytes, doc.get("storagePath"), is_pdf)
+            else:
+                drive = get_google_drive_service_instance(request)
+                image = await run_in_threadpool(_drive_image_bytes, drive, file_id, is_pdf)
+        except Exception:
+            raise HTTPException(status_code=502, detail="Could not fetch the receipt file")
+        await cache.set_bytes(cache_key, image, custom_ttl=THUMBNAIL_CACHE_SECONDS)
+
     if is_pdf:
         content_type = "image/png"
 

@@ -3,8 +3,10 @@ from typing import Any
 from bson.json_util import dumps, loads
 
 class CacheStore:
-    def __init__(self, redis_client, cache_ttl_seconds: int = 300, cache_prefix: str = "cache:"):
+    def __init__(self, redis_client, cache_ttl_seconds: int = 300, cache_prefix: str = "cache:", bytes_redis_client=None):
         self._redis = redis_client
+        # separate client with decode_responses=False; the main client decodes to str and corrupts binary data
+        self._bytes_redis = bytes_redis_client
         self.cache_ttl = cache_ttl_seconds
         self.cache_prefix = cache_prefix
     
@@ -31,6 +33,15 @@ class CacheStore:
         prefixed_key = self._key(key)
         
         await self._redis.delete(prefixed_key)
+
+    # raw bytes path: BSON dumps/loads would corrupt binary image data, so store/read bytes directly
+    # via a decode_responses=False client (the main client decodes to str and breaks on non-utf8 bytes)
+    async def set_bytes(self, key: str, value: bytes, custom_ttl: int | None = None):
+        set_ttl = custom_ttl if custom_ttl is not None else self.cache_ttl
+        await self._bytes_redis.set(self._key(key), value, ex=set_ttl)
+
+    async def get_bytes(self, key: str) -> bytes | None:
+        return await self._bytes_redis.get(self._key(key))
         
     # below methods is for debugging purposes only
     async def check_exists(self, key: str):
@@ -47,7 +58,8 @@ if __name__ == "__main__":
     from services.redis.redis_client import get_redis_client
 
     async def main():
-        cache_store = CacheStore(await get_redis_client())
+        bytes_client = await get_redis_client(decode_responses=False)
+        cache_store = CacheStore(await get_redis_client(), bytes_redis_client=bytes_client)
 
         # test with BSON types included, to prove the fix works
         example_cache_value = {
@@ -68,6 +80,15 @@ if __name__ == "__main__":
 
         ttl_remaining = await cache_store.check_ttl_remaining(key)
         print("TTL remaining:", ttl_remaining)
+
+        # raw-bytes path must round-trip binary unchanged (not via BSON)
+        raw = b"\x89PNG\x00\x01\x02\xff"
+        bytes_key = cache_store.key_builder("custom_file_id", "thumb")
+        await cache_store.set_bytes(bytes_key, raw, custom_ttl=60)
+        got = await cache_store.get_bytes(bytes_key)
+        assert got == raw, f"bytes round-trip mismatch: {got!r}"
+        assert isinstance(got, bytes), f"expected bytes, got {type(got)}"
+        print("OK: raw bytes round-trip passed")
 
     asyncio.run(main())
         

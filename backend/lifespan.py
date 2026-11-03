@@ -81,10 +81,11 @@ async def lifespan(app: FastAPI):
     # do this trick to unpack the clients tuple into individual variables
     mongodb_client, mongodb_database_client = mongo_clients
     redis_client = await get_redis_client()
+    bytes_redis_client = await get_redis_client(decode_responses=False)  # raw-bytes cache (thumbnails)
     google_drive_service_connected, google_drive_service_instance = await temp_check_google_integration()
     
     app.state.sessions = SessionStore(redis_client)
-    app.state.cache = CacheStore(redis_client)
+    app.state.cache = CacheStore(redis_client, bytes_redis_client=bytes_redis_client)
     app.state.mongo = mongodb_database_client
     app.state.llm_inference = None # llm_inference
     app.state.supabase = supabase_client
@@ -99,3 +100,4 @@ async def lifespan(app: FastAPI):
         mongodb_client.close()
         
     await redis_client.close()
+    await bytes_redis_client.close()

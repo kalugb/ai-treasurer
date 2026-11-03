@@ -1,4 +1,4 @@
-import { request, API_BASE_URL } from './client'
+import { request, requestWithFile, API_BASE_URL } from './client'
 
 // Drive sync lists + reconciles the whole folder; allow generous time for large folders.
 export const SYNC_TIMEOUT_MS = 120000
@@ -13,4 +13,6 @@ export const receiptsAPI = {
 		request(`/api/google-drive/teams/${teamId}/receipts/sync`, { method: 'POST', timeout: SYNC_TIMEOUT_MS }),
 	updateReceipt: (teamId, fileId, patch) =>
 		request(`/api/google-drive/teams/${teamId}/receipts/${fileId}`, { method: 'PATCH', data: patch }),
+	upload: (teamId, formData) =>
+		requestWithFile(`/api/google-drive/teams/${teamId}/receipts/upload`, formData),
 }
