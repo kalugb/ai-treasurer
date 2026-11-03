@@ -10,7 +10,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, Response, Upl
 from starlette.concurrency import run_in_threadpool
 from starlette.responses import StreamingResponse
 
-from models.receipt import ReceiptUpdate
+from models.receipt import ReceiptDelete, ReceiptUpdate
 from services.google.google_ops import GoogleDriveService
 from services.mongodb import mongodb_ops
 from services.supabase import supabase_ops
@@ -270,6 +270,36 @@ async def update_team_receipt(team_id: str, file_id: str, payload: ReceiptUpdate
     cache = request.app.state.cache
     await cache.delete(cache.key_builder(str(dept_oid), CACHE_KEY_NAME))
     return _to_out(team_id, doc)
+
+
+@router.post("/teams/{team_id}/receipts/delete")
+async def delete_team_receipts(team_id: str, payload: ReceiptDelete, request: Request):
+    """Delete one or more LOCAL-UPLOAD receipts (Mongo doc + Supabase file). Drive receipts are rejected."""
+    dept_oid, _org_id, _folder_id = await _team_ids(request, team_id)
+    mongo = _get_mongo(request)
+    cache = request.app.state.cache
+
+    deleted = 0
+    for file_id in payload.ids:
+        doc = await _find_receipt(request, dept_oid, file_id)
+        if doc is None:
+            continue
+        if doc.get("createdFrom") != "local_upload":
+            raise HTTPException(status_code=400, detail="Only local-upload receipts can be deleted")
+
+        storage_path = doc.get("storagePath")
+        if storage_path:
+            # remove the file first; a leftover Mongo doc with a missing file is worse than a stray file
+            try:
+                await run_in_threadpool(supabase_ops.delete_receipt, storage_path)
+            except Exception:
+                raise HTTPException(status_code=502, detail="Could not delete the receipt file")
+            await cache.delete(cache.key_builder(str(doc["_id"]), f"thumb:{storage_path}"))
+
+        deleted += await mongodb_ops.delete(mongo, collection_name=RECEIPTS_COLLECTION, query={"_id": doc["_id"]})
+
+    await cache.delete(cache.key_builder(str(dept_oid), CACHE_KEY_NAME))
+    return {"deleted": deleted}
 
 
 @router.post("/teams/{team_id}/receipts/upload")

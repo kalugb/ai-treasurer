@@ -15,4 +15,6 @@ export const receiptsAPI = {
 		request(`/api/google-drive/teams/${teamId}/receipts/${fileId}`, { method: 'PATCH', data: patch }),
 	upload: (teamId, formData) =>
 		requestWithFile(`/api/google-drive/teams/${teamId}/receipts/upload`, formData),
+	remove: (teamId, ids) =>
+		request(`/api/google-drive/teams/${teamId}/receipts/delete`, { method: 'POST', data: { ids } }),
 }

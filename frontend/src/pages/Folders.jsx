@@ -185,6 +185,9 @@ export default function Folders({ goTo }) {
 	const [refreshing, setRefreshing] = useState(false)
 	const [toast, setToast] = useState(null)
 	const [addOpen, setAddOpen] = useState(false)
+	const [selecting, setSelecting] = useState(false)
+	const [selectedIds, setSelectedIds] = useState(() => new Set())
+	const [deleting, setDeleting] = useState(false)
 	const { status: syncStatus, teamId: syncTeamId, completedAt, startSync } = useSyncStatus()
 	const syncing = syncStatus === 'syncing' && syncTeamId === team?.id
 
@@ -196,6 +199,9 @@ export default function Folders({ goTo }) {
 			.catch(() => { if (!cancelled) setDriveReceipts([]) })
 		return () => { cancelled = true }
 	}, [team?.id])
+
+	// clear any selection when switching teams so it doesn't carry stale ids across teams
+	useEffect(() => { setSelecting(false); setSelectedIds(new Set()) }, [team?.id])
 
 	// when a sync for the currently-viewed team completes, refetch its receipts
 	useEffect(() => {
@@ -219,6 +225,33 @@ export default function Folders({ goTo }) {
 		const created = toReceipt(await receiptsAPI.upload(team.id, formData))
 		setDriveReceipts((list) => [created, ...list])
 		setToast({ message: 'Receipt uploaded.', type: 'success' })
+	}
+
+	const exitSelection = () => { setSelecting(false); setSelectedIds(new Set()) }
+
+	const toggleSelected = (id) => setSelectedIds((current) => {
+		const next = new Set(current)
+		next.has(id) ? next.delete(id) : next.add(id)
+		return next
+	})
+
+	const handleDeleteSelected = async () => {
+		const ids = [...selectedIds]
+		if (!ids.length || deleting) return
+		if (!window.confirm(`Delete ${ids.length} receipt${ids.length === 1 ? '' : 's'}? This cannot be undone.`)) return
+		setDeleting(true)
+		try {
+			await receiptsAPI.remove(team.id, ids)
+			const removed = new Set(ids)
+			setDriveReceipts((list) => list.filter((r) => !removed.has(r.id)))
+			setPreview((current) => current && removed.has(current.id) ? null : current)
+			exitSelection()
+			setToast({ message: `Deleted ${ids.length} receipt${ids.length === 1 ? '' : 's'}.`, type: 'success' })
+		} catch {
+			setToast({ message: 'Delete failed.', type: 'error' })
+		} finally {
+			setDeleting(false)
+		}
 	}
 
 	const handleRefresh = async () => {
@@ -265,6 +298,8 @@ export default function Folders({ goTo }) {
 
 	const needsGDriveSetup = sourceFilter === 'google' && team && !team.googleDriveFolderId
 
+	const localReceiptCount = filteredReceipts.filter((r) => r.source === 'manual').length
+
 	const handleGDrivePromptAction = () => {
 		if (team?.id) {
 			sessionStorage.setItem('autoEditTeamId', team.id)
@@ -290,7 +325,7 @@ export default function Folders({ goTo }) {
 						{alert && <p className="mt-4 flex items-center gap-2 text-xs font-bold"><Icon name="insight" size={15} /> Less than 10% of this team’s budget remains.</p>}
 					</section>
 					<section>
-						<div className="mb-4 flex items-center justify-between gap-4"><div><div className="flex flex-wrap items-center gap-3"><h2 className="font-display text-[18px] tracking-[-0.03em]">Team receipts</h2></div><div className="mt-2 flex flex-wrap items-end gap-4"><fieldset className="w-fit max-w-full"><legend className="text-xs font-bold text-ink">Source</legend><div className="mt-1.5 inline-flex w-fit max-w-full flex-wrap gap-1 rounded-lg border border-line bg-white p-1"><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'all' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'all'} onClick={() => setSourceFilter('all')}>All</button><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'google' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'google'} onClick={() => setSourceFilter('google')}>Google Drive</button><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'manual' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'manual'} onClick={() => setSourceFilter('manual')}>Local upload</button></div></fieldset><label className="grid gap-1.5 text-xs font-bold text-ink">Sort by date<select className="h-9 rounded-lg border border-line bg-white px-2 text-[12px] outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" value={dateOrder} onChange={(event) => setDateOrder(event.target.value)}><option value="desc">Newest first</option><option value="asc">Oldest first</option></select></label></div><p className="mt-2 text-xs text-muted">{filteredReceipts.length} {filteredReceipts.length === 1 ? 'receipt' : 'receipts'}</p></div><div className="flex flex-wrap items-center gap-2">{team && <button className={`${button.secondary} disabled:opacity-60`} type="button" onClick={handleRefresh} disabled={refreshing} title="Re-read from the database (picks up external edits)"><Icon name={refreshing ? 'spinner' : 'sync'} size={15} /> {refreshing ? 'Refreshing…' : 'Refresh'}</button>}{team?.googleDriveFolderId && sourceFilter !== 'manual' && <button className={`${button.secondary} disabled:opacity-60`} type="button" onClick={handleSync} disabled={syncing}><Icon name={syncing ? 'spinner' : 'sync'} size={15} /> {syncing ? 'Syncing…' : 'Sync Google Drive'}</button>}<button className={button.secondary} type="button" onClick={() => setAddOpen(true)}><Icon name="plus" size={15} /> Add receipt</button></div></div>
+						<div className="mb-4 flex items-center justify-between gap-4"><div><div className="flex flex-wrap items-center gap-3"><h2 className="font-display text-[18px] tracking-[-0.03em]">Team receipts</h2></div><div className="mt-2 flex flex-wrap items-end gap-4"><fieldset className="w-fit max-w-full"><legend className="text-xs font-bold text-ink">Source</legend><div className="mt-1.5 inline-flex w-fit max-w-full flex-wrap gap-1 rounded-lg border border-line bg-white p-1"><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'all' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'all'} onClick={() => setSourceFilter('all')}>All</button><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'google' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'google'} onClick={() => setSourceFilter('google')}>Google Drive</button><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'manual' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'manual'} onClick={() => setSourceFilter('manual')}>Local upload</button></div></fieldset><label className="grid gap-1.5 text-xs font-bold text-ink">Sort by date<select className="h-9 rounded-lg border border-line bg-white px-2 text-[12px] outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" value={dateOrder} onChange={(event) => setDateOrder(event.target.value)}><option value="desc">Newest first</option><option value="asc">Oldest first</option></select></label></div><p className="mt-2 text-xs text-muted">{filteredReceipts.length} {filteredReceipts.length === 1 ? 'receipt' : 'receipts'}</p></div><div className="flex flex-wrap items-center gap-2">{team && <button className={`${button.secondary} disabled:opacity-60`} type="button" onClick={handleRefresh} disabled={refreshing} title="Re-read from the database (picks up external edits)"><Icon name={refreshing ? 'spinner' : 'sync'} size={15} /> {refreshing ? 'Refreshing…' : 'Refresh'}</button>}{team?.googleDriveFolderId && sourceFilter !== 'manual' && <button className={`${button.secondary} disabled:opacity-60`} type="button" onClick={handleSync} disabled={syncing}><Icon name={syncing ? 'spinner' : 'sync'} size={15} /> {syncing ? 'Syncing…' : 'Sync Google Drive'}</button>}{selecting ? <><button className={`${button.primary} disabled:opacity-60`} type="button" onClick={handleDeleteSelected} disabled={deleting || selectedIds.size === 0}><Icon name={deleting ? 'spinner' : 'trash'} size={15} /> {deleting ? 'Deleting…' : `Delete${selectedIds.size ? ` (${selectedIds.size})` : ''}`}</button><button className={button.secondary} type="button" onClick={exitSelection} disabled={deleting}>Cancel</button></> : <>{localReceiptCount > 0 && <button className={button.secondary} type="button" onClick={() => setSelecting(true)} title="Select local-upload receipts to delete"><Icon name="check" size={15} /> Select</button>}<button className={button.secondary} type="button" onClick={() => setAddOpen(true)}><Icon name="plus" size={15} /> Add receipt</button></>}</div></div>
 						{needsGDriveSetup ? (
 							<div className="grid min-h-55 place-items-center rounded-[14px] border border-dashed border-line bg-white p-8 text-center">
 								<div className="max-w-md">
@@ -302,7 +337,12 @@ export default function Folders({ goTo }) {
 									</button>
 								</div>
 							</div>
-						) : filteredReceipts.length ? <div className="grid grid-cols-2 gap-4 min-[700px]:grid-cols-3 min-[1050px]:grid-cols-5">{filteredReceipts.map((receipt) => <button className="group min-w-0 text-left focus-visible:outline-[3px] focus-visible:outline-blue-ring" type="button" key={receipt.id} onClick={() => setPreview(receipt)}><div className="relative grid aspect-[1.15] place-items-center overflow-hidden rounded-[14px] border border-line bg-white text-blue shadow-sm transition group-hover:-translate-y-0.5 group-hover:border-blue group-hover:shadow-md"><Icon name="receipt" size={34} />{receipt.thumbnail && <img src={receipt.thumbnail} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" onError={(event) => { event.currentTarget.style.display = 'none' }} />}</div><strong className="mt-3 block overflow-hidden text-ellipsis whitespace-nowrap text-[13px] text-ink">{receipt.filename}</strong><span className="mt-1 block truncate text-xs text-muted">{receipt.date} · {formatMoney(receipt.amount)}</span></button>)}</div> : <div className="grid min-h-55 place-items-center rounded-[14px] border border-dashed border-line bg-white p-8 text-center"><div><span className="mx-auto grid size-11 place-items-center rounded-xl bg-blue-soft text-blue"><Icon name="folder" size={20} /></span><h3 className="mt-4 font-display text-[16px]">{allReceipts.length ? 'No matching receipts' : 'No receipts yet'}</h3><p className="mt-1 text-xs text-muted">{allReceipts.length ? 'Try another source filter.' : `Add the first receipt for ${team.name} to see it here.`}</p></div></div>}
+						) : filteredReceipts.length ? <div className="grid grid-cols-2 gap-4 min-[700px]:grid-cols-3 min-[1050px]:grid-cols-5">{filteredReceipts.map((receipt) => {
+							const isLocal = receipt.source === 'manual'
+							const selectable = selecting && isLocal
+							const isSelected = selectedIds.has(receipt.id)
+							return <button className={`group min-w-0 text-left focus-visible:outline-[3px] focus-visible:outline-blue-ring ${selecting && !isLocal ? 'opacity-50' : ''}`} type="button" key={receipt.id} aria-pressed={selectable ? isSelected : undefined} onClick={() => selectable ? toggleSelected(receipt.id) : setPreview(receipt)}><div className={`relative grid aspect-[1.15] place-items-center overflow-hidden rounded-[14px] border bg-white text-blue shadow-sm transition group-hover:-translate-y-0.5 group-hover:shadow-md ${isSelected ? 'border-blue ring-[3px] ring-blue-ring' : 'border-line group-hover:border-blue'}`}><Icon name="receipt" size={34} />{receipt.thumbnail && <img src={receipt.thumbnail} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" onError={(event) => { event.currentTarget.style.display = 'none' }} />}{selectable && <span className={`absolute top-2 right-2 grid size-6 place-items-center rounded-md border text-white ${isSelected ? 'border-blue bg-blue' : 'border-line bg-white/80'}`}>{isSelected && <Icon name="check" size={14} />}</span>}{selecting && !isLocal && <span className="absolute bottom-2 left-2 rounded-full bg-[rgb(28_35_36/70%)] px-2 py-0.5 text-[10px] font-bold text-white">Drive</span>}</div><strong className="mt-3 block overflow-hidden text-ellipsis whitespace-nowrap text-[13px] text-ink">{receipt.filename}</strong><span className="mt-1 block truncate text-xs text-muted">{receipt.date} · {formatMoney(receipt.amount)}</span></button>
+						})}</div> : <div className="grid min-h-55 place-items-center rounded-[14px] border border-dashed border-line bg-white p-8 text-center"><div><span className="mx-auto grid size-11 place-items-center rounded-xl bg-blue-soft text-blue"><Icon name="folder" size={20} /></span><h3 className="mt-4 font-display text-[16px]">{allReceipts.length ? 'No matching receipts' : 'No receipts yet'}</h3><p className="mt-1 text-xs text-muted">{allReceipts.length ? 'Try another source filter.' : `Add the first receipt for ${team.name} to see it here.`}</p></div></div>}
 					</section>
 				</>
 			) : <div className="grid min-h-80 place-items-center rounded-[14px] border border-line bg-white p-8 text-center"><div className="max-w-md"><span className="mx-auto grid size-14 place-items-center rounded-2xl bg-blue-soft text-blue"><Icon name="users" size={24} /></span><h2 className="mt-5 font-display text-[20px] tracking-[-0.03em]">Create a team to manage receipts</h2><p className="mt-2 text-[13px] leading-6 text-muted">Receipts are organized by team. Add your first team in Team Management to get started.</p></div></div>}

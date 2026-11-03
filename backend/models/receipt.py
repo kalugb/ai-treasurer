@@ -26,3 +26,7 @@ class ReceiptUpdate(BaseModel):
     receiptAmount: float | None = Field(default=None, ge=0)
     description: str | None = None
     label: str | None = None
+
+
+class ReceiptDelete(BaseModel):
+    ids: list[str] = Field(min_length=1)
