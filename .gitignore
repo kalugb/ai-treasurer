@@ -6,6 +6,7 @@ opencode.json
 .kiro
 
 .env
+.env.docker
 
 __pycache__/
 
