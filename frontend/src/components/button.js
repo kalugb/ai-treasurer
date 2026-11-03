@@ -3,5 +3,6 @@ const base = 'inline-flex min-h-10.5 items-center justify-center gap-2 rounded-l
 export const button = {
 	primary: `${base} bg-blue text-white hover:bg-blue-dark`,
 	secondary: `${base} bg-blue-soft text-blue`,
+	danger: `${base} bg-red-600 text-white hover:bg-red-700`,
 	quiet: `${base} bg-transparent px-0 text-blue`,
 }
