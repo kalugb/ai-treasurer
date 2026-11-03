@@ -32,14 +32,14 @@ const toReceipt = (r) => ({
 	description: r.description ?? null,
 	date: r.date || '—',
 	amount: r.receiptAmount ?? 0,
-	category: 'Google Drive',
+	category: r.source === 'local_upload' ? 'Local upload' : 'Google Drive',
 	source: r.source === 'local_upload' ? 'manual' : 'google',
 	thumbnail: r.thumbnail ? `${API_BASE_URL}${r.thumbnail}` : null,
 })
 
 const fetchReceipts = (teamId, refresh = false) => receiptsAPI.getReceipts(teamId, refresh).then((list) => (Array.isArray(list) ? list.map(toReceipt) : []))
 
-function ReceiptPreview({ receipt, onClose, onPrev, onNext, index, total, onSave }) {
+function ReceiptPreview({ receipt, onClose, onPrev, onNext, index, total, onSave, onDelete, deleting }) {
 	const [loadedSrc, setLoadedSrc] = useState(null)
 	const [errorSrc, setErrorSrc] = useState(null)
 	const [amount, setAmount] = useState('')
@@ -140,7 +140,7 @@ function ReceiptPreview({ receipt, onClose, onPrev, onNext, index, total, onSave
 							<label className="mt-3 grid gap-1.5 text-xs font-bold text-ink">Label (optional)<input className="h-10 rounded-lg border border-line bg-white px-3 text-[13px] outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" type="text" placeholder="e.g. Team lunch" value={label} onChange={(event) => setLabel(event.target.value)} /></label>
 							<label className="mt-3 grid gap-1.5 text-xs font-bold text-ink">Notes (optional)<textarea className="min-h-24 rounded-lg border border-line bg-white px-3 py-2 text-[13px] outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" placeholder="Personal notes about this receipt" value={description} onChange={(event) => setDescription(event.target.value)} /></label>
 							{saveError && <p className="mt-2 text-xs font-bold text-red-700">{saveError}</p>}
-							<div className="mt-4 flex justify-end"><button className={`${button.primary} disabled:opacity-60`} type="submit" disabled={saving}><Icon name={saving ? 'spinner' : 'check'} size={15} /> {saving ? 'Saving…' : 'Save details'}</button></div>
+							<div className={`mt-4 flex items-center gap-3 ${receipt.source === 'manual' ? 'justify-between' : 'justify-end'}`}>{receipt.source === 'manual' && <button className={`${button.danger} disabled:opacity-60`} type="button" onClick={onDelete} disabled={deleting}><Icon name="trash" size={15} /> Delete receipt</button>}<button className={`${button.primary} disabled:opacity-60`} type="submit" disabled={saving}><Icon name={saving ? 'spinner' : 'check'} size={15} /> {saving ? 'Saving…' : 'Save details'}</button></div>
 						</form>
 					</div>
 				</div>
@@ -188,7 +188,7 @@ export default function Folders({ goTo }) {
 	const [addOpen, setAddOpen] = useState(false)
 	const [selecting, setSelecting] = useState(false)
 	const [selectedIds, setSelectedIds] = useState(() => new Set())
-	const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
+	const [deleteTargets, setDeleteTargets] = useState([])
 	const [deleting, setDeleting] = useState(false)
 	const { status: syncStatus, teamId: syncTeamId, completedAt, startSync } = useSyncStatus()
 	const syncing = syncStatus === 'syncing' && syncTeamId === team?.id
@@ -203,7 +203,7 @@ export default function Folders({ goTo }) {
 	}, [team?.id])
 
 	// clear any selection when switching teams so it doesn't carry stale ids across teams
-	useEffect(() => { setSelecting(false); setSelectedIds(new Set()); setConfirmDeleteOpen(false) }, [team?.id])
+	useEffect(() => { setSelecting(false); setSelectedIds(new Set()); setDeleteTargets([]) }, [team?.id])
 
 	// when a sync for the currently-viewed team completes, refetch its receipts
 	useEffect(() => {
@@ -238,7 +238,7 @@ export default function Folders({ goTo }) {
 	})
 
 	const handleDeleteSelected = async () => {
-		const ids = [...selectedIds]
+		const ids = deleteTargets.map((receipt) => receipt.id)
 		if (!ids.length || deleting) return
 		setDeleting(true)
 		try {
@@ -247,7 +247,7 @@ export default function Folders({ goTo }) {
 			setDriveReceipts((list) => list.filter((r) => !removed.has(r.id)))
 			setPreview((current) => current && removed.has(current.id) ? null : current)
 			exitSelection()
-			setConfirmDeleteOpen(false)
+			setDeleteTargets([])
 			setToast({ message: `Deleted ${ids.length} receipt${ids.length === 1 ? '' : 's'}.`, type: 'success' })
 		} catch {
 			setToast({ message: 'Delete failed.', type: 'error' })
@@ -328,7 +328,7 @@ export default function Folders({ goTo }) {
 						{alert && <p className="mt-4 flex items-center gap-2 text-xs font-bold"><Icon name="insight" size={15} /> Less than 10% of this team’s budget remains.</p>}
 					</section>
 					<section>
-						<div className="mb-4 flex items-center justify-between gap-4"><div><div className="flex flex-wrap items-center gap-3"><h2 className="font-display text-[18px] tracking-[-0.03em]">Team receipts</h2></div><div className="mt-2 flex flex-wrap items-end gap-4"><fieldset className="w-fit max-w-full"><legend className="text-xs font-bold text-ink">Source</legend><div className="mt-1.5 inline-flex w-fit max-w-full flex-wrap gap-1 rounded-lg border border-line bg-white p-1"><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'all' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'all'} onClick={() => setSourceFilter('all')}>All</button><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'google' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'google'} onClick={() => setSourceFilter('google')}>Google Drive</button><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'manual' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'manual'} onClick={() => setSourceFilter('manual')}>Local upload</button></div></fieldset><label className="grid gap-1.5 text-xs font-bold text-ink">Sort by date<select className="h-9 rounded-lg border border-line bg-white px-2 text-[12px] outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" value={dateOrder} onChange={(event) => setDateOrder(event.target.value)}><option value="desc">Newest first</option><option value="asc">Oldest first</option></select></label>{selecting ? <><button className={`${button.danger} disabled:opacity-60`} type="button" onClick={() => setConfirmDeleteOpen(true)} disabled={selectedIds.size === 0}><Icon name="trash" size={15} /> Delete{selectedIds.size ? ` (${selectedIds.size})` : ''}</button><button className={button.secondary} type="button" onClick={exitSelection} disabled={deleting}>Cancel</button></> : localReceiptCount > 0 && <button className={button.secondary} type="button" onClick={() => setSelecting(true)} title="Select local-upload receipts to delete"><Icon name="check" size={15} /> Select for deletion</button>}</div><p className="mt-2 text-xs text-muted">{filteredReceipts.length} {filteredReceipts.length === 1 ? 'receipt' : 'receipts'}</p></div><div className="flex flex-wrap items-center gap-2">{team && <button className={`${button.secondary} disabled:opacity-60`} type="button" onClick={handleRefresh} disabled={refreshing} title="Re-read from the database (picks up external edits)"><Icon name={refreshing ? 'spinner' : 'sync'} size={15} /> {refreshing ? 'Refreshing…' : 'Refresh'}</button>}{team?.googleDriveFolderId && sourceFilter !== 'manual' && <button className={`${button.secondary} disabled:opacity-60`} type="button" onClick={handleSync} disabled={syncing}><Icon name={syncing ? 'spinner' : 'sync'} size={15} /> {syncing ? 'Syncing…' : 'Sync Google Drive'}</button>}{!selecting && <button className={button.secondary} type="button" onClick={() => setAddOpen(true)}><Icon name="plus" size={15} /> Add receipt</button>}</div></div>
+						<div className="mb-4 flex items-center justify-between gap-4"><div><div className="flex flex-wrap items-center gap-3"><h2 className="font-display text-[18px] tracking-[-0.03em]">Team receipts</h2></div><div className="mt-2 flex flex-wrap items-end gap-4"><fieldset className="w-fit max-w-full"><legend className="text-xs font-bold text-ink">Source</legend><div className="mt-1.5 inline-flex w-fit max-w-full flex-wrap gap-1 rounded-lg border border-line bg-white p-1"><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'all' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'all'} onClick={() => setSourceFilter('all')}>All</button><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'google' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'google'} onClick={() => setSourceFilter('google')}>Google Drive</button><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'manual' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'manual'} onClick={() => setSourceFilter('manual')}>Local upload</button></div></fieldset><label className="grid gap-1.5 text-xs font-bold text-ink">Sort by date<select className="h-9 rounded-lg border border-line bg-white px-2 text-[12px] outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" value={dateOrder} onChange={(event) => setDateOrder(event.target.value)}><option value="desc">Newest first</option><option value="asc">Oldest first</option></select></label>{selecting ? <><button className={`${button.danger} disabled:opacity-60`} type="button" onClick={() => setDeleteTargets(selectedReceipts)} disabled={selectedIds.size === 0}><Icon name="trash" size={15} /> Delete{selectedIds.size ? ` (${selectedIds.size})` : ''}</button><button className={button.secondary} type="button" onClick={exitSelection} disabled={deleting}>Cancel</button></> : localReceiptCount > 0 && <button className={button.secondary} type="button" onClick={() => setSelecting(true)} title="Select local-upload receipts to delete"><Icon name="check" size={15} /> Select for deletion</button>}</div><p className="mt-2 text-xs text-muted">{filteredReceipts.length} {filteredReceipts.length === 1 ? 'receipt' : 'receipts'}</p></div><div className="flex flex-wrap items-center gap-2">{team && <button className={`${button.secondary} disabled:opacity-60`} type="button" onClick={handleRefresh} disabled={refreshing} title="Re-read from the database (picks up external edits)"><Icon name={refreshing ? 'spinner' : 'sync'} size={15} /> {refreshing ? 'Refreshing…' : 'Refresh'}</button>}{team?.googleDriveFolderId && sourceFilter !== 'manual' && <button className={`${button.secondary} disabled:opacity-60`} type="button" onClick={handleSync} disabled={syncing}><Icon name={syncing ? 'spinner' : 'sync'} size={15} /> {syncing ? 'Syncing…' : 'Sync Google Drive'}</button>}{!selecting && <button className={button.secondary} type="button" onClick={() => setAddOpen(true)}><Icon name="plus" size={15} /> Add receipt</button>}</div></div>
 						{needsGDriveSetup ? (
 							<div className="grid min-h-55 place-items-center rounded-[14px] border border-dashed border-line bg-white p-8 text-center">
 								<div className="max-w-md">
@@ -357,18 +357,20 @@ export default function Folders({ goTo }) {
 				index={previewIndex}
 				total={filteredReceipts.length}
 				onSave={handleSaveReceipt}
+				onDelete={() => setDeleteTargets([preview])}
+				deleting={deleting}
 			/>
 			{toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 			<AddReceiptModal open={addOpen} onClose={() => setAddOpen(false)} onUpload={handleUploadReceipt} />
-			<Modal isOpen={confirmDeleteOpen} onClose={() => { if (!deleting) setConfirmDeleteOpen(false) }} title={`Delete ${selectedIds.size} receipt${selectedIds.size === 1 ? '' : 's'}?`} footer={
+			<Modal isOpen={deleteTargets.length > 0} onClose={() => { if (!deleting) setDeleteTargets([]) }} title={`Delete ${deleteTargets.length} receipt${deleteTargets.length === 1 ? '' : 's'}?`} footer={
 				<>
-					<button className={button.secondary} type="button" onClick={() => setConfirmDeleteOpen(false)} disabled={deleting}>Cancel</button>
-					<button className={`${button.danger} disabled:opacity-60`} type="button" onClick={handleDeleteSelected} disabled={deleting || selectedIds.size === 0}><Icon name={deleting ? 'spinner' : 'trash'} size={15} /> {deleting ? 'Deleting…' : 'Delete forever'}</button>
+					<button className={button.secondary} type="button" onClick={() => setDeleteTargets([])} disabled={deleting}>Cancel</button>
+					<button className={`${button.danger} disabled:opacity-60`} type="button" onClick={handleDeleteSelected} disabled={deleting || deleteTargets.length === 0}><Icon name={deleting ? 'spinner' : 'trash'} size={15} /> {deleting ? 'Deleting…' : 'Delete forever'}</button>
 				</>
 			}>
 				<p className="text-[13px] leading-6 text-muted">The following receipts will be permanently removed from your local uploads. This action cannot be reversed.</p>
 				<ul className="mt-3 max-h-60 overflow-auto rounded-lg border border-line">
-					{selectedReceipts.map((receipt) => (
+					{deleteTargets.map((receipt) => (
 						<li key={receipt.id} className="flex items-center justify-between gap-3 border-b border-line px-3 py-2 last:border-b-0 text-[13px]">
 							<span className="truncate text-ink">{receipt.filename}</span>
 							<span className="shrink-0 text-xs text-muted">{formatMoney(receipt.amount)}</span>
