@@ -12,6 +12,8 @@ import NotFound from './pages/NotFound'
 import { dispatchOrgChange } from './hooks/useSelectedOrganization'
 import { SyncStatusProvider } from './context/SyncStatusContext'
 import SyncStatusPill from './components/SyncStatusPill'
+import { AgentRunProvider } from './context/AgentRunProvider'
+import AgentStatusPill from './components/AgentStatusPill'
 
 export default function App() {
 	const [page, setPage] = useState(() => {
@@ -71,11 +73,14 @@ export default function App() {
 
 	return (
 		<SyncStatusProvider>
-			<div className="flex min-h-screen bg-paper" style={{ '--sidebar-width': `${sidebar}%` }}>
-				<Sidebar page={page} setPage={setPage} />
-				<main className="mx-auto min-w-0 max-w-360 flex-1 px-[clamp(24px,5vw,72px)] py-13 max-[820px]:px-5 max-[820px]:py-8 max-[560px]:px-3.5 max-[560px]:py-7">{content}</main>
-			</div>
-			<SyncStatusPill />
+			<AgentRunProvider>
+				<div className="flex min-h-screen bg-paper" style={{ '--sidebar-width': `${sidebar}%` }}>
+					<Sidebar page={page} setPage={setPage} />
+					<main className="mx-auto min-w-0 max-w-360 flex-1 px-[clamp(24px,5vw,72px)] py-13 max-[820px]:px-5 max-[820px]:py-8 max-[560px]:px-3.5 max-[560px]:py-7">{content}</main>
+				</div>
+				<SyncStatusPill />
+				<AgentStatusPill />
+			</AgentRunProvider>
 		</SyncStatusProvider>
 	)
 }

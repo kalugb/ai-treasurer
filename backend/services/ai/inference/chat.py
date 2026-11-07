@@ -78,22 +78,26 @@ class LLMInference:
         return str(content).strip()
     
 
-    async def run_llm(self, user_input):        
+    async def run_llm(self, user_input, chat_history=None):
+        # Stateless: history is passed in and the per-call tool log is returned,
+        # so concurrent runs (one shared instance) never corrupt each other.
+        # Returns (response_text, tool_call_log) where tool_call_log is this call's tools only.
+        chat_history = chat_history or []
         sys_message = f"""
 You are a helpful assistant. Reply to user in a concise way. Use chat history if necessary.   
 """
 
         message = [SystemMessage(content=sys_message)]
-        for turn in self.chat_history:
+        for turn in chat_history:
             message.append(HumanMessage(content=turn["user"]))
             message.append(AIMessage(content=turn["assistant"]))
         message.append(HumanMessage(content=user_input))
         
         llm_msg_format = {"messages": message}
         
-        # result = await self.llm_with_fallback.ainvoke(llm_msg_format)
         result = None
         pending_calls = {}
+        tool_call_log = []
         async for chunk in self.llm_with_fallback.astream(llm_msg_format, stream_mode="values"):
             last_msg = chunk["messages"][-1]
             
@@ -116,7 +120,7 @@ You are a helpful assistant. Reply to user in a concise way. Use chat history if
                 }
                 record = pending_calls.pop(call_id, default_record)
                 
-                self.tool_call_log.append({
+                tool_call_log.append({
                     **record,
                     "result": last_msg.content,
                     "status": "error" if getattr(last_msg, "status", None) == "error" else "success",
@@ -128,15 +132,12 @@ You are a helpful assistant. Reply to user in a concise way. Use chat history if
         
         response = result["messages"][-1]
         formatted_response = self._extract_text(response.content)
-        
-        self.chat_history.append({
-            "user": user_input,
-            "assistant": formatted_response
-        })
-        
-        self.chat_history = self.chat_history[-10:]
-        
-        return formatted_response   
+
+        # which provider actually answered this turn (Groq primary, or NVIDIA via fallback)
+        provider = (getattr(response, "response_metadata", {}) or {}).get("model_provider")
+        print(f"Answered by provider: {provider}")
+
+        return formatted_response, tool_call_log
     
     
 if __name__ == "__main__":
@@ -145,6 +146,7 @@ if __name__ == "__main__":
     
     async def main():
         llm_inference = await LLMInference.get_instance()
+        history = []
         
         while True:
             print("Enter your prompt: ")
@@ -154,7 +156,9 @@ if __name__ == "__main__":
                 print("Exiting...")
                 break
             
-            response = await llm_inference.run_llm(user_input)
+            response, _tools = await llm_inference.run_llm(user_input, history)
+            history.append({"user": user_input, "assistant": response})
+            history = history[-10:]
             
             print(f"User input: {user_input}")
             print(f"Reply: {response}")
