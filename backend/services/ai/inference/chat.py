@@ -133,8 +133,14 @@ You are a helpful assistant. Reply to user in a concise way. Use chat history if
         response = result["messages"][-1]
         formatted_response = self._extract_text(response.content)
 
-        # which provider actually answered this turn (Groq primary, or NVIDIA via fallback)
-        provider = (getattr(response, "response_metadata", {}) or {}).get("model_provider")
+        # which provider actually answered — scan back for the last AIMessage carrying
+        # model_provider (messages[-1] can be a ToolMessage, whose metadata is empty -> None)
+        provider = None
+        for msg in reversed(result["messages"]):
+            md = getattr(msg, "response_metadata", {}) or {}
+            if isinstance(msg, AIMessage) and md.get("model_provider"):
+                provider = md["model_provider"]
+                break
         print(f"Answered by provider: {provider}")
 
         return formatted_response, tool_call_log

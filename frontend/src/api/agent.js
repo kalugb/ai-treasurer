@@ -12,6 +12,8 @@ export const agentAPI = {
 		request('/api/agent/messages', { method: 'POST', data: { input, conversationId, userId } }),
 	regenerate: (memoryId, userId = '1') =>
 		request('/api/agent/regenerate', { method: 'POST', data: { memoryId, userId } }),
+	stop: (memoryId, userId = '1') =>
+		request('/api/agent/stop', { method: 'POST', data: { memoryId, userId } }),
 	deleteConversation: (conversationId, userId = '1') =>
 		request(`/api/agent/conversations/${conversationId}`, { method: 'DELETE', params: { userId } }),
 }

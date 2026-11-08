@@ -12,6 +12,11 @@ class RegenerateRequest(BaseModel):
     userId: str = "1"
 
 
+class StopRequest(BaseModel):
+    memoryId: str
+    userId: str = "1"
+
+
 class ToolUsage(BaseModel):
     toolName: str
     toolUsed: int

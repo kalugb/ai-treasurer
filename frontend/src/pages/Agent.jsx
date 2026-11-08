@@ -193,6 +193,12 @@ export default function Agent() {
 		} catch { setSending(false) }
 	}
 
+	const stopResponse = async () => {
+		if (!lastMemoryId) return
+		setSending(false) // stop showing the loader immediately
+		try { await agentAPI.stop(lastMemoryId) } catch { /* stream/error event still flips status */ }
+	}
+
 	const onKeyDown = (e) => {
 		if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
 	}
@@ -256,7 +262,21 @@ export default function Agent() {
 								? <UserMessage key={i} text={m.text} />
 								: <AssistantMessage key={i} text={m.text} />
 						))}
-						{pending && <AssistantMessage pending />}
+						{pending && (
+							<>
+								<AssistantMessage pending />
+								<div className="px-1 pb-4 pl-11">
+									<button
+										type="button"
+										onClick={stopResponse}
+										className="inline-flex items-center gap-2 rounded-lg border border-line bg-white px-3 py-1.5 text-[12px] font-semibold text-muted transition hover:border-red hover:text-red"
+									>
+										<span className="size-2.5 rounded-[2px] bg-current" />
+										Stop response
+									</button>
+								</div>
+							</>
+						)}
 						{failed && (
 							<div className="flex items-center gap-3 px-1 py-4 text-[13px] text-red">
 								<span>The agent failed to generate a response.</span>

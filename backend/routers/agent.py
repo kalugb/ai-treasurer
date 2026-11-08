@@ -1,14 +1,15 @@
 import asyncio
+import asyncio
 import json
 from datetime import datetime, timezone
 
 from bson import ObjectId
 from bson.errors import InvalidId
-from fastapi import APIRouter, HTTPException, Request, Depends, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import StreamingResponse
 
 from services.mongodb import mongodb_ops
-from models.agent import SendMessageRequest, RegenerateRequest
+from models.agent import SendMessageRequest, RegenerateRequest, StopRequest
 
 router = APIRouter(prefix="/api/agent")
 COLLECTION_NAME = "memories"
@@ -16,6 +17,10 @@ COLLECTION_NAME = "memories"
 STATUS_IN_PROGRESS = "In Progress"
 STATUS_SUCCESS = "Successed"
 STATUS_FAILED = "Failed"
+
+# In-flight agent runs, keyed by str(memory_id), so /stop can actually cancel the task.
+# In-process only (single worker); a multi-worker deploy would need the cancel broadcast over Redis.
+_running: dict[str, asyncio.Task] = {}
 
 
 def get_ai_mongo(request: Request):
@@ -75,7 +80,7 @@ async def _publish(redis, user_oid: ObjectId, payload: dict):
 
 
 async def _run_agent(app, user_oid: ObjectId, conversation_oid: ObjectId, memory_id: ObjectId, user_input: str):
-    # Background task: run the shared (stateless) LLM, persist the result, publish status.
+    # Tracked asyncio.Task (see _running): /stop can cancel it to truly kill the in-flight LLM call.
     # Decoupled from any client connection, so navigating away never kills the run.
     ai_mongo = app.state.ai_mongo
     redis = app.state.redis
@@ -93,16 +98,21 @@ async def _run_agent(app, user_oid: ObjectId, conversation_oid: ObjectId, memory
             read_many=True,
         )
         prior = sorted(prior or [], key=lambda d: d.get("time") or datetime.min)
-        history = [{"user": d.get("input", ""), "assistant": d.get("output", "")} for d in prior][-10:]
+        # short-term memory: last 5 completed turns of this conversation
+        history = [{"user": d.get("input", ""), "assistant": d.get("output", "")} for d in prior][-5:]
 
         output, tool_log = await llm.run_llm(user_input, history)
         tools = _aggregate_tools(tool_log)
 
-        await mongodb_ops.update(
+        # Only write success if the turn is still In Progress — a user "stop" may have
+        # already flipped it to Failed; don't resurrect a stopped turn.
+        matched = await mongodb_ops.update(
             ai_mongo, collection_name=collection,
-            query={"_id": memory_id},
+            query={"_id": memory_id, "status": STATUS_IN_PROGRESS},
             update_data={"output": output, "tools": tools, "status": STATUS_SUCCESS},
         )
+        if not matched:
+            return  # stopped/overtaken; leave the existing (Failed) status and don't publish done
         await _publish(redis, user_oid, {
             "event": "done",
             "conversationId": str(conversation_oid),
@@ -110,6 +120,22 @@ async def _run_agent(app, user_oid: ObjectId, conversation_oid: ObjectId, memory
             "status": STATUS_SUCCESS,
             "output": output,
         })
+    except asyncio.CancelledError:
+        # /stop cancelled the task: kill the run, mark Failed, tell the UI.
+        print(f"agent run cancelled: {memory_id}")
+        await mongodb_ops.update(
+            ai_mongo, collection_name=collection,
+            query={"_id": memory_id},
+            update_data={"status": STATUS_FAILED, "error": "Stopped by user"},
+        )
+        await _publish(redis, user_oid, {
+            "event": "error",
+            "conversationId": str(conversation_oid),
+            "memoryId": str(memory_id),
+            "status": STATUS_FAILED,
+            "detail": "Stopped by user.",
+        })
+        raise
     except Exception as e:
         print(f"agent run failed: {e}")
         await mongodb_ops.update(
@@ -124,6 +150,14 @@ async def _run_agent(app, user_oid: ObjectId, conversation_oid: ObjectId, memory
             "status": STATUS_FAILED,
             "detail": "Agent run failed.",
         })
+    finally:
+        _running.pop(str(memory_id), None)
+
+
+def _spawn_run(app, user_oid, conversation_oid, memory_id, user_input):
+    task = asyncio.create_task(_run_agent(app, user_oid, conversation_oid, memory_id, user_input))
+    _running[str(memory_id)] = task
+    return task
 
 
 @router.delete("/conversations/{conversation_id}")
@@ -183,7 +217,7 @@ async def get_messages(conversation_id: str, userId: str = "1", ai_mongo=Depends
 
 
 @router.post("/messages", status_code=202)
-async def send_message(req: SendMessageRequest, background: BackgroundTasks, request: Request, ai_mongo=Depends(get_ai_mongo)):
+async def send_message(req: SendMessageRequest, request: Request, ai_mongo=Depends(get_ai_mongo)):
     if ai_mongo is None:
         raise HTTPException(status_code=503, detail="AI database not available")
     user_oid = _user_oid(req.userId)
@@ -207,13 +241,13 @@ async def send_message(req: SendMessageRequest, background: BackgroundTasks, req
         "status": STATUS_IN_PROGRESS,
     })
 
-    background.add_task(_run_agent, request.app, user_oid, conversation_oid, memory_id, req.input)
+    _spawn_run(request.app, user_oid, conversation_oid, memory_id, req.input)
 
     return {"conversationId": str(conversation_oid), "memoryId": str(memory_id), "status": STATUS_IN_PROGRESS}
 
 
 @router.post("/regenerate", status_code=202)
-async def regenerate(req: RegenerateRequest, background: BackgroundTasks, request: Request, ai_mongo=Depends(get_ai_mongo)):
+async def regenerate(req: RegenerateRequest, request: Request, ai_mongo=Depends(get_ai_mongo)):
     if ai_mongo is None:
         raise HTTPException(status_code=503, detail="AI database not available")
     user_oid = _user_oid(req.userId)
@@ -239,9 +273,46 @@ async def regenerate(req: RegenerateRequest, background: BackgroundTasks, reques
         "memoryId": str(memory_id),
         "status": STATUS_IN_PROGRESS,
     })
-    background.add_task(_run_agent, request.app, user_oid, conversation_oid, memory_id, doc.get("input", ""))
+    _spawn_run(request.app, user_oid, conversation_oid, memory_id, doc.get("input", ""))
 
     return {"conversationId": str(conversation_oid), "memoryId": str(memory_id), "status": STATUS_IN_PROGRESS}
+
+
+@router.post("/stop", status_code=202)
+async def stop(req: StopRequest, request: Request, ai_mongo=Depends(get_ai_mongo)):
+    # User stopped the response: cancel the in-flight task (truly kills the LLM call) and mark Failed.
+    if ai_mongo is None:
+        raise HTTPException(status_code=503, detail="AI database not available")
+    user_oid = _user_oid(req.userId)
+    memory_id = _parse_oid(req.memoryId, "memoryId")
+
+    doc = await mongodb_ops.read(ai_mongo, collection_name=COLLECTION_NAME, query={"_id": memory_id, "userId": user_oid})
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Memory not found")
+
+    conversation_oid = doc["conversationId"]
+    task = _running.get(str(memory_id))
+    if task is not None and not task.done():
+        task.cancel()  # raises CancelledError into _run_agent, which marks Failed + publishes error
+        return {"memoryId": str(memory_id), "status": STATUS_FAILED}
+
+    # No live task (already finished, or a different worker). Only flip if still In Progress.
+    matched = await mongodb_ops.update(
+        ai_mongo, collection_name=COLLECTION_NAME,
+        query={"_id": memory_id, "status": STATUS_IN_PROGRESS},
+        update_data={"status": STATUS_FAILED, "error": "Stopped by user"},
+    )
+    if matched:
+        await _publish(request.app.state.redis, user_oid, {
+            "event": "error",
+            "conversationId": str(conversation_oid),
+            "memoryId": str(memory_id),
+            "status": STATUS_FAILED,
+            "detail": "Stopped by user.",
+        })
+    # Idempotent: if the run already finished, report its current status rather than 404.
+    current = await mongodb_ops.read(ai_mongo, collection_name=COLLECTION_NAME, query={"_id": memory_id})
+    return {"memoryId": str(memory_id), "status": current.get("status", STATUS_FAILED)}
 
 
 @router.get("/stream")
