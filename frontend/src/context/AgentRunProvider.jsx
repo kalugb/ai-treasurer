@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { agentStreamUrl } from '../api/agent'
 import { AgentRunContext } from './agentRun'
 
-const USER_ID = '1' // pre-auth placeholder, matches backend
+const USER_ID = import.meta.env.VITE_TEMP_USER_ID ?? '1' // temp pre-auth user, set in frontend/.env
 
 // Global AI-agent run status. One SSE connection (mounted once in App) carries status
 // for every conversation of the user, so runs survive in-app navigation with no refresh.

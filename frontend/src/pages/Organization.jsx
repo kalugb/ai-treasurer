@@ -3,6 +3,8 @@ import Icon from '../components/Icon'
 import { button } from '../components/button'
 import { organizationAPI } from '../api/organization'
 
+const TEMP_USER_ID = import.meta.env.VITE_TEMP_USER_ID ?? '1' // temp pre-auth user, set in frontend/.env
+
 // eslint-disable-next-line no-unused-vars
 const getPublicIP = async () => {
 	try {
@@ -39,7 +41,7 @@ export default function Organization({ selectedId = null, onSelect }) {
 		const fetchOrganizations = async () => {
 			try {
 				// const ownerId = await getPublicIP()
-				const ownerId = "1"
+				const ownerId = TEMP_USER_ID
 				ownerIdRef.current = ownerId
 				const res = await organizationAPI.getOrganization(ownerId)
 				const items = Array.isArray(res)
@@ -84,7 +86,7 @@ export default function Organization({ selectedId = null, onSelect }) {
 		setSaving(true)
 		try {
 			// const ownerId = ownerIdRef.current ?? await getPublicIP()
-			const ownerId = ownerIdRef.current ?? "1"
+			const ownerId = ownerIdRef.current ?? TEMP_USER_ID
 			ownerIdRef.current = ownerId
 			if (editingId === null) {
 				const created = await organizationAPI.createOrganization({ orgName: value, ownerId })

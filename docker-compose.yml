@@ -16,6 +16,8 @@ services:
       - "8080:80"
     depends_on:
       - backend
+    env_file:
+      - ./frontend/.env
 
   redis:
     image: redis:7-alpine
