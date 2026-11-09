@@ -9,7 +9,7 @@ import { receiptsAPI } from '../api/receipts'
 import { OrganizationRequiredEmptyState } from '../components/OrganizationContext'
 import { useSelectedOrganization } from '../hooks/useSelectedOrganization'
 import { useSyncStatus } from '../context/syncStatus'
-import Toast from '../components/Toast'
+import { useToast } from '../context/toast'
 import Modal from '../components/Modal'
 
 const formatMoney = (amount) => amount == null ? '—' : `$${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -184,7 +184,7 @@ export default function Folders({ goTo }) {
 	const team = teams[selectedIndex]
 	const [driveReceipts, setDriveReceipts] = useState([])
 	const [refreshing, setRefreshing] = useState(false)
-	const [toast, setToast] = useState(null)
+	const { push } = useToast()
 	const [addOpen, setAddOpen] = useState(false)
 	const [selecting, setSelecting] = useState(false)
 	const [selectedIds, setSelectedIds] = useState(() => new Set())
@@ -220,13 +220,13 @@ export default function Folders({ goTo }) {
 		const mapped = toReceipt(updated)
 		setDriveReceipts((list) => list.map((r) => r.googleDriveFileId === fileId ? mapped : r))
 		setPreview((current) => current && current.googleDriveFileId === fileId ? mapped : current)
-		setToast({ message: 'Receipt details saved.', type: 'success' })
+		push('Receipt details saved.', 'success')
 	}
 
 	const handleUploadReceipt = async (formData) => {
 		const created = toReceipt(await receiptsAPI.upload(team.id, formData))
 		setDriveReceipts((list) => [created, ...list])
-		setToast({ message: 'Receipt uploaded.', type: 'success' })
+		push('Receipt uploaded.', 'success')
 	}
 
 	const exitSelection = () => { setSelecting(false); setSelectedIds(new Set()) }
@@ -248,9 +248,9 @@ export default function Folders({ goTo }) {
 			setPreview((current) => current && removed.has(current.id) ? null : current)
 			exitSelection()
 			setDeleteTargets([])
-			setToast({ message: `Deleted ${ids.length} receipt${ids.length === 1 ? '' : 's'}.`, type: 'success' })
+			push(`Deleted ${ids.length} receipt${ids.length === 1 ? '' : 's'}.`, 'success')
 		} catch {
-			setToast({ message: 'Delete failed.', type: 'error' })
+			push('Delete failed.', 'error')
 		} finally {
 			setDeleting(false)
 		}
@@ -261,9 +261,9 @@ export default function Folders({ goTo }) {
 		setRefreshing(true)
 		try {
 			setDriveReceipts(await fetchReceipts(team.id, true))
-			setToast({ message: 'Receipts refreshed.', type: 'success' })
+			push('Receipts refreshed.', 'success')
 		} catch {
-			setToast({ message: 'Refresh failed.', type: 'error' })
+			push('Refresh failed.', 'error')
 		} finally {
 			setRefreshing(false)
 		}
@@ -360,7 +360,6 @@ export default function Folders({ goTo }) {
 				onDelete={() => setDeleteTargets([preview])}
 				deleting={deleting}
 			/>
-			{toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 			<AddReceiptModal open={addOpen} onClose={() => setAddOpen(false)} onUpload={handleUploadReceipt} />
 			<Modal isOpen={deleteTargets.length > 0} onClose={() => { if (!deleting) setDeleteTargets([]) }} title={`Delete ${deleteTargets.length} receipt${deleteTargets.length === 1 ? '' : 's'}?`} footer={
 				<>

@@ -1,35 +1,30 @@
-import Icon from './Icon'
-import Toast from './Toast'
+import { useEffect, useRef } from 'react'
 import { useSyncStatus } from '../context/syncStatus'
+import { useToast } from '../context/toast'
 
-// Fixed top-right status for Google Drive sync, visible on any page.
-// Syncing: a persistent spinner pill. Done/error: an auto-dismissing Toast.
+// Bridges sync status -> shared toast stack. The blue "Syncing…" pill is rendered by ToastStack
+// (so it shares the stack and never gets covered); done/error are pushed as transient toasts here.
 export default function SyncStatusPill() {
 	const { status, result, error, dismiss } = useSyncStatus()
+	const { push } = useToast()
+	const shownRef = useRef(null) // guard so each outcome is toasted once
 
-	if (status === 'syncing') {
-		return (
-			<div className="fixed top-5 right-5 z-50 flex items-center gap-3 rounded-lg border border-line/50 bg-white px-4 py-3 text-blue shadow-xl animate-slide-in" role="status" aria-live="polite">
-				<Icon name="spinner" size={16} className="shrink-0" />
-				<span className="text-[13px] font-medium">Syncing Google Drive…</span>
-			</div>
-		)
-	}
-
-	if (status === 'done') {
-		const r = result || {}
-		return (
-			<Toast
-				type="success"
-				message={`Sync complete · ${r.inserted ?? 0} new, ${r.updated ?? 0} updated, ${r.deleted ?? 0} removed`}
-				onClose={dismiss}
-			/>
-		)
-	}
-
-	if (status === 'error') {
-		return <Toast type="error" message={error || 'Sync failed.'} onClose={dismiss} />
-	}
+	useEffect(() => {
+		if (status === 'done') {
+			if (shownRef.current === 'done') return
+			shownRef.current = 'done'
+			const r = result || {}
+			push(`Sync complete · ${r.inserted ?? 0} new, ${r.updated ?? 0} updated, ${r.deleted ?? 0} removed`, 'success')
+			dismiss()
+		} else if (status === 'error') {
+			if (shownRef.current === 'error') return
+			shownRef.current = 'error'
+			push(error || 'Sync failed.', 'error')
+			dismiss()
+		} else {
+			shownRef.current = null
+		}
+	}, [status, result, error, push, dismiss])
 
 	return null
 }

@@ -4,16 +4,14 @@ import { button } from '../components/button'
 import { useGoogleIntegration } from '../hooks/useGoogleIntegration'
 import { googleAPI } from '../api/googleConnect'
 import Modal from '../components/Modal'
-import Toast from '../components/Toast'
+import { useToast } from '../context/toast'
 
 export default function Integration() {
 	const { connected, setConnected, loading, setLoading } = useGoogleIntegration();
 	const [showDisconnectModal, setShowDisconnectModal] = useState(false);
-	const [toast, setToast] = useState(null);
+	const { push } = useToast();
 
-	const showToast = (message, type = 'success') => {
-		setToast({ message, type });
-	};
+	const showToast = (message, type = 'success') => push(message, type);
 
 	const handleGoogleIntegration = async () => {
 		if (connected) {
@@ -83,13 +81,6 @@ export default function Integration() {
 					</button>
 				</div>
 			</Modal>
-			{toast && (
-				<Toast
-					message={toast.message}
-					type={toast.type}
-					onClose={() => setToast(null)}
-				/>
-			)}
 		</>
 	)
 }

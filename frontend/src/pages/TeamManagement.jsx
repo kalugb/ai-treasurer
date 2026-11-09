@@ -6,7 +6,7 @@ import { teamsAPI } from '../api/teams'
 import { receiptsAPI } from '../api/receipts'
 import { OrganizationRequiredEmptyState } from '../components/OrganizationContext'
 import { useSelectedOrganization } from '../hooks/useSelectedOrganization'
-import Toast from '../components/Toast'
+import { useToast } from '../context/toast'
 
 const users = ['Alex Morgan', 'Jamie Lee', 'Sam Rivera', 'Priya Shah', 'Taylor Kim']
 const roles = ['Lead', 'Co-Lead', 'Member']
@@ -218,7 +218,7 @@ export default function TeamManagement() {
 	const [showForm, setShowForm] = useState(false)
 	const [loading, setLoading] = useState(false)
 	const [serverError, setServerError] = useState(null)
-	const [toast, setToast] = useState(null)
+	const { push } = useToast()
 
 	useEffect(() => {
 		if (!organization?.id) return
@@ -226,11 +226,11 @@ export default function TeamManagement() {
 		teamsAPI.getTeams(organization.id, organization.ownerId)
 			.then((res) => setTeams(Array.isArray(res) ? res : []))
 			.catch((e) => {
-				if (e?.response?.status === 403) setToast({ type: 'error', message: 'Not authorized for this organization.' })
+				if (e?.response?.status === 403) push('Not authorized for this organization.', 'error')
 				else if (e?.response?.status !== 404) console.error(e)
 			})
 			.finally(() => setLoading(false))
-	}, [organization?.id, organization?.ownerId])
+	}, [organization?.id, organization?.ownerId, push])
 
 	useEffect(() => {
 		if (!organization?.id) setTeams([])
@@ -271,7 +271,7 @@ export default function TeamManagement() {
 		} catch (e) {
 				const detail = e?.response?.data?.detail || 'Failed to save team.'
 			if (e?.response?.status === 409) throw new Error(detail, { cause: e })
-			setToast({ type: 'error', message: detail })
+			push(detail, 'error')
 			throw new Error(detail, { cause: e })
 		}
 	}
@@ -287,7 +287,7 @@ export default function TeamManagement() {
 			setShowForm(false)
 			setEditingTeam(null)
 			setServerError(null)
-			setToast({ type: 'success', message: editingTeam ? `Team "${nextTeam.name}" updated successfully` : `Team "${nextTeam.name}" created successfully` })
+			push(editingTeam ? `Team "${nextTeam.name}" updated successfully` : `Team "${nextTeam.name}" created successfully`, 'success')
 		} catch (e) {
 			if (e?.message?.includes('already exists')) setServerError(e.message)
 			else if (e?.response?.status === 409) setServerError(e.response.data.detail)
@@ -299,9 +299,9 @@ export default function TeamManagement() {
 			const team = teams.find(t => t.id === id)
 			await onDeleteTeam(id)
 			setDeleteTeam(null)
-			setToast({ type: 'success', message: team ? `Team "${team.name}" deleted successfully` : 'Team deleted successfully' })
+			push(team ? `Team "${team.name}" deleted successfully` : 'Team deleted successfully', 'success')
 		} catch (e) {
-			setToast({ type: 'error', message: e?.response?.data?.detail || 'Failed to delete team.' })
+			push(e?.response?.data?.detail || 'Failed to delete team.', 'error')
 		}
 	}
 	if (!organization) return <>
@@ -311,14 +311,6 @@ export default function TeamManagement() {
 
 	return (
 		<>
-			{toast && (
-				<Toast
-					message={toast.message}
-					type={toast.type}
-					onClose={() => setToast(null)}
-					duration={5000}
-				/>
-			)}
 			<header className="mb-9 flex items-end justify-between gap-6 max-[820px]:flex-col max-[820px]:items-start">
 				<div>
 					<p className="mb-2.5 text-[11px] font-bold tracking-widest text-muted uppercase">Finance / Team management — {organization.orgName}</p>

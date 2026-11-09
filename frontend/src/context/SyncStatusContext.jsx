@@ -48,15 +48,27 @@ export function SyncStatusProvider({ children }) {
 			closeSource()
 		})
 		source.addEventListener('error', (event) => {
-			// SSE 'error' event: either our server-sent error payload, or a transport drop
-			let detail = 'Sync failed. Check the Google Drive connection.'
+			// EventSource fires a native 'error' on every stream close too — including the normal
+			// close right after our 'done'. Only a server-sent payload (event.data) is a real failure;
+			// a dataless close means the stream ended (done/error already handled) — ignore it so a
+			// successful sync isn't flipped to "failed". A real transport drop leaves readyState
+			// CONNECTING (reconnecting) while we never got a terminal event -> surface that.
 			if (event?.data) {
+				let detail = 'Sync failed. Check the Google Drive connection.'
 				try { detail = JSON.parse(event.data).detail || detail } catch { /* keep default */ }
+				setError(detail)
+				setStatus('error')
+				setCompletedAt((n) => n + 1)
+				closeSource()
+				return
 			}
-			setError(detail)
-			setStatus('error')
-			setCompletedAt((n) => n + 1)
-			closeSource()
+			// dataless: only an error if we're still syncing and the socket genuinely broke
+			if (sourceRef.current && source.readyState !== EventSource.CLOSED) {
+				setError('Sync connection lost. Check the Google Drive connection.')
+				setStatus('error')
+				setCompletedAt((n) => n + 1)
+				closeSource()
+			}
 		})
 	}, [status])
 
