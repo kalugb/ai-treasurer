@@ -7,6 +7,7 @@ import Modal from '../components/Modal'
 import { button } from '../components/button'
 import { agentAPI } from '../api/agent'
 import { useAgentRun } from '../context/agentRun'
+import { useSelectedOrganization } from '../hooks/useSelectedOrganization'
 
 // Tailwind-styled element overrides so agent Markdown renders clean (no raw **/##/* chars).
 const mdComponents = {
@@ -94,6 +95,7 @@ function ConversationRow({ conv, active, status, onSelect, onDelete }) {
 
 export default function Agent() {
 	const { runs, completedAt, notifyStarted } = useAgentRun()
+	const organization = useSelectedOrganization()
 	const [conversations, setConversations] = useState([])
 	const [conversationId, setConversationId] = useState(null) // null = unsent new chat
 	const [messages, setMessages] = useState([]) // [{role, text}]
@@ -171,7 +173,7 @@ export default function Agent() {
 		setSending(true) // show the loader immediately, before the POST resolves
 		setMessages((prev) => [...prev, { role: 'user', text }])
 		try {
-			const res = await agentAPI.sendMessage(text, conversationId)
+			const res = await agentAPI.sendMessage(text, conversationId, organization?.id ?? null)
 			if (!conversationId) {
 				setConversationId(res.conversationId)
 				agentAPI.listConversations().then((r) => setConversations(r || [])).catch(() => {})
@@ -264,7 +266,7 @@ export default function Agent() {
 						))}
 						{pending && (
 							<>
-								<AssistantMessage pending />
+								<AssistantMessage text={run?.output || ''} pending={!run?.output} />
 								<div className="px-1 pb-4 pl-11">
 									<button
 										type="button"

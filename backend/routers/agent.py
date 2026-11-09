@@ -79,7 +79,7 @@ async def _publish(redis, user_oid: ObjectId, payload: dict):
         print(f"agent publish failed: {e}")
 
 
-async def _run_agent(app, user_oid: ObjectId, conversation_oid: ObjectId, memory_id: ObjectId, user_input: str):
+async def _run_agent(app, user_oid: ObjectId, conversation_oid: ObjectId, memory_id: ObjectId, user_input: str, owner_id: str, org_id: str | None):
     # Tracked asyncio.Task (see _running): /stop can cancel it to truly kill the in-flight LLM call.
     # Decoupled from any client connection, so navigating away never kills the run.
     ai_mongo = app.state.ai_mongo
@@ -101,7 +101,15 @@ async def _run_agent(app, user_oid: ObjectId, conversation_oid: ObjectId, memory
         # short-term memory: last 5 completed turns of this conversation
         history = [{"user": d.get("input", ""), "assistant": d.get("output", "")} for d in prior][-5:]
 
-        output, tool_log = await llm.run_llm(user_input, history)
+        async def on_delta(text):
+            await _publish(redis, user_oid, {
+                "event": "delta",
+                "conversationId": str(conversation_oid),
+                "memoryId": str(memory_id),
+                "delta": text,
+            })
+
+        output, tool_log = await llm.run_llm(user_input, history, {"owner_id": owner_id, "org_id": org_id}, on_delta=on_delta)
         tools = _aggregate_tools(tool_log)
 
         # Only write success if the turn is still In Progress — a user "stop" may have
@@ -154,8 +162,8 @@ async def _run_agent(app, user_oid: ObjectId, conversation_oid: ObjectId, memory
         _running.pop(str(memory_id), None)
 
 
-def _spawn_run(app, user_oid, conversation_oid, memory_id, user_input):
-    task = asyncio.create_task(_run_agent(app, user_oid, conversation_oid, memory_id, user_input))
+def _spawn_run(app, user_oid, conversation_oid, memory_id, user_input, owner_id, org_id):
+    task = asyncio.create_task(_run_agent(app, user_oid, conversation_oid, memory_id, user_input, owner_id, org_id))
     _running[str(memory_id)] = task
     return task
 
@@ -229,6 +237,7 @@ async def send_message(req: SendMessageRequest, request: Request, ai_mongo=Depen
         "input": req.input,
         "output": None,
         "tools": [],
+        "orgId": req.orgId,  # scope for this turn; regenerate reuses it
         "time": datetime.now(timezone.utc),
         "status": STATUS_IN_PROGRESS,
     }
@@ -241,7 +250,7 @@ async def send_message(req: SendMessageRequest, request: Request, ai_mongo=Depen
         "status": STATUS_IN_PROGRESS,
     })
 
-    _spawn_run(request.app, user_oid, conversation_oid, memory_id, req.input)
+    _spawn_run(request.app, user_oid, conversation_oid, memory_id, req.input, req.userId, req.orgId)
 
     return {"conversationId": str(conversation_oid), "memoryId": str(memory_id), "status": STATUS_IN_PROGRESS}
 
@@ -273,7 +282,7 @@ async def regenerate(req: RegenerateRequest, request: Request, ai_mongo=Depends(
         "memoryId": str(memory_id),
         "status": STATUS_IN_PROGRESS,
     })
-    _spawn_run(request.app, user_oid, conversation_oid, memory_id, doc.get("input", ""))
+    _spawn_run(request.app, user_oid, conversation_oid, memory_id, doc.get("input", ""), req.userId, doc.get("orgId"))
 
     return {"conversationId": str(conversation_oid), "memoryId": str(memory_id), "status": STATUS_IN_PROGRESS}
 

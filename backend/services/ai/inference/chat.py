@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, ToolMessage
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, ToolMessage, AIMessageChunk
 from langchain.agents import create_agent
 from langchain.agents.middleware import ModelFallbackMiddleware, ModelRetryMiddleware
 import sys
@@ -16,6 +16,7 @@ from services.ai.load_models.load_groq import load_groq_llm
 from services.ai.tools.sample_tool import get_current_time, add_numbers, get_weather
 from services.ai.tools.web_search_tools import web_search
 from services.ai.tools.google_tools import search_drive_files, list_drive_folders, list_folder_contents
+from services.ai.tools.treasury_tools import get_teams_overview, get_team_receipts, AgentContext
 
 class LLMInference:
     def __init__(self):
@@ -36,12 +37,14 @@ class LLMInference:
         
         self.tools = [
             get_current_time, add_numbers, get_weather, web_search, 
-            search_drive_files, list_drive_folders, list_folder_contents
+            search_drive_files, list_drive_folders, list_folder_contents,
+            get_teams_overview, get_team_receipts
         ]
         
         self.llm_with_fallback = create_agent(
             model=groq_llm,
             tools=self.tools, # tools are empty for now, add later
+            context_schema=AgentContext,  # per-call user/org scope for the treasury tools
             middleware=[
                 ModelRetryMiddleware(
                     max_retries=2,
@@ -78,13 +81,17 @@ class LLMInference:
         return str(content).strip()
     
 
-    async def run_llm(self, user_input, chat_history=None):
+    async def run_llm(self, user_input, chat_history=None, context: dict | None = None, on_delta=None):
         # Stateless: history is passed in and the per-call tool log is returned,
         # so concurrent runs (one shared instance) never corrupt each other.
+        # context carries the per-call user/org scope (AgentContext) for the treasury tools.
+        # on_delta(text): optional async callback invoked per token chunk for live streaming.
         # Returns (response_text, tool_call_log) where tool_call_log is this call's tools only.
         chat_history = chat_history or []
         sys_message = f"""
-You are a helpful assistant. Reply to user in a concise way. Use chat history if necessary.   
+You are a helpful assistant. Reply to user in a concise way. Use chat history if necessary.
+You can read the user's teams, budgets, and receipts with get_teams_overview and get_team_receipts
+(read-only; they are scoped to the user's own organization and cannot modify anything).
 """
 
         message = [SystemMessage(content=sys_message)]
@@ -94,11 +101,23 @@ You are a helpful assistant. Reply to user in a concise way. Use chat history if
         message.append(HumanMessage(content=user_input))
         
         llm_msg_format = {"messages": message}
+        run_context = AgentContext(**context) if context else AgentContext()
         
         result = None
         pending_calls = {}
         tool_call_log = []
-        async for chunk in self.llm_with_fallback.astream(llm_msg_format, stream_mode="values"):
+        # messages mode -> token chunks for live streaming; values mode -> accumulated state for tool tracking
+        async for mode, chunk in self.llm_with_fallback.astream(llm_msg_format, context=run_context, stream_mode=["messages", "values"]):
+            if mode == "messages":
+                msg, meta = chunk
+                # only stream the final answer tokens (the "model" node), not tool-call scaffolding
+                if on_delta is not None and isinstance(msg, AIMessageChunk) and meta.get("langgraph_node") == "model":
+                    # don't strip per-chunk whitespace — it joins into the final text verbatim
+                    text = msg.content if isinstance(msg.content, str) else self._extract_text(msg.content)
+                    if text:
+                        await on_delta(text)
+                continue
+
             last_msg = chunk["messages"][-1]
             
             # record tool calling events

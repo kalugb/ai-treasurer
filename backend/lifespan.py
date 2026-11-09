@@ -10,6 +10,8 @@ from services.mongodb.mongodb_connect import connect_to_mongodb
 from services.supabase.supabase_connect import get_supabase_client
 from services.ai.inference.chat import LLMInference
 
+from services.ai.tools import treasury_tools
+
 from dotenv import load_dotenv
 import os
 
@@ -88,7 +90,9 @@ async def lifespan(app: FastAPI):
     app.state.sessions = SessionStore(redis_client)
     app.state.cache = CacheStore(redis_client, bytes_redis_client=bytes_redis_client)
     app.state.mongo = mongodb_database_client
-    # second DB handle on the same client for the AI agent's chat memory (db: ai, collection: memories)
+
+    treasury_tools.set_mongo(mongodb_database_client)
+
     app.state.ai_mongo = mongodb_client["ai"] if mongodb_client else None
     app.state.redis = redis_client  # shared for agent run pub/sub
     app.state.llm_inference = llm_inference

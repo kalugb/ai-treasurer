@@ -28,6 +28,24 @@ export function AgentRunProvider({ children }) {
 		if (status !== 'In Progress') setCompletedAt((n) => n + 1)
 	}, [])
 
+	// delta: append a streamed token chunk to the run's output, leaving status untouched.
+	const applyDelta = useCallback((payload) => {
+		const { conversationId, memoryId, delta } = payload
+		if (!conversationId || !delta) return
+		setRuns((prev) => {
+			const current = prev[conversationId]
+			return {
+				...prev,
+				[conversationId]: {
+					status: current?.status ?? 'In Progress',
+					memoryId: memoryId ?? current?.memoryId ?? null,
+					output: (current?.output ?? '') + delta,
+					completedAt: current?.completedAt ?? 0,
+				},
+			}
+		})
+	}, [])
+
 	useEffect(() => {
 		if (typeof EventSource === 'undefined') return
 
@@ -51,6 +69,9 @@ export function AgentRunProvider({ children }) {
 			try { applyEvent(JSON.parse(event.data)) } catch { /* ignore */ }
 		}
 		source.addEventListener('running', onStatus)
+		source.addEventListener('delta', (event) => {
+			try { applyDelta(JSON.parse(event.data)) } catch { /* ignore */ }
+		})
 		source.addEventListener('done', onStatus)
 		source.addEventListener('error', (event) => {
 			// Only our server-sent error payloads carry data; transport errors have none (EventSource auto-reconnects).
@@ -61,7 +82,7 @@ export function AgentRunProvider({ children }) {
 			source.close()
 			sourceRef.current = null
 		}
-	}, [applyEvent])
+	}, [applyEvent, applyDelta])
 
 	// Optimistic: mark a conversation In Progress the moment the user sends, before the stream confirms.
 	const notifyStarted = useCallback((conversationId, memoryId) => {

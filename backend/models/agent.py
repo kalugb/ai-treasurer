@@ -5,6 +5,7 @@ class SendMessageRequest(BaseModel):
     input: str = Field(min_length=1)
     conversationId: str | None = None  # None -> start a new conversation
     userId: str = "1"  # pre-auth placeholder; mapped to a sentinel ObjectId server-side
+    orgId: str | None = None  # selected organization; scopes the treasury tools (rides the request now, moves to session/auth later)
 
 
 class RegenerateRequest(BaseModel):
