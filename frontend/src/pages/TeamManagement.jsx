@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import Icon from '../components/Icon'
 import { button } from '../components/button'
 import { teamsAPI } from '../api/teams'
+import { receiptsAPI } from '../api/receipts'
 import { OrganizationRequiredEmptyState } from '../components/OrganizationContext'
 import { useSelectedOrganization } from '../hooks/useSelectedOrganization'
 import Toast from '../components/Toast'
@@ -204,13 +205,14 @@ function DeleteModal({ team, onClose, onDelete }) {
 	)
 }
 
-function usagePercent(team) {
-	return team.budget > 0 ? Math.round((team.used / team.budget) * 100) : 0
+function usagePercent(team, used) {
+	return team.budget > 0 ? Math.round((used / team.budget) * 100) : 0
 }
 
 export default function TeamManagement() {
 	const organization = useSelectedOrganization()
 	const [teams, setTeams] = useState([])
+	const [usedByTeam, setUsedByTeam] = useState({})
 	const [editingTeam, setEditingTeam] = useState(null)
 	const [deleteTeam, setDeleteTeam] = useState(null)
 	const [showForm, setShowForm] = useState(false)
@@ -233,6 +235,18 @@ export default function TeamManagement() {
 	useEffect(() => {
 		if (!organization?.id) setTeams([])
 	}, [organization?.id])
+
+	// derive real spend per team from receipt amounts (team.used in Mongo is stale/0), matching Folders
+	useEffect(() => {
+		if (!teams.length) { setUsedByTeam({}); return }
+		let cancelled = false
+		Promise.all(teams.map((team) =>
+			receiptsAPI.getReceipts(team.id)
+				.then((list) => [team.id, (Array.isArray(list) ? list : []).reduce((sum, r) => sum + (r.receiptAmount ?? 0), 0)])
+				.catch(() => [team.id, 0])
+		)).then((entries) => { if (!cancelled) setUsedByTeam(Object.fromEntries(entries)) })
+		return () => { cancelled = true }
+	}, [teams])
 
 	useEffect(() => {
 		const autoEditTeamId = sessionStorage.getItem('autoEditTeamId')
@@ -315,7 +329,8 @@ export default function TeamManagement() {
 			</header>
 			<section className="grid gap-3">
 				{loading ? <div className="grid min-h-32 place-items-center rounded-[14px] border border-line bg-white p-8"><p className="text-sm text-muted">Loading teams…</p></div> : teams.length ? teams.map((team) => {
-					const percentage = usagePercent(team)
+					const used = usedByTeam[team.id] ?? 0
+					const percentage = usagePercent(team, used)
 					return (
 						<article className="rounded-[14px] border border-line bg-white p-5" key={team.id}>
 							<div className="flex items-start justify-between gap-4 max-[700px]:flex-col">
@@ -330,7 +345,7 @@ export default function TeamManagement() {
 							</div>
 							<div className="mt-5 grid grid-cols-[1.2fr_1fr] gap-6 border-t border-line pt-5 max-[700px]:grid-cols-1">
 								<div>
-									<div className="mb-2 flex items-end justify-between gap-3"><div><p className="text-[11px] font-bold tracking-[0.08em] text-muted uppercase">Budget used</p><p className="mt-1 font-display text-[18px] text-ink">${(team.used ?? 0).toLocaleString()} <span className="font-body text-xs text-muted">/ ${(team.budget ?? 0).toLocaleString()}</span></p></div><strong className={percentage >= 90 ? 'text-red-600' : 'text-blue'}>{percentage}%</strong></div>
+									<div className="mb-2 flex items-end justify-between gap-3"><div><p className="text-[11px] font-bold tracking-[0.08em] text-muted uppercase">Budget used</p><p className="mt-1 font-display text-[18px] text-ink">${(used).toLocaleString()} <span className="font-body text-xs text-muted">/ ${(team.budget ?? 0).toLocaleString()}</span></p></div><strong className={percentage >= 90 ? 'text-red-600' : 'text-blue'}>{percentage}%</strong></div>
 									<div className="h-2 overflow-hidden rounded-full bg-blue-soft"><div className={percentage >= 90 ? 'h-full rounded-full bg-red-500' : 'h-full rounded-full bg-blue'} style={{ width: `${Math.min(100, percentage)}%` }} /></div>
 								</div>
 								<div><p className="mb-2 text-[11px] font-bold tracking-[0.08em] text-muted uppercase">Team members</p><div className="flex flex-wrap gap-2">{(team.members ?? []).length ? team.members.map((member) => <span className="rounded-full bg-paper px-3 py-1.5 text-xs text-ink" key={`${member.name}-${member.role}`}>{member.name} <span className="text-muted">· {member.role}</span></span>) : <span className="text-xs text-muted">No members yet — edit to add.</span>}</div></div>

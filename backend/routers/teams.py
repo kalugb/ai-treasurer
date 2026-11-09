@@ -4,14 +4,19 @@ from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import APIRouter, HTTPException, Request, Depends, Response
 
+from starlette.concurrency import run_in_threadpool
+
 from services.mongodb import mongodb_ops
 from services.redis.cache import CacheStore
+from services.supabase import supabase_ops
 from models.team import CreateTeamRequest, UpdateTeamRequest
 
 router = APIRouter(prefix="/api")
 COLLECTION_NAME = "departments"
 ORG_COLLECTION = "organizations"
+RECEIPTS_COLLECTION = "receipts"
 CACHE_KEY_NAME = "departments"
+RECEIPTS_CACHE_KEY_NAME = "receipts"
 
 def get_mongo(request: Request):
     return request.app.state.mongo
@@ -165,6 +170,19 @@ async def delete_team(team_id: str, orgId: str | None = None, ownerId: str | Non
     if orgId and str(_parse_id(orgId, "orgId")) != team_org_str and orgId != team_org_str:
         raise HTTPException(status_code=403, detail="Team does not belong to this organization")
     await _verify_org_owner(mongo, team_org_id if isinstance(team_org_id, ObjectId) else _parse_id(team_org_str, "orgId"), ownerId)
+    # cascade: remove every receipt the team owns (Mongo docs + Supabase files) so nothing is orphaned
+    receipts = await mongodb_ops.read(mongo, collection_name=RECEIPTS_COLLECTION, query={"departmentID": team_oid}, read_many=True)
+    for receipt in receipts or []:
+        storage_path = receipt.get("storagePath")
+        if storage_path:
+            # best-effort: a stray file is less harmful than blocking the whole team delete on a storage hiccup
+            try:
+                await run_in_threadpool(supabase_ops.delete_receipt, storage_path)
+            except Exception:
+                pass
+            await cache.delete(cache.key_builder(str(receipt["_id"]), f"thumb:{storage_path}"))
+    await mongodb_ops.delete(mongo, collection_name=RECEIPTS_COLLECTION, query={"departmentID": team_oid}, delete_many=True)
+    await cache.delete(cache.key_builder(str(team_oid), RECEIPTS_CACHE_KEY_NAME))
     await mongodb_ops.delete(mongo, collection_name=COLLECTION_NAME, query={"_id": team_oid})
     await cache.delete(cache.key_builder(team_org_str, CACHE_KEY_NAME))
     return Response(status_code=204)
