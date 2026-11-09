@@ -55,10 +55,31 @@ function AssistantMessage({ text, pending }) {
 	)
 }
 
-function UserMessage({ text }) {
+function AttachmentChip({ att, onRemove }) {
+	return (
+		<span className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-line bg-white px-2.5 py-1.5 text-[12px] text-ink">
+			{att.status === 'uploading'
+				? <Icon name="spinner" size={13} className="shrink-0 text-blue" />
+				: att.status === 'error'
+					? <span className="size-2 shrink-0 rounded-full bg-red" />
+					: <Icon name="receipt" size={13} className="shrink-0 text-blue" />}
+			<span className="truncate" title={att.error || att.filename}>{att.filename}</span>
+			{onRemove && <button type="button" onClick={() => onRemove(att.id)} className="shrink-0 text-muted hover:text-red" aria-label={`Remove ${att.filename}`}><Icon name="close" size={13} /></button>}
+		</span>
+	)
+}
+
+function UserMessage({ text, attachments }) {
 	return (
 		<div className="flex justify-end gap-3 px-1 py-5">
-			<div className="max-w-[min(78%,620px)] rounded-[20px] rounded-br-md bg-blue px-4 py-3 text-[14px] leading-6 text-white whitespace-pre-wrap">{text}</div>
+			<div className="flex max-w-[min(78%,620px)] flex-col items-end gap-2">
+				{(attachments || []).length > 0 && (
+					<div className="flex flex-wrap justify-end gap-1.5">
+						{attachments.map((a, i) => <AttachmentChip key={i} att={{ ...a, status: 'done' }} />)}
+					</div>
+				)}
+				<div className="rounded-[20px] rounded-br-md bg-blue px-4 py-3 text-[14px] leading-6 text-white whitespace-pre-wrap">{text}</div>
+			</div>
 			<span className="grid size-8 shrink-0 place-items-center rounded-full bg-ink text-white" aria-label="You">
 				<Icon name="user" size={17} />
 			</span>
@@ -101,6 +122,9 @@ export default function Agent() {
 	const [messages, setMessages] = useState([]) // [{role, text}]
 	const [lastMemoryId, setLastMemoryId] = useState(null) // the in-flight/last turn for this conversation
 	const [input, setInput] = useState('')
+	// attachments uploaded for the NEXT message: [{filename, kind, text?, status:'uploading'|'done'|'error'}]
+	const [attachments, setAttachments] = useState([])
+	const fileInputRef = useRef(null)
 	const [sending, setSending] = useState(false) // optimistic local pending, set the instant the user sends
 	const [deleteTarget, setDeleteTarget] = useState(null) // conversation pending delete confirmation
 	const viewportRef = useRef(null)
@@ -112,7 +136,7 @@ export default function Agent() {
 	const hydrate = (turns) => {
 		const flat = []
 		for (const t of turns || []) {
-			flat.push({ role: 'user', text: t.input })
+			flat.push({ role: 'user', text: t.input, attachments: t.attachments || [] })
 			if (t.output != null) flat.push({ role: 'assistant', text: t.output })
 		}
 		setMessages(flat)
@@ -143,12 +167,14 @@ export default function Agent() {
 		setMessages([])
 		setLastMemoryId(null)
 		setInput('')
+		setAttachments([])
 		setSending(false)
 	}
 
 	const selectConversation = (cid) => {
 		setConversationId(cid)
 		setSending(false)
+		setAttachments([])
 		agentAPI.getMessages(cid).then(hydrate).catch(() => {})
 	}
 
@@ -166,14 +192,37 @@ export default function Agent() {
 		})
 	}
 
+	// upload each picked file immediately; show a chip that goes uploading -> done/error
+	const pickFiles = async (fileList) => {
+		const files = Array.from(fileList || [])
+		if (!files.length) return
+		for (const file of files) {
+			const entry = { id: `${file.name}-${Date.now()}-${Math.random()}`, filename: file.name, kind: null, text: null, status: 'uploading' }
+			setAttachments((prev) => [...prev, entry])
+			try {
+				const res = await agentAPI.uploadAttachment(file)
+				setAttachments((prev) => prev.map((a) => a.id === entry.id ? { ...a, kind: res.kind, text: res.text, status: 'done' } : a))
+			} catch (e) {
+				const detail = e?.response?.data?.detail || 'Could not read this file.'
+				setAttachments((prev) => prev.map((a) => a.id === entry.id ? { ...a, status: 'error', error: detail } : a))
+			}
+		}
+		if (fileInputRef.current) fileInputRef.current.value = '' // allow re-picking the same file
+	}
+
+	const removeAttachment = (id) => setAttachments((prev) => prev.filter((a) => a.id !== id))
+
 	const send = async () => {
 		const text = input.trim()
-		if (!text || pending) return
+		const uploading = attachments.some((a) => a.status === 'uploading')
+		if (!text || pending || uploading) return
+		const ready = attachments.filter((a) => a.status === 'done').map((a) => ({ filename: a.filename, kind: a.kind, text: a.text }))
 		setInput('')
+		setAttachments([])
 		setSending(true) // show the loader immediately, before the POST resolves
-		setMessages((prev) => [...prev, { role: 'user', text }])
+		setMessages((prev) => [...prev, { role: 'user', text, attachments: ready }])
 		try {
-			const res = await agentAPI.sendMessage(text, conversationId, organization?.id ?? null)
+			const res = await agentAPI.sendMessage(text, conversationId, organization?.id ?? null, ready)
 			if (!conversationId) {
 				setConversationId(res.conversationId)
 				agentAPI.listConversations().then((r) => setConversations(r || [])).catch(() => {})
@@ -261,7 +310,7 @@ export default function Agent() {
 						)}
 						{messages.map((m, i) => (
 							m.role === 'user'
-								? <UserMessage key={i} text={m.text} />
+								? <UserMessage key={i} text={m.text} attachments={m.attachments} />
 								: <AssistantMessage key={i} text={m.text} />
 						))}
 						{pending && (
@@ -292,7 +341,31 @@ export default function Agent() {
 
 				<div className="border-t border-line bg-paper pt-4">
 					<div className="mx-auto max-w-205">
+						{attachments.length > 0 && (
+							<div className="mb-2 flex flex-wrap gap-1.5">
+								{attachments.map((a) => <AttachmentChip key={a.id} att={a} onRemove={removeAttachment} />)}
+							</div>
+						)}
 						<div className="flex items-end gap-2 rounded-2xl border border-line bg-white p-2 shadow-[0_8px_30px_oklch(30%_0.03_260/0.06)] focus-within:border-blue">
+							<input
+								ref={fileInputRef}
+								type="file"
+								multiple
+								accept="image/*,application/pdf,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+								className="hidden"
+								onChange={(e) => pickFiles(e.target.files)}
+							/>
+							<button
+								type="button"
+								onClick={() => fileInputRef.current?.click()}
+								disabled={pending}
+								className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl border border-line px-3 text-[13px] font-semibold text-muted transition hover:border-blue hover:text-blue disabled:cursor-not-allowed disabled:opacity-40"
+								aria-label="Add a document (image, Excel, or PDF)"
+								title="Add image, Excel, or PDF"
+							>
+								<Icon name="plus" size={16} />
+								<span className="max-[560px]:hidden">Add document</span>
+							</button>
 							<textarea
 								value={input}
 								onChange={(e) => setInput(e.target.value)}
@@ -304,7 +377,7 @@ export default function Agent() {
 							<button
 								type="button"
 								onClick={send}
-								disabled={!input.trim() || pending}
+								disabled={!input.trim() || pending || attachments.some((a) => a.status === 'uploading')}
 								className="grid size-10 shrink-0 place-items-center rounded-xl bg-blue text-white transition hover:bg-blue-dark disabled:cursor-not-allowed disabled:opacity-40"
 								aria-label="Send message"
 							>

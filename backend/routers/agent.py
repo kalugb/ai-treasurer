@@ -5,10 +5,11 @@ from datetime import datetime, timezone
 
 from bson import ObjectId
 from bson.errors import InvalidId
-from fastapi import APIRouter, HTTPException, Request, Depends
+from fastapi import APIRouter, HTTPException, Request, Depends, UploadFile, File
 from fastapi.responses import StreamingResponse
 
 from services.mongodb import mongodb_ops
+from services.ai import attachments as attachments_svc
 from models.agent import SendMessageRequest, RegenerateRequest, StopRequest
 
 router = APIRouter(prefix="/api/agent")
@@ -65,6 +66,7 @@ def _to_memory_out(doc: dict) -> dict:
         "input": doc.get("input", ""),
         "output": doc.get("output"),
         "tools": doc.get("tools", []) or [],
+        "attachments": doc.get("attachments", []) or [],
         "status": doc.get("status", STATUS_IN_PROGRESS),
         "time": doc["time"].isoformat() if isinstance(doc.get("time"), datetime) else doc.get("time"),
     }
@@ -79,7 +81,7 @@ async def _publish(redis, user_oid: ObjectId, payload: dict):
         print(f"agent publish failed: {e}")
 
 
-async def _run_agent(app, user_oid: ObjectId, conversation_oid: ObjectId, memory_id: ObjectId, user_input: str, owner_id: str, org_id: str | None):
+async def _run_agent(app, user_oid: ObjectId, conversation_oid: ObjectId, memory_id: ObjectId, user_input: str, owner_id: str, org_id: str | None, attachments: list | None = None):
     # Tracked asyncio.Task (see _running): /stop can cancel it to truly kill the in-flight LLM call.
     # Decoupled from any client connection, so navigating away never kills the run.
     ai_mongo = app.state.ai_mongo
@@ -98,8 +100,15 @@ async def _run_agent(app, user_oid: ObjectId, conversation_oid: ObjectId, memory
             read_many=True,
         )
         prior = sorted(prior or [], key=lambda d: d.get("time") or datetime.min)
-        # short-term memory: last 5 completed turns of this conversation
+        # short-term memory: last 5 completed turns of this conversation.
+        # history carries only each turn's typed input — NOT past attachment text — so a large
+        # file doesn't get re-sent on every subsequent turn (keeps context lean + streaming fast).
         history = [{"user": d.get("input", ""), "assistant": d.get("output", "")} for d in prior][-5:]
+
+        # current turn: merge this turn's attachment text into the message the model sees
+        model_input = user_input
+        for att in (attachments or []):
+            model_input += f"\n\n[Attached file: {att.get('filename', 'file')} ({att.get('kind', 'file')})]\n{att.get('text', '')}"
 
         async def on_delta(text):
             await _publish(redis, user_oid, {
@@ -109,7 +118,7 @@ async def _run_agent(app, user_oid: ObjectId, conversation_oid: ObjectId, memory
                 "delta": text,
             })
 
-        output, tool_log = await llm.run_llm(user_input, history, {"owner_id": owner_id, "org_id": org_id}, on_delta=on_delta)
+        output, tool_log = await llm.run_llm(model_input, history, {"owner_id": owner_id, "org_id": org_id}, on_delta=on_delta)
         tools = _aggregate_tools(tool_log)
 
         # Only write success if the turn is still In Progress — a user "stop" may have
@@ -162,8 +171,8 @@ async def _run_agent(app, user_oid: ObjectId, conversation_oid: ObjectId, memory
         _running.pop(str(memory_id), None)
 
 
-def _spawn_run(app, user_oid, conversation_oid, memory_id, user_input, owner_id, org_id):
-    task = asyncio.create_task(_run_agent(app, user_oid, conversation_oid, memory_id, user_input, owner_id, org_id))
+def _spawn_run(app, user_oid, conversation_oid, memory_id, user_input, owner_id, org_id, attachments=None):
+    task = asyncio.create_task(_run_agent(app, user_oid, conversation_oid, memory_id, user_input, owner_id, org_id, attachments))
     _running[str(memory_id)] = task
     return task
 
@@ -224,6 +233,14 @@ async def get_messages(conversation_id: str, userId: str = "1", ai_mongo=Depends
     return [_to_memory_out(d) for d in docs]
 
 
+@router.post("/attachments")
+async def upload_attachment(file: UploadFile = File(...)):
+    """Convert one uploaded file (Excel/PDF via MarkItDown, image via vision model) to text.
+    Transient: the bytes are discarded after conversion; only the text is returned."""
+    data = await file.read()
+    return await attachments_svc.convert(file.filename or "file", file.content_type or "", data)
+
+
 @router.post("/messages", status_code=202)
 async def send_message(req: SendMessageRequest, request: Request, ai_mongo=Depends(get_ai_mongo)):
     if ai_mongo is None:
@@ -237,6 +254,7 @@ async def send_message(req: SendMessageRequest, request: Request, ai_mongo=Depen
         "input": req.input,
         "output": None,
         "tools": [],
+        "attachments": [a.model_dump() for a in req.attachments],  # 2=b: stored separate from input
         "orgId": req.orgId,  # scope for this turn; regenerate reuses it
         "time": datetime.now(timezone.utc),
         "status": STATUS_IN_PROGRESS,
@@ -250,7 +268,7 @@ async def send_message(req: SendMessageRequest, request: Request, ai_mongo=Depen
         "status": STATUS_IN_PROGRESS,
     })
 
-    _spawn_run(request.app, user_oid, conversation_oid, memory_id, req.input, req.userId, req.orgId)
+    _spawn_run(request.app, user_oid, conversation_oid, memory_id, req.input, req.userId, req.orgId, [a.model_dump() for a in req.attachments])
 
     return {"conversationId": str(conversation_oid), "memoryId": str(memory_id), "status": STATUS_IN_PROGRESS}
 
@@ -282,7 +300,7 @@ async def regenerate(req: RegenerateRequest, request: Request, ai_mongo=Depends(
         "memoryId": str(memory_id),
         "status": STATUS_IN_PROGRESS,
     })
-    _spawn_run(request.app, user_oid, conversation_oid, memory_id, doc.get("input", ""), req.userId, doc.get("orgId"))
+    _spawn_run(request.app, user_oid, conversation_oid, memory_id, doc.get("input", ""), req.userId, doc.get("orgId"), doc.get("attachments"))
 
     return {"conversationId": str(conversation_oid), "memoryId": str(memory_id), "status": STATUS_IN_PROGRESS}
 
