@@ -134,7 +134,7 @@ class LLMInference:
             "description": (result.description or "").strip() or None,
         }
 
-    async def run_llm(self, user_input, chat_history=None, context: dict | None = None, on_delta=None):
+    async def run_llm(self, user_input, chat_history=None, context: dict | None = None, on_delta=None, memories: list[dict] | None = None):
         # Stateless: history is passed in and the per-call tool log is returned,
         # so concurrent runs (one shared instance) never corrupt each other.
         # context carries the per-call user/org scope (AgentContext) for the treasury tools.
@@ -145,6 +145,16 @@ class LLMInference:
 You are a helpful assistant. Reply to user in a concise way. Use chat history if necessary.
 You can read the user's teams, budgets, and receipts with get_teams_overview and get_team_receipts
 (read-only; they are scoped to the user's own organization and cannot modify anything).
+"""
+        if memories:
+            # long-term memory: similar turns from the user's past conversations (outputs trimmed to keep the prompt lean)
+            recalled = "\n\n".join(f"user: {m.get('input', '')}\nassistant: {(m.get('output') or '')[:1000]}" for m in memories)
+            sys_message += f"""
+Relevant excerpts from the user's earlier conversations (may be outdated; use only if relevant to the current question,
+prefer tool results for current figures):
+<memories>
+{recalled}
+</memories>
 """
 
         message = [SystemMessage(content=sys_message)]

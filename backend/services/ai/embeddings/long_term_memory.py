@@ -6,14 +6,17 @@ async def generate_embeddings(embedding_client: GoogleGenerativeAIEmbeddings, te
     return await embedding_client.aembed_documents(texts)
 
 
-def turn_text(user_input: str, output: str) -> str:
+def _turn_text(user_input: str, output: str) -> str:
     return f"user: {user_input}\nassistant: {output}"
 
 
 async def embed_turn(embedding_client: GoogleGenerativeAIEmbeddings, user_input: str, output: str) -> list[float]:
     """One vector for a whole chat turn (input + output) — stored as memories.embedding."""
-    return (await generate_embeddings(embedding_client, [turn_text(user_input, output)]))[0]
+    return (await generate_embeddings(embedding_client, [_turn_text(user_input, output)]))[0]
 
+async def retrieve_embedding(embedding_client: GoogleGenerativeAIEmbeddings, text: str) -> list[float]:
+    # query side of retrieval: aembed_query uses task_type RETRIEVAL_QUERY (stored turns use RETRIEVAL_DOCUMENT)
+    return await embedding_client.aembed_query(text)
 
 if __name__ == "__main__":
     import asyncio

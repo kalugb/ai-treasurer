@@ -11,7 +11,7 @@ from fastapi.responses import StreamingResponse
 from services.mongodb import mongodb_ops
 from services.ai import attachments as attachments_svc
 from services.ai import receipt_scan
-from services.ai.embeddings.long_term_memory import embed_turn
+from services.ai.embeddings.long_term_memory import embed_turn, retrieve_embedding
 from models.agent import SendMessageRequest, RegenerateRequest, StopRequest
 
 router = APIRouter(prefix="/api/agent")
@@ -99,6 +99,28 @@ async def _save_embedding(app, memory_id: ObjectId, user_input: str, output: str
         print(f"agent embedding failed for {memory_id}: {e}")
 
 
+async def _recall(app, user_oid: ObjectId, org_id: str | None, user_input: str, skip_ids: set, limit: int = 5) -> list[dict]:
+    # Long-term memory: the caller's most similar past turns. Best effort — failure just means no memories.
+    client = getattr(app.state, "embeddings_client", None)
+    if client is None or not user_input.strip():
+        return []
+    try:
+        query_vector = await retrieve_embedding(client, user_input)
+        # over-fetch, then drop turns already sent as short-term history
+        hits = await mongodb_ops.get_embeddings(app.state.ai_mongo, COLLECTION_NAME, query_vector, user_oid, org_id, limit=limit * 2)
+        kept = [h for h in hits if h.get("_id") not in skip_ids][:limit]
+        kept_ids = {h.get("_id") for h in kept}
+        # debug: inspect similarity scores to pick a cutoff later
+        print(f"agent recall for {user_input[:60]!r}: {len(hits)} hit(s), {len(kept)} used")
+        for h in hits:
+            tag = "use" if h.get("_id") in kept_ids else ("skip-history" if h.get("_id") in skip_ids else "skip-limit")
+            print(f"  score={h.get('score', 0):.4f} [{tag}] {h.get('_id')} input={(h.get('input') or '')[:60]!r}")
+        return kept
+    except Exception as e:
+        print(f"agent recall failed: {e}")
+        return []
+
+
 async def _run_agent(app, user_oid: ObjectId, conversation_oid: ObjectId, memory_id: ObjectId, user_input: str, owner_id: str, org_id: str | None, attachments: list | None = None):
     # Tracked asyncio.Task (see _running): /stop can cancel it to truly kill the in-flight LLM call.
     # Decoupled from any client connection, so navigating away never kills the run.
@@ -122,6 +144,8 @@ async def _run_agent(app, user_oid: ObjectId, conversation_oid: ObjectId, memory
         # history carries only each turn's typed input — NOT past attachment text — so a large
         # file doesn't get re-sent on every subsequent turn (keeps context lean + streaming fast).
         history = [{"user": d.get("input", ""), "assistant": d.get("output", "")} for d in prior][-5:]
+        recent_ids = {d["_id"] for d in prior[-5:]}
+        memories = await _recall(app, user_oid, org_id, user_input, recent_ids)
 
         # current turn: merge this turn's attachment text into the message the model sees
         model_input = user_input
@@ -136,7 +160,7 @@ async def _run_agent(app, user_oid: ObjectId, conversation_oid: ObjectId, memory
                 "delta": text,
             })
 
-        output, tool_log = await llm.run_llm(model_input, history, {"owner_id": owner_id, "org_id": org_id}, on_delta=on_delta)
+        output, tool_log = await llm.run_llm(model_input, history, {"owner_id": owner_id, "org_id": org_id}, on_delta=on_delta, memories=memories)
         tools = _aggregate_tools(tool_log)
 
         # Only write success if the turn is still In Progress — a user "stop" may have

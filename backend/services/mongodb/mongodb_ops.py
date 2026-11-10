@@ -46,6 +46,36 @@ async def delete(database_client: MongoClient, collection_name: str, query: dict
     else:
         result = collection.delete_many(query)
         return result.deleted_count
+    
+async def get_embeddings(ai_database_client: MongoClient, collection_name: str, query_embedding: list[float], user_id, org_id: str | None, limit: int = 5) -> list[dict]:
+    collection = ai_database_client[collection_name]
+    
+    aggregate_pipeline = [
+        {
+            "$vectorSearch": {
+                "index": "long-term-memory",
+                "path": "textEmbedding",
+                "queryVector": query_embedding,
+                "numCandidates": limit * 10,
+                "limit": limit,
+                # scope recall to the caller + their selected org (orgId is the stored string, or None);
+                # requires `userId` and `orgId` as filter fields in the Atlas index
+                "filter": {"$and": [{"userId": user_id}, {"orgId": org_id}]},
+            }
+        },
+        {
+            "$project": {
+                "_id": 1,
+                "input": 1,
+                "output": 1,
+                "score": {"$meta": "vectorSearchScore"},
+            }
+        }
+    ]
+    
+    result = collection.aggregate(aggregate_pipeline)
+    
+    return list(result)
 
     
     
