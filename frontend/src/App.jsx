@@ -8,6 +8,7 @@ import MockPage from './pages/MockPage'
 import Organization from './pages/Organization'
 import Folders from './pages/Folders'
 import TeamManagement from './pages/TeamManagement'
+import Reimbursement from './pages/Reimbursement'
 import NotFound from './pages/NotFound'
 import { dispatchOrgChange } from './hooks/useSelectedOrganization'
 import { SyncStatusProvider } from './context/SyncStatusContext'
@@ -63,6 +64,8 @@ export default function App() {
 			? <Folders goTo={setPage} />
 				: page === 'teams'
 					? <TeamManagement />
+					: page === 'reimbursement'
+					? <Reimbursement goTo={setPage} />
 					: page === 'agent'
 						? <Agent />
 						: page === 'settings'
