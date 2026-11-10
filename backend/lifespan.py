@@ -10,6 +10,8 @@ from services.mongodb.mongodb_connect import connect_to_mongodb
 from services.supabase.supabase_connect import get_supabase_client
 from services.ai.inference.chat import LLMInference
 
+from services.ai.embeddings.init_embedding_client import get_embedding_client
+
 from services.ai.tools import treasury_tools
 
 from dotenv import load_dotenv
@@ -61,12 +63,24 @@ async def temp_check_google_integration() -> bool:
         return True, drive_service_instance
     else:
         return False, None
+    
+async def init_embeddings_client():
+    try:
+        embedding_client = get_embedding_client()
+        print("Successfully initialized Embeddings Client.")
+        
+        return embedding_client
+    except Exception as e:
+        print(f"Failed to initialize Embeddings Client: {e}")
+        
+        return None
 
 
 def check_services(app: FastAPI):
     print("Checking service availability...")
     print(f"MongoDB service: {app.state.mongo is not None}")
     print(f"AI MongoDB service: {app.state.ai_mongo is not None}")
+    print(f"Embeddings client service: {app.state.embeddings_client is not None}")
     print(f"Redis cache service: {app.state.cache is not None}")
     print(f"Session store service: {app.state.sessions is not None}")
     print(f"LLM Inference service: {app.state.llm_inference is not None}")
@@ -75,10 +89,11 @@ def check_services(app: FastAPI):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    mongo_clients, supabase_client = await asyncio.gather(
+    mongo_clients, supabase_client, llm_inference, embeddings_client = await asyncio.gather(
         init_mongodb(),
-        # init_llm_inference(),
-        init_supabase()
+        init_supabase(),
+        init_llm_inference(),
+        init_embeddings_client()
     )
     
     # do this trick to unpack the clients tuple into individual variables
@@ -94,13 +109,15 @@ async def lifespan(app: FastAPI):
     treasury_tools.set_mongo(mongodb_database_client)
 
     app.state.ai_mongo = mongodb_client["ai"] if mongodb_client else None
-    app.state.redis = redis_client  # shared for agent run pub/sub
-    app.state.llm_inference = None
+    app.state.redis = redis_client 
+    app.state.llm_inference = llm_inference
+    app.state.embeddings_client = embeddings_client
     app.state.supabase = supabase_client
     app.state.google_drive_service_connected = google_drive_service_connected
     app.state.google_drive_service_instance = google_drive_service_instance
     
     check_services(app)
+    
     yield 
 
     # Cleanup services
