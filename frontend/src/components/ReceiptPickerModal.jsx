@@ -8,11 +8,12 @@ const pill = (active) => `min-h-8 rounded-md px-2.5 text-xs font-bold transition
 const SOURCES = [['all', 'All'], ['google', 'Google Drive'], ['manual', 'Local upload']]
 
 // Multi-select receipt grid for one team (same filters/tiles as Receipts management).
-// Returns receipt NAMES only; names that no longer exist in the team are kept as-is.
-export default function ReceiptPickerModal({ teamId, selectedNames = [], onClose, onConfirm }) {
+// Returns the picked receipts. A receipt can sit in only one reimbursement record, so receipts held by a
+// record other than `recordId` (the one being edited) are shown but cannot be picked.
+export default function ReceiptPickerModal({ teamId, selectedIds = [], recordId = null, onClose, onConfirm }) {
 	const [receipts, setReceipts] = useState(null) // null = loading
 	const [failed, setFailed] = useState(false)
-	const [picked, setPicked] = useState(() => new Set(selectedNames))
+	const [picked, setPicked] = useState(() => new Set(selectedIds))
 	const [sourceFilter, setSourceFilter] = useState('all')
 	const [dateOrder, setDateOrder] = useState('desc')
 
@@ -23,21 +24,27 @@ export default function ReceiptPickerModal({ teamId, selectedNames = [], onClose
 	}, [teamId])
 
 	const list = receipts ?? []
+	const blocked = (r) => Boolean(r.reimbursement) && r.reimbursement.id !== recordId
+	// pickable not-reimbursed receipts first, then ones already held by another (pending) record, reimbursed last
+	const rank = (r) => (r.reimbursed ? 2 : blocked(r) ? 1 : 0)
 	const visible = list
 		.filter((r) => sourceFilter === 'all' || r.source === sourceFilter)
 		.sort((a, b) => {
+			if (rank(a) !== rank(b)) return rank(a) - rank(b)
 			const aDate = a.date === '—' ? '' : a.date
 			const bDate = b.date === '—' ? '' : b.date
 			if (!aDate || !bDate) return aDate ? -1 : bDate ? 1 : 0
 			return dateOrder === 'asc' ? aDate.localeCompare(bDate) : bDate.localeCompare(aDate)
 		})
-	const toggle = (name) => setPicked((prev) => {
+	const selectable = visible.filter((r) => !blocked(r))
+	const toggle = (id) => setPicked((prev) => {
 		const next = new Set(prev)
-		if (next.has(name)) next.delete(name)
-		else next.add(name)
+		if (next.has(id)) next.delete(id)
+		else next.add(id)
 		return next
 	})
-	const confirm = () => onConfirm([...picked], list.filter((r) => picked.has(r.filename)))
+	const confirm = () => onConfirm(list.filter((r) => picked.has(r.id) && !blocked(r)))
+	const pickedCount = list.filter((r) => picked.has(r.id) && !blocked(r)).length
 
 	return (
 		<div
@@ -66,23 +73,23 @@ export default function ReceiptPickerModal({ teamId, selectedNames = [], onClose
 								</select>
 							</label>
 						</div>
-												<div className="mt-2 flex items-center gap-3 text-xs">
-							<span className="text-muted">{visible.length} {visible.length === 1 ? 'receipt' : 'receipts'} · {picked.size} selected</span>
-							{visible.length > 0 && (
+						<div className="mt-2 flex items-center gap-3 text-xs">
+							<span className="text-muted">{visible.length} {visible.length === 1 ? 'receipt' : 'receipts'} · {pickedCount} selected</span>
+							{selectable.length > 0 && (
 								<button
 									className="font-bold text-blue focus-visible:outline-[3px] focus-visible:outline-blue-ring"
 									type="button"
 									onClick={() => setPicked((prev) => {
 										const next = new Set(prev)
-										const allVisible = visible.every((r) => next.has(r.filename))
-										for (const r of visible) {
-											if (allVisible) next.delete(r.filename)
-											else next.add(r.filename)
+										const allVisible = selectable.every((r) => next.has(r.id))
+										for (const r of selectable) {
+											if (allVisible) next.delete(r.id)
+											else next.add(r.id)
 										}
 										return next
 									})}
 								>
-									{visible.every((r) => picked.has(r.filename)) ? 'Clear selection' : 'Select all'}
+									{selectable.every((r) => picked.has(r.id)) ? 'Clear selection' : 'Select all'}
 								</button>
 							)}
 						</div>
@@ -96,16 +103,19 @@ export default function ReceiptPickerModal({ teamId, selectedNames = [], onClose
 					) : visible.length ? (
 						<div className="grid grid-cols-2 gap-4 min-[700px]:grid-cols-3 min-[900px]:grid-cols-4">
 							{visible.map((receipt) => {
-								const isSelected = picked.has(receipt.filename)
+								const isBlocked = blocked(receipt)
+								const isSelected = picked.has(receipt.id) && !isBlocked
 								return (
-									<button className="group min-w-0 text-left focus-visible:outline-[3px] focus-visible:outline-blue-ring" type="button" key={receipt.id} aria-pressed={isSelected} aria-label={`${receipt.filename}, ${formatMoney(receipt.amount)}`} onClick={() => toggle(receipt.filename)}>
-										<div className={`relative grid aspect-[1.15] place-items-center overflow-hidden rounded-[14px] border bg-white text-blue shadow-sm transition group-hover:-translate-y-0.5 group-hover:shadow-md ${isSelected ? 'border-blue ring-[3px] ring-blue-ring' : 'border-line group-hover:border-blue'}`}>
+									<button className={`group min-w-0 self-start text-left focus-visible:outline-[3px] focus-visible:outline-blue-ring ${isBlocked ? 'cursor-not-allowed opacity-55' : ''}`} type="button" key={receipt.id} disabled={isBlocked} aria-pressed={isSelected} aria-label={`${receipt.filename}, ${formatMoney(receipt.amount)}${receipt.reimbursed ? ', reimbursed' : ''}${isBlocked ? `, already in record ${receipt.reimbursement.name}` : ''}`} onClick={() => toggle(receipt.id)}>
+										<div className={`relative grid aspect-[1.15] place-items-center overflow-hidden rounded-[14px] border bg-white text-blue shadow-sm transition ${isBlocked ? '' : 'group-hover:-translate-y-0.5 group-hover:shadow-md'} ${isSelected ? 'border-blue ring-[3px] ring-blue-ring' : isBlocked ? 'border-line' : 'border-line group-hover:border-blue'}`}>
 											<Icon name="receipt" size={34} />
 											{receipt.thumbnail && <img src={receipt.thumbnail} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" onError={(event) => { event.currentTarget.style.display = 'none' }} />}
-											<span className={`absolute top-2 right-2 grid size-6 place-items-center rounded-md border text-white ${isSelected ? 'border-blue bg-blue' : 'border-line bg-white/80'}`}>{isSelected && <Icon name="check" size={14} />}</span>
+											{!isBlocked && <span className={`absolute top-2 right-2 grid size-6 place-items-center rounded-md border text-white ${isSelected ? 'border-blue bg-blue' : 'border-line bg-white/80'}`}>{isSelected && <Icon name="check" size={14} />}</span>}
+											{receipt.reimbursement && <span className={`absolute top-2 left-2 rounded-full px-2 py-0.5 text-[10px] font-bold ${receipt.reimbursed ? 'bg-green text-white' : 'bg-brown-soft text-brown'}`}>{receipt.reimbursed ? 'Reimbursed' : 'Pending'}</span>}
 										</div>
 										<strong className="mt-3 block overflow-hidden text-ellipsis whitespace-nowrap text-[13px] text-ink">{receipt.filename}</strong>
 										<span className="mt-1 block truncate text-xs text-muted">{receipt.date} · {formatMoney(receipt.amount)}</span>
+										{isBlocked && <span className="mt-0.5 block truncate text-[11px] font-bold text-brown">In “{receipt.reimbursement.name}”</span>}
 									</button>
 								)
 							})}
@@ -123,7 +133,7 @@ export default function ReceiptPickerModal({ teamId, selectedNames = [], onClose
 
 				<div className="flex justify-end gap-2 border-t border-line p-4">
 					<button className={button.secondary} type="button" onClick={onClose}>Cancel</button>
-					<button className={button.primary} type="button" onClick={confirm}><Icon name="check" size={16} /> Use {picked.size} receipt{picked.size === 1 ? '' : 's'}</button>
+					<button className={button.primary} type="button" onClick={confirm}><Icon name="check" size={16} /> Use {pickedCount} receipt{pickedCount === 1 ? '' : 's'}</button>
 				</div>
 			</div>
 		</div>

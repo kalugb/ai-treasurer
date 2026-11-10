@@ -20,6 +20,8 @@ class ReceiptOut(BaseModel):
     label: str | None = None
     date: str | None = None
     source: str = "google_drive"
+    reimbursed: bool = False  # in a record whose status is Reimbursed
+    reimbursement: dict | None = None  # {id, name, status} of the record holding this receipt
 
 
 class ReceiptUpdate(BaseModel):
@@ -30,3 +32,4 @@ class ReceiptUpdate(BaseModel):
 
 class ReceiptDelete(BaseModel):
     ids: list[str] = Field(min_length=1)
+    confirmLinked: bool = False  # must be true to delete receipts that sit in a reimbursement record

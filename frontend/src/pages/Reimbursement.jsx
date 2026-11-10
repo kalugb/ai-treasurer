@@ -65,6 +65,8 @@ export default function Reimbursement({ goTo }) {
 
 	const { records, totals } = data
 	const allSelected = records.length > 0 && selectedIds.size === records.length
+	const withMissing = records.filter((r) => r.receiptInvolved?.missingReceiptIds?.length > 0)
+	const paidWithMissing = withMissing.filter((r) => r.status === 'Reimbursed')
 
 	const toggle = (id) => setSelectedIds((prev) => {
 		const next = new Set(prev)
@@ -110,6 +112,21 @@ export default function Reimbursement({ goTo }) {
 				</article>
 			</section>
 
+			{withMissing.length > 0 && (
+				<section className="mb-3.5 rounded-[14px] border border-red-200 bg-red-50 p-4.5 text-red-900" role="alert" aria-label="Missing receipts">
+					<p className="flex items-center gap-2 text-[13px] font-bold"><Icon name="insight" size={16} /> {withMissing.length} record{withMissing.length === 1 ? '' : 's'} reference{withMissing.length === 1 ? 's' : ''} receipts that no longer exist</p>
+					<p className="mt-1.5 text-xs leading-[1.55]">
+						A receipt was deleted, or removed from Google Drive by a sync.
+						{paidWithMissing.length > 0 && ` ${paidWithMissing.length} of these ${paidWithMissing.length === 1 ? 'is' : 'are'} marked Reimbursed, so the proof of payment is gone.`}
+					</p>
+					<ul className="mt-2 list-disc pl-5 text-xs leading-[1.55]">
+						{withMissing.map((r) => (
+							<li key={r.id}><strong>{r.name}</strong> ({r.status}): {r.receiptInvolved.missingReceiptNames.join(', ')}</li>
+						))}
+					</ul>
+				</section>
+			)}
+
 			<article className="rounded-[14px] border border-line bg-white p-5.5 max-[560px]:p-4">
 				<div className="mb-5 flex items-start justify-between gap-4.5 max-[560px]:flex-col">
 					<div>
@@ -154,6 +171,11 @@ export default function Reimbursement({ goTo }) {
 									<td className={`${td} font-semibold text-ink`}>{r.name}</td>
 									<td className={td} title={r.receiptInvolved?.receiptNames?.join(', ')}>
 										{r.receiptInvolved?.receiptNames?.length ? `${r.receiptInvolved.receiptNames.length} receipt${r.receiptInvolved.receiptNames.length === 1 ? '' : 's'}` : '—'}
+										{r.receiptInvolved?.missingReceiptIds?.length > 0 && (
+											<span className="ml-2 inline-flex items-center gap-1 rounded-[20px] bg-red-50 px-2 py-1 text-[10px] font-bold text-red-700" title={`No longer exists: ${r.receiptInvolved.missingReceiptNames.join(', ')}`}>
+												<Icon name="insight" size={12} /> {r.receiptInvolved.missingReceiptIds.length} missing
+											</span>
+										)}
 									</td>
 									<td className={td}>{r.teamInvolved}</td>
 									<td className={`${td} font-semibold text-ink`}>{money(r.amount)}</td>

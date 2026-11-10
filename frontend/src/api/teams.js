@@ -4,5 +4,7 @@ export const teamsAPI = {
 	getTeams: (orgId, ownerId) => request('/api/teams', { method: 'GET', params: { orgId, ...(ownerId ? { ownerId } : {}) } }),
 	createTeam: (team) => request('/api/teams', { method: 'POST', data: team, params: team.ownerId ? { ownerId: team.ownerId } : {} }),
 	updateTeam: (id, team, orgId, ownerId) => request(`/api/teams/${id}`, { method: 'PUT', data: team, params: { ...(orgId ? { orgId } : {}), ...(ownerId ? { ownerId } : {}) } }),
-	deleteTeam: (id, orgId, ownerId) => request(`/api/teams/${id}`, { method: 'DELETE', params: { ...(orgId ? { orgId } : {}), ...(ownerId ? { ownerId } : {}) } }),
+	deleteTeam: (id, orgId, ownerId, confirmRecords = false) => request(`/api/teams/${id}`, { method: 'DELETE', params: { ...(orgId ? { orgId } : {}), ...(ownerId ? { ownerId } : {}), ...(confirmRecords ? { confirmRecords: true } : {}) } }),
+	// what deleting the team would permanently destroy: { receipts, records, reimbursedRecords, reimbursedAmount }
+	deleteImpact: (id, orgId, ownerId) => request(`/api/teams/${id}/delete-impact`, { method: 'GET', params: { ...(orgId ? { orgId } : {}), ...(ownerId ? { ownerId } : {}) } }),
 }

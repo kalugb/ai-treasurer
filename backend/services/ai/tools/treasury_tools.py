@@ -15,6 +15,7 @@ from langgraph.runtime import get_runtime
 ORG_COLLECTION = "organizations"
 TEAMS_COLLECTION = "departments"
 RECEIPTS_COLLECTION = "receipts"
+REIMBURSEMENT_COLLECTION = "reimbursement"
 
 
 @dataclass
@@ -24,7 +25,7 @@ class AgentContext:
     org_id: str | None = None
 
 
-ALLOWED_COLLECTIONS = frozenset({ORG_COLLECTION, TEAMS_COLLECTION, RECEIPTS_COLLECTION})
+ALLOWED_COLLECTIONS = frozenset({ORG_COLLECTION, TEAMS_COLLECTION, RECEIPTS_COLLECTION, REIMBURSEMENT_COLLECTION})
 
 
 class _ReadOnlyCollection:
@@ -134,7 +135,7 @@ def get_teams_overview() -> str:
 @tool
 def get_team_receipts(team_name: str) -> str:
     """Get the receipts for one team by name, with each receipt's name, amount, date, source,
-    and any label/notes. Use this when the user asks about a specific team's receipts or
+    reimbursement state (reimbursed or not), and any label/notes. Use this when the user asks about a specific team's receipts or
     transactions. Read-only — this cannot add, edit, or delete receipts."""
     ctx = get_runtime(AgentContext).context
     teams, error = _scope(ctx)
@@ -151,6 +152,7 @@ def get_team_receipts(team_name: str) -> str:
     if not receipts:
         return f"{team.get('name')} has no receipts yet."
 
+    states = _reimbursement_states(receipts)
     lines = []
     for r in receipts:
         amount = r.get("receiptAmount") or 0.0
@@ -158,9 +160,27 @@ def get_team_receipts(team_name: str) -> str:
         source = "Local upload" if r.get("createdFrom") == "local_upload" else "Google Drive"
         extra = r.get("label") or r.get("description") or ""
         extra = f" — {extra}" if extra else ""
-        lines.append(f"- {r.get('receiptName') or 'Unnamed'}: ${amount:,.2f}, {date}, {source}{extra}")
+        lines.append(f"- {r.get('receiptName') or 'Unnamed'}: ${amount:,.2f}, {date}, {source}, {states[_receipt_key(r)]}{extra}")
     total = sum((r.get("receiptAmount") or 0.0) for r in receipts)
     return f"Receipts for {team.get('name')} (total ${total:,.2f}):\n" + "\n".join(lines)
+
+
+def _receipt_key(doc: dict) -> str:
+    # same id the app uses for a receipt: Drive file id, or the stringified _id for local uploads
+    return doc.get("googleDriveFileId") or str(doc["_id"])
+
+
+def _reimbursement_states(receipts: list[dict]) -> dict[str, str]:
+    """receipt id -> wording for its reimbursement state. Reimbursed only if its record's status is
+    Reimbursed; otherwise not reimbursed (even when it already sits in a pending record)."""
+    states = {_receipt_key(r): "not reimbursed" for r in receipts}
+    for rec in _mongo[REIMBURSEMENT_COLLECTION].find({"receiptInvolved.receiptIds": {"$in": list(states)}}):
+        record = rec.get("name", "")
+        text = f"reimbursed (record '{record}')" if rec.get("status") == "Reimbursed" else f"not reimbursed (pending in record '{record}')"
+        for rid in rec["receiptInvolved"]["receiptIds"]:
+            if rid in states:
+                states[rid] = text
+    return states
 
 
 def _receipt_date(doc: dict) -> str:

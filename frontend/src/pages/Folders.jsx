@@ -91,12 +91,14 @@ function ReceiptPreview({ receipt, onClose, onPrev, onNext, index, total, onSave
 		setSaveError(null)
 		try {
 			await onSave(receipt.googleDriveFileId, {
-				receiptAmount: parsedAmount,
+				// a reimbursed receipt's amount is locked (the server enforces it too)
+				...(receipt.reimbursed ? {} : { receiptAmount: parsedAmount }),
 				label: label.trim() || null,
 				description: description.trim() || null,
 			})
-		} catch {
-			setSaveError('Could not save. Try again.')
+		} catch (err) {
+			const detail = err?.response?.data?.detail
+			setSaveError(typeof detail === 'string' ? detail : 'Could not save. Try again.')
 		} finally {
 			setSaving(false)
 		}
@@ -118,9 +120,10 @@ function ReceiptPreview({ receipt, onClose, onPrev, onNext, index, total, onSave
 					</div>
 					<div className="min-h-0 overflow-y-auto p-5">
 						<div className="grid grid-cols-3 gap-4 text-[13px]"><div><span className="block text-xs text-muted">Date</span><strong className="mt-1 block">{receipt.date}</strong></div><div><span className="block text-xs text-muted">Category</span><strong className="mt-1 block">{receipt.category}</strong></div><div><span className="block text-xs text-muted">Filename</span><strong className="mt-1 block truncate" title={receipt.filename}>{receipt.filename}</strong></div></div>
+						<p className={`mt-3 rounded-lg px-3 py-2 text-xs font-bold ${receipt.reimbursed ? 'bg-green-soft text-green' : receipt.reimbursement ? 'bg-brown-soft text-brown' : 'bg-paper text-muted'}`}>{receipt.reimbursed ? `Reimbursed · record “${receipt.reimbursement.name}”` : receipt.reimbursement ? `Not reimbursed yet · pending in record “${receipt.reimbursement.name}”` : 'Not reimbursed · not in any reimbursement record'}</p>
 						<form className="mt-5 border-t border-line pt-4" onSubmit={handleSave}>
 							<p className="mb-3 text-[11px] font-bold tracking-widest text-muted uppercase">Edit details</p>
-							<label className="grid gap-1.5 text-xs font-bold text-ink">Amount<input className="h-10 rounded-lg border border-line bg-white px-3 text-[13px] outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" type="number" min="0" step="0.01" inputMode="decimal" placeholder="0.00" value={amount} onChange={(event) => setAmount(event.target.value)} /></label>
+							<label className="grid gap-1.5 text-xs font-bold text-ink">Amount<input className="h-10 rounded-lg border border-line bg-white px-3 text-[13px] outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)] disabled:cursor-not-allowed disabled:bg-paper disabled:text-muted" type="number" min="0" step="0.01" inputMode="decimal" placeholder="0.00" value={amount} onChange={(event) => setAmount(event.target.value)} disabled={receipt.reimbursed} aria-describedby={receipt.reimbursed ? 'amount-locked' : undefined} />{receipt.reimbursed && <span id="amount-locked" className="text-[11px] font-semibold text-muted">Locked: this receipt is reimbursed in record “{receipt.reimbursement.name}”. Set the record to Not reimbursed to change it.</span>}</label>
 							<label className="mt-3 grid gap-1.5 text-xs font-bold text-ink">Label (optional)<input className="h-10 rounded-lg border border-line bg-white px-3 text-[13px] outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" type="text" placeholder="e.g. Team lunch" value={label} onChange={(event) => setLabel(event.target.value)} /></label>
 							<label className="mt-3 grid gap-1.5 text-xs font-bold text-ink">Notes (optional)<textarea className="min-h-24 rounded-lg border border-line bg-white px-3 py-2 text-[13px] outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" placeholder="Personal notes about this receipt" value={description} onChange={(event) => setDescription(event.target.value)} /></label>
 							{saveError && <p className="mt-2 text-xs font-bold text-red-700">{saveError}</p>}
@@ -140,7 +143,7 @@ export default function Folders({ goTo }) {
 	const [preview, setPreview] = useState(null)
 	const [sourceFilter, setSourceFilter] = useState(() => readPreference('receipts:source', ['all', 'google', 'manual'], 'all'))
 	const [dateOrder, setDateOrder] = useState(() => readPreference('receipts:dateOrder', ['desc', 'asc'], 'desc'))
-
+	const [reimbursedFilter, setReimbursedFilter] = useState(() => readPreference('receipts:reimbursed', ['all', 'reimbursed', 'unreimbursed'], 'all'))
 	useEffect(() => {
 		if (!organization?.id) { setTeams([]); return }
 		teamsAPI.getTeams(organization.id, organization.ownerId)
@@ -157,12 +160,13 @@ export default function Folders({ goTo }) {
 		try {
 			localStorage.setItem('receipts:source', sourceFilter)
 			localStorage.setItem('receipts:dateOrder', dateOrder)
+			localStorage.setItem('receipts:reimbursed', reimbursedFilter)
 			const currentTeam = teams[Math.min(teamIndex, teams.length - 1)]
 			if (currentTeam?.id) localStorage.setItem('receipts:team', currentTeam.id)
 		} catch {
 			// storage unavailable; view preferences just won't persist
 		}
-	}, [sourceFilter, dateOrder, teams, teamIndex])
+	}, [sourceFilter, dateOrder, reimbursedFilter, teams, teamIndex])
 
 	const selectedIndex = teams.length ? Math.min(teamIndex, teams.length - 1) : 0
 	const team = teams[selectedIndex]
@@ -226,15 +230,22 @@ export default function Folders({ goTo }) {
 		if (!ids.length || deleting) return
 		setDeleting(true)
 		try {
-			await receiptsAPI.remove(team.id, ids)
+			// the dialog already warned about linked receipts; the server re-checks and refuses without this flag
+			await receiptsAPI.remove(team.id, ids, deleteTargets.some((receipt) => receipt.reimbursement))
 			const removed = new Set(ids)
 			setDriveReceipts((list) => list.filter((r) => !removed.has(r.id)))
 			setPreview((current) => current && removed.has(current.id) ? null : current)
 			exitSelection()
 			setDeleteTargets([])
 			push(`Deleted ${ids.length} receipt${ids.length === 1 ? '' : 's'}.`, 'success')
-		} catch {
-			push('Delete failed.', 'error')
+		} catch (err) {
+			const detail = err?.response?.data?.detail
+			push(typeof detail === 'string' ? detail : 'Delete failed.', 'error')
+			if (err?.response?.status === 409) {
+				// our view of which receipts are linked was stale: reload it and let the user retry with the real warning
+				setDeleteTargets([])
+				fetchReceipts(team.id).then(setDriveReceipts).catch(() => {})
+			}
 		} finally {
 			setDeleting(false)
 		}
@@ -262,6 +273,7 @@ export default function Folders({ goTo }) {
 	const allReceipts = [...(team?.receipts ?? []), ...driveReceipts]
 	const filteredReceipts = allReceipts
 		.filter((receipt) => sourceFilter === 'all' || receipt.source === sourceFilter)
+		.filter((receipt) => reimbursedFilter === 'all' || receipt.reimbursed === (reimbursedFilter === 'reimbursed'))
 		.sort((a, b) => {
 			const aDate = a.date === '—' ? '' : a.date
 			const bDate = b.date === '—' ? '' : b.date
@@ -312,7 +324,7 @@ export default function Folders({ goTo }) {
 						{alert && <p className="mt-4 flex items-center gap-2 text-xs font-bold"><Icon name="insight" size={15} /> Less than 10% of this team’s budget remains.</p>}
 					</section>
 					<section>
-						<div className="mb-4 flex items-center justify-between gap-4"><div><div className="flex flex-wrap items-center gap-3"><h2 className="font-display text-[18px] tracking-[-0.03em]">Team receipts</h2></div><div className="mt-2 flex flex-wrap items-end gap-4"><fieldset className="w-fit max-w-full"><legend className="text-xs font-bold text-ink">Source</legend><div className="mt-1.5 inline-flex w-fit max-w-full flex-wrap gap-1 rounded-lg border border-line bg-white p-1"><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'all' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'all'} onClick={() => setSourceFilter('all')}>All</button><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'google' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'google'} onClick={() => setSourceFilter('google')}>Google Drive</button><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'manual' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'manual'} onClick={() => setSourceFilter('manual')}>Local upload</button></div></fieldset><label className="grid gap-1.5 text-xs font-bold text-ink">Sort by date<select className="h-9 rounded-lg border border-line bg-white px-2 text-[12px] outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" value={dateOrder} onChange={(event) => setDateOrder(event.target.value)}><option value="desc">Newest first</option><option value="asc">Oldest first</option></select></label>{selecting ? <><button className={`${button.danger} disabled:opacity-60`} type="button" onClick={() => setDeleteTargets(selectedReceipts)} disabled={selectedIds.size === 0}><Icon name="trash" size={15} /> Delete{selectedIds.size ? ` (${selectedIds.size})` : ''}</button><button className={button.secondary} type="button" onClick={exitSelection} disabled={deleting}>Cancel</button></> : localReceiptCount > 0 && <button className={button.secondary} type="button" onClick={() => setSelecting(true)} title="Select local-upload receipts to delete"><Icon name="check" size={15} /> Select for deletion</button>}</div><p className="mt-2 text-xs text-muted">{filteredReceipts.length} {filteredReceipts.length === 1 ? 'receipt' : 'receipts'}</p></div><div className="flex flex-wrap items-center gap-2">{team && <button className={`${button.secondary} disabled:opacity-60`} type="button" onClick={handleRefresh} disabled={refreshing} title="Re-read from the database (picks up external edits)"><Icon name={refreshing ? 'spinner' : 'sync'} size={15} /> {refreshing ? 'Refreshing…' : 'Refresh'}</button>}{team?.googleDriveFolderId && sourceFilter !== 'manual' && <button className={`${button.secondary} disabled:opacity-60`} type="button" onClick={handleSync} disabled={syncing}><Icon name={syncing ? 'spinner' : 'sync'} size={15} /> {syncing ? 'Syncing…' : 'Sync Google Drive'}</button>}{!selecting && <button className={button.secondary} type="button" onClick={() => setAddOpen(true)}><Icon name="plus" size={15} /> Add receipt</button>}</div></div>
+						<div className="mb-4 flex items-center justify-between gap-4"><div><div className="flex flex-wrap items-center gap-3"><h2 className="font-display text-[18px] tracking-[-0.03em]">Team receipts</h2></div><div className="mt-2 flex flex-wrap items-end gap-4"><fieldset className="w-fit max-w-full"><legend className="text-xs font-bold text-ink">Source</legend><div className="mt-1.5 inline-flex w-fit max-w-full flex-wrap gap-1 rounded-lg border border-line bg-white p-1"><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'all' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'all'} onClick={() => setSourceFilter('all')}>All</button><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'google' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'google'} onClick={() => setSourceFilter('google')}>Google Drive</button><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'manual' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'manual'} onClick={() => setSourceFilter('manual')}>Local upload</button></div></fieldset><fieldset className="w-fit max-w-full"><legend className="text-xs font-bold text-ink">Reimbursement</legend><div className="mt-1.5 inline-flex w-fit max-w-full flex-wrap gap-1 rounded-lg border border-line bg-white p-1">{[['all', 'All'], ['unreimbursed', 'Not reimbursed'], ['reimbursed', 'Reimbursed']].map(([value, label]) => <button key={value} className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${reimbursedFilter === value ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={reimbursedFilter === value} onClick={() => setReimbursedFilter(value)}>{label}</button>)}</div></fieldset><label className="grid gap-1.5 text-xs font-bold text-ink">Sort by date<select className="h-9 rounded-lg border border-line bg-white px-2 text-[12px] outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" value={dateOrder} onChange={(event) => setDateOrder(event.target.value)}><option value="desc">Newest first</option><option value="asc">Oldest first</option></select></label>{selecting ? <><button className={`${button.danger} disabled:opacity-60`} type="button" onClick={() => setDeleteTargets(selectedReceipts)} disabled={selectedIds.size === 0}><Icon name="trash" size={15} /> Delete{selectedIds.size ? ` (${selectedIds.size})` : ''}</button><button className={button.secondary} type="button" onClick={exitSelection} disabled={deleting}>Cancel</button></> : localReceiptCount > 0 && <button className={button.secondary} type="button" onClick={() => setSelecting(true)} title="Select local-upload receipts to delete"><Icon name="check" size={15} /> Select for deletion</button>}</div><p className="mt-2 text-xs text-muted">{filteredReceipts.length} {filteredReceipts.length === 1 ? 'receipt' : 'receipts'}</p></div><div className="flex flex-wrap items-center gap-2">{team && <button className={`${button.secondary} disabled:opacity-60`} type="button" onClick={handleRefresh} disabled={refreshing} title="Re-read from the database (picks up external edits)"><Icon name={refreshing ? 'spinner' : 'sync'} size={15} /> {refreshing ? 'Refreshing…' : 'Refresh'}</button>}{team?.googleDriveFolderId && sourceFilter !== 'manual' && <button className={`${button.secondary} disabled:opacity-60`} type="button" onClick={handleSync} disabled={syncing}><Icon name={syncing ? 'spinner' : 'sync'} size={15} /> {syncing ? 'Syncing…' : 'Sync Google Drive'}</button>}{!selecting && <button className={button.secondary} type="button" onClick={() => setAddOpen(true)}><Icon name="plus" size={15} /> Add receipt</button>}</div></div>
 						{needsGDriveSetup ? (
 							<div className="grid min-h-55 place-items-center rounded-[14px] border border-dashed border-line bg-white p-8 text-center">
 								<div className="max-w-md">
@@ -328,7 +340,7 @@ export default function Folders({ goTo }) {
 							const isLocal = receipt.source === 'manual'
 							const selectable = selecting && isLocal
 							const isSelected = selectedIds.has(receipt.id)
-							return <button className={`group min-w-0 text-left focus-visible:outline-[3px] focus-visible:outline-blue-ring ${selecting && !isLocal ? 'opacity-50' : ''}`} type="button" key={receipt.id} aria-pressed={selectable ? isSelected : undefined} onClick={() => selectable ? toggleSelected(receipt.id) : setPreview(receipt)}><div className={`relative grid aspect-[1.15] place-items-center overflow-hidden rounded-[14px] border bg-white text-blue shadow-sm transition group-hover:-translate-y-0.5 group-hover:shadow-md ${isSelected ? 'border-blue ring-[3px] ring-blue-ring' : 'border-line group-hover:border-blue'}`}><Icon name="receipt" size={34} />{receipt.thumbnail && <img src={receipt.thumbnail} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" onError={(event) => { event.currentTarget.style.display = 'none' }} />}{selectable && <span className={`absolute top-2 right-2 grid size-6 place-items-center rounded-md border text-white ${isSelected ? 'border-blue bg-blue' : 'border-line bg-white/80'}`}>{isSelected && <Icon name="check" size={14} />}</span>}{selecting && !isLocal && <span className="absolute bottom-2 left-2 rounded-full bg-[rgb(28_35_36/70%)] px-2 py-0.5 text-[10px] font-bold text-white">Drive</span>}</div><strong className="mt-3 block overflow-hidden text-ellipsis whitespace-nowrap text-[13px] text-ink">{receipt.filename}</strong><span className="mt-1 block truncate text-xs text-muted">{receipt.date} · {formatMoney(receipt.amount)}</span></button>
+							return <button className={`group min-w-0 text-left focus-visible:outline-[3px] focus-visible:outline-blue-ring ${selecting && !isLocal ? 'opacity-50' : ''}`} type="button" key={receipt.id} aria-pressed={selectable ? isSelected : undefined} onClick={() => selectable ? toggleSelected(receipt.id) : setPreview(receipt)}><div className={`relative grid aspect-[1.15] place-items-center overflow-hidden rounded-[14px] border bg-white text-blue shadow-sm transition group-hover:-translate-y-0.5 group-hover:shadow-md ${isSelected ? 'border-blue ring-[3px] ring-blue-ring' : 'border-line group-hover:border-blue'}`}><Icon name="receipt" size={34} />{receipt.thumbnail && <img src={receipt.thumbnail} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" onError={(event) => { event.currentTarget.style.display = 'none' }} />}{selectable && <span className={`absolute top-2 right-2 grid size-6 place-items-center rounded-md border text-white ${isSelected ? 'border-blue bg-blue' : 'border-line bg-white/80'}`}>{isSelected && <Icon name="check" size={14} />}</span>}{selecting && !isLocal && <span className="absolute bottom-2 left-2 rounded-full bg-[rgb(28_35_36/70%)] px-2 py-0.5 text-[10px] font-bold text-white">Drive</span>}{receipt.reimbursement && <span className={`absolute top-2 left-2 rounded-full px-2 py-0.5 text-[10px] font-bold ${receipt.reimbursed ? 'bg-green text-white' : 'bg-brown-soft text-brown'}`} title={`In record “${receipt.reimbursement.name}”`}>{receipt.reimbursed ? 'Reimbursed' : 'Pending'}</span>}</div><strong className="mt-3 block overflow-hidden text-ellipsis whitespace-nowrap text-[13px] text-ink">{receipt.filename}</strong><span className="mt-1 block truncate text-xs text-muted">{receipt.date} · {formatMoney(receipt.amount)}</span></button>
 						})}</div> : <div className="grid min-h-55 place-items-center rounded-[14px] border border-dashed border-line bg-white p-8 text-center"><div><span className="mx-auto grid size-11 place-items-center rounded-xl bg-blue-soft text-blue"><Icon name="folder" size={20} /></span><h3 className="mt-4 font-display text-[16px]">{allReceipts.length ? 'No matching receipts' : 'No receipts yet'}</h3><p className="mt-1 text-xs text-muted">{allReceipts.length ? 'Try another source filter.' : `Add the first receipt for ${team.name} to see it here.`}</p></div></div>}
 					</section>
 				</>
@@ -352,6 +364,17 @@ export default function Folders({ goTo }) {
 				</>
 			}>
 				<p className="text-[13px] leading-6 text-muted">The following receipts will be permanently removed from your local uploads. This action cannot be reversed.</p>
+				{deleteTargets.some((receipt) => receipt.reimbursement) && (
+					<div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs leading-5 text-red-800" role="alert">
+						<strong className="flex items-center gap-1.5"><Icon name="insight" size={14} /> Tracked in reimbursement records</strong>
+						<ul className="mt-1.5 list-disc pl-5">
+							{deleteTargets.filter((receipt) => receipt.reimbursement).map((receipt) => (
+								<li key={receipt.id}>“{receipt.filename}” is in record “{receipt.reimbursement.name}”{receipt.reimbursed ? ' and is marked Reimbursed' : ' (not reimbursed yet)'}.</li>
+							))}
+						</ul>
+						<p className="mt-1.5">The records keep their entries but will show a warning that the receipt no longer exists.</p>
+					</div>
+				)}
 				<ul className="mt-3 max-h-60 overflow-auto rounded-lg border border-line">
 					{deleteTargets.map((receipt) => (
 						<li key={receipt.id} className="flex items-center justify-between gap-3 border-b border-line px-3 py-2 last:border-b-0 text-[13px]">

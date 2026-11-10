@@ -11,6 +11,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.responses import StreamingResponse
 
 from models.receipt import ReceiptDelete, ReceiptUpdate
+from routers.reimbursement import receipt_key, receipt_links
 from services.google.google_ops import GoogleDriveService
 from services.mongodb import mongodb_ops
 from services.supabase import supabase_ops
@@ -108,6 +109,18 @@ def _to_out(team_id: str, doc: dict) -> dict:
     }
 
 
+async def _attach_reimbursement(request: Request, outs: list[dict]) -> list[dict]:
+    """Add `reimbursed` / `reimbursement` to receipt responses. Derived on every read (never cached or
+    stored on the receipt): a receipt is reimbursed only if its record's status is Reimbursed, and
+    unreimbursed by default, whatever its source."""
+    links = await receipt_links(_get_mongo(request), [o["googleDriveFileId"] for o in outs if o.get("googleDriveFileId")])
+    for o in outs:
+        link = links.get(o.get("googleDriveFileId"))
+        o["reimbursement"] = link
+        o["reimbursed"] = bool(link and link["status"] == "Reimbursed")
+    return outs
+
+
 async def _read_receipts(request: Request, dept_oid: ObjectId):
     mongo = _get_mongo(request)
     return await mongodb_ops.read(
@@ -144,15 +157,15 @@ async def get_team_receipts(team_id: str, request: Request, refresh: bool = Fals
     if not refresh:
         cached = await cache.get(cache_key)
         if cached is not None:
-            return cached
+            return await _attach_reimbursement(request, cached)
 
     docs = await _read_receipts(request, dept_oid)
     receipts = [_to_out(team_id, doc) for doc in docs]
     if receipts:  # don't cache empty teams so a first sync shows up immediately
-        await cache.set(cache_key, receipts)
+        await cache.set(cache_key, receipts)  # before attaching: reimbursement state is never cached
     elif refresh:  # a refresh that empties the list should also clear any stale cache
         await cache.delete(cache_key)
-    return receipts
+    return await _attach_reimbursement(request, receipts)
 
 
 async def _run_sync(request: Request, team_id: str) -> dict:
@@ -268,12 +281,18 @@ async def update_team_receipt(team_id: str, file_id: str, payload: ReceiptUpdate
     if doc is None:
         raise HTTPException(status_code=404, detail="Receipt not found")
 
+    if "receiptAmount" in fields and fields["receiptAmount"] != (doc.get("receiptAmount") or 0.0):
+        # a reimbursed amount is what was paid out: changing it would no longer match the record
+        link = (await receipt_links(mongo, [receipt_key(doc)])).get(receipt_key(doc))
+        if link and link["status"] == "Reimbursed":
+            raise HTTPException(status_code=409, detail=f"This receipt is reimbursed in record '{link['name']}', so its amount can't be changed. Set the record to Not reimbursed first.")
+
     await mongodb_ops.update(mongo, query={"_id": doc["_id"]}, collection_name=RECEIPTS_COLLECTION, update_data=fields)
     doc = await mongodb_ops.read(mongo, collection_name=RECEIPTS_COLLECTION, query={"_id": doc["_id"]})
 
     cache = request.app.state.cache
     await cache.delete(cache.key_builder(str(dept_oid), CACHE_KEY_NAME))
-    return _to_out(team_id, doc)
+    return (await _attach_reimbursement(request, [_to_out(team_id, doc)]))[0]
 
 
 @router.post("/teams/{team_id}/receipts/delete")
@@ -283,14 +302,26 @@ async def delete_team_receipts(team_id: str, payload: ReceiptDelete, request: Re
     mongo = _get_mongo(request)
     cache = request.app.state.cache
 
-    deleted = 0
+    # validate everything up front so a rejected request deletes nothing
+    docs = []
     for file_id in payload.ids:
         doc = await _find_receipt(request, dept_oid, file_id)
         if doc is None:
             continue
         if doc.get("createdFrom") != "local_upload":
             raise HTTPException(status_code=400, detail="Only local-upload receipts can be deleted")
+        docs.append(doc)
 
+    links = await receipt_links(mongo, [receipt_key(d) for d in docs])
+    if links and not payload.confirmLinked:
+        detail = "; ".join(
+            f"'{d.get('receiptName', '')}' is in reimbursement record '{links[receipt_key(d)]['name']}' ({links[receipt_key(d)]['status']})"
+            for d in docs if receipt_key(d) in links
+        )
+        raise HTTPException(status_code=409, detail=f"Linked to reimbursement records: {detail}. Confirm to delete anyway.")
+
+    deleted = 0
+    for doc in docs:
         storage_path = doc.get("storagePath")
         if storage_path:
             # remove the file first; a leftover Mongo doc with a missing file is worse than a stray file
@@ -358,7 +389,7 @@ async def upload_team_receipt(
 
     cache = request.app.state.cache
     await cache.delete(cache.key_builder(str(dept_oid), CACHE_KEY_NAME))
-    return _to_out(team_id, doc)
+    return (await _attach_reimbursement(request, [_to_out(team_id, doc)]))[0]
 
 
 def _drive_version(raw_meta) -> str:

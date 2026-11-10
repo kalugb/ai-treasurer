@@ -15,8 +15,8 @@ export const receiptsAPI = {
 		request(`/api/google-drive/teams/${teamId}/receipts/${fileId}`, { method: 'PATCH', data: patch }),
 	upload: (teamId, formData) =>
 		requestWithFile(`/api/google-drive/teams/${teamId}/receipts/upload`, formData),
-	remove: (teamId, ids) =>
-		request(`/api/google-drive/teams/${teamId}/receipts/delete`, { method: 'POST', data: { ids } }),
+	remove: (teamId, ids, confirmLinked = false) =>
+		request(`/api/google-drive/teams/${teamId}/receipts/delete`, { method: 'POST', data: { ids, confirmLinked } }),
 }
 
 // backend returns persisted receipts; map to the shape the UI renders (shared by Folders + ReceiptPickerModal)
@@ -31,6 +31,8 @@ export const toReceipt = (r) => ({
 	category: r.source === 'local_upload' ? 'Local upload' : 'Google Drive',
 	source: r.source === 'local_upload' ? 'manual' : 'google',
 	thumbnail: r.thumbnail ? `${API_BASE_URL}${r.thumbnail}` : null,
+	reimbursed: r.reimbursed ?? false, // unreimbursed unless its record is marked Reimbursed
+	reimbursement: r.reimbursement ?? null, // { id, name, status } of the record holding this receipt
 })
 
 export const fetchReceipts = (teamId, refresh = false) => receiptsAPI.getReceipts(teamId, refresh).then((list) => (Array.isArray(list) ? list.map(toReceipt) : []))

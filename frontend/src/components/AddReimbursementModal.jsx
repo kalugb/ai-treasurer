@@ -7,14 +7,22 @@ const field = 'grid gap-1.75 text-xs font-bold text-ink'
 const input = 'h-10.5 w-full rounded-[7px] border border-line bg-paper px-3 text-ink outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]'
 const OTHER = '__other__'
 
-const fromRecord = (r) => ({
-    name: r?.name ?? '',
-    team: r && !r.teamInvolvedId ? r.teamInvolved : '',
-    amount: r ? String(r.amount) : '',
-    date: r?.date ?? new Date().toISOString().slice(0, 10),
-    status: r?.status ?? 'Not reimbursed',
-    receiptNames: r?.receiptInvolved?.receiptNames ?? [],
-})
+const fromRecord = (r) => {
+    const involved = r?.receiptInvolved
+    const ids = involved?.receiptIds ?? []
+    const missing = new Set(involved?.missingReceiptIds ?? [])
+    return {
+        name: r?.name ?? '',
+        team: r && !r.teamInvolvedId ? r.teamInvolved : '',
+        amount: r ? String(r.amount) : '',
+        date: r?.date ?? new Date().toISOString().slice(0, 10),
+        status: r?.status ?? 'Not reimbursed',
+        // linked receipts; `missing` = the receipt no longer exists (deleted, or removed from Drive by a sync)
+        receipts: ids.map((id, i) => ({ id, name: involved.receiptNames?.[i] || id, missing: missing.has(id) })),
+        // records made before receipts were tracked by id only have names; shown read-only, never matched
+        legacyNames: ids.length ? [] : (involved?.receiptNames ?? []),
+    }
+}
 
 const errorText = (err) => {
     const detail = err?.response?.data?.detail
@@ -27,6 +35,7 @@ export default function AddReimbursementModal({ initial, onClose, onSave, teams 
     const [form, setForm] = useState(() => fromRecord(initial))
     const [teamChoice, setTeamChoice] = useState(initial ? (initial.teamInvolvedId ?? OTHER) : '')
     const [picking, setPicking] = useState(false)
+    const [receiptsTouched, setReceiptsTouched] = useState(false)
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState('')
     const realTeam = teamChoice && teamChoice !== OTHER
@@ -34,34 +43,45 @@ export default function AddReimbursementModal({ initial, onClose, onSave, teams 
     const set = (key) => (event) => setForm((f) => ({ ...f, [key]: event.target.value }))
     const pickTeam = (event) => {
         setTeamChoice(event.target.value)
-        setForm((f) => ({ ...f, receiptNames: [] }))
+        setReceiptsTouched(true)
+        setForm((f) => ({ ...f, receipts: [], legacyNames: [] }))
     }
-    const applyPicked = (receiptNames, picked) => {
+    const applyPicked = (picked) => {
         const total = picked.reduce((s, r) => s + (r.amount ?? 0), 0)
         // prefill only empty fields; never overwrite what the user typed
+        setReceiptsTouched(true)
         setForm((f) => ({
             ...f,
-            receiptNames,
-            name: f.name || receiptNames[0] || '',
+            // receipts that no longer exist can't be re-picked, so they stay until the user removes them
+            receipts: [...f.receipts.filter((x) => x.missing), ...picked.map((r) => ({ id: r.id, name: r.filename, missing: false }))],
+            legacyNames: [],
+            name: f.name || picked[0]?.filename || '',
             amount: f.amount || (total ? String(Math.round(total * 100) / 100) : ''),
         }))
         setPicking(false)
     }
-    const removeReceipt = (name) => setForm((f) => ({ ...f, receiptNames: f.receiptNames.filter((n) => n !== name) }))
+    const removeReceipt = (id) => {
+        setReceiptsTouched(true)
+        setForm((f) => ({ ...f, receipts: f.receipts.filter((x) => x.id !== id) }))
+    }
     const submit = async (event) => {
         event.preventDefault()
         setSaving(true)
         setError('')
         try {
-            await onSave({
+            const payload = {
                 name: form.name.trim(),
                 date: form.date,
                 amount: Number(form.amount),
                 status: form.status,
                 teamInvolvedId: realTeam ? teamChoice : null,
                 teamInvolved: realTeam ? null : form.team.trim(),
-                receiptInvolved: realTeam && form.receiptNames.length ? { receiptNames: form.receiptNames } : null,
-            })
+            }
+            // an untouched legacy record keeps its stored names: leave receiptInvolved out so the server doesn't change it
+            if (receiptsTouched || !form.legacyNames.length) {
+                payload.receiptInvolved = realTeam && form.receipts.length ? { receiptIds: form.receipts.map((x) => x.id) } : null
+            }
+            await onSave(payload)
         } catch (err) {
             setError(errorText(err))
             setSaving(false)
@@ -114,18 +134,24 @@ export default function AddReimbursementModal({ initial, onClose, onSave, teams 
                     {realTeam && (
                         <div className={field}>
                             <span>Receipts involved</span>
-                            {form.receiptNames.length > 0 && (
+                            <p className="font-normal text-[11px] leading-[1.5] text-muted">Receipts marked as reimbursed can't have their amount edited afterwards.</p>
+                            {form.legacyNames.length > 0 && (
+                                <p className="rounded-lg bg-paper px-3 py-2 text-[11px] font-semibold text-muted">
+                                    Saved before receipts were tracked, so they aren't linked: {form.legacyNames.join(', ')}. Choosing receipts replaces them.
+                                </p>
+                            )}
+                            {form.receipts.length > 0 && (
                                 <ul className="flex flex-wrap gap-1.5" aria-label="Selected receipts">
-                                    {form.receiptNames.map((n) => (
-                                        <li key={n} className="inline-flex max-w-full items-center gap-1 rounded-full bg-blue-soft py-1 pr-1 pl-2.5 text-[11px] font-bold text-blue">
-                                            <span className="truncate">{n}</span>
-                                            <button className="grid size-4.5 place-items-center rounded-full hover:bg-white" type="button" aria-label={`Remove ${n}`} onClick={() => removeReceipt(n)}>×</button>
+                                    {form.receipts.map((x) => (
+                                        <li key={x.id} className={`inline-flex max-w-full items-center gap-1 rounded-full py-1 pr-1 pl-2.5 text-[11px] font-bold ${x.missing ? 'bg-red-50 text-red-700' : 'bg-blue-soft text-blue'}`} title={x.missing ? 'This receipt no longer exists (deleted, or removed from Google Drive).' : undefined}>
+                                            <span className="truncate">{x.missing ? `⚠ ${x.name} (no longer exists)` : x.name}</span>
+                                            <button className="grid size-4.5 place-items-center rounded-full hover:bg-white" type="button" aria-label={`Remove ${x.name}`} onClick={() => removeReceipt(x.id)}>×</button>
                                         </li>
                                     ))}
                                 </ul>
                             )}
                             <button className={`${button.secondary} w-fit`} type="button" onClick={() => setPicking(true)}>
-                                <Icon name="receipt" size={16} /> {form.receiptNames.length ? `Change receipts (${form.receiptNames.length})` : 'Choose receipts'}
+                                <Icon name="receipt" size={16} /> {form.receipts.length ? `Change receipts (${form.receipts.length})` : 'Choose receipts'}
                             </button>
                         </div>
                     )}
@@ -161,7 +187,7 @@ export default function AddReimbursementModal({ initial, onClose, onSave, teams 
                 </form>
             </div>
             {picking && (
-                <ReceiptPickerModal teamId={teamChoice} selectedNames={form.receiptNames} onClose={() => setPicking(false)} onConfirm={applyPicked} />
+                <ReceiptPickerModal teamId={teamChoice} selectedIds={form.receipts.filter((x) => !x.missing).map((x) => x.id)} recordId={initial?.id ?? null} onClose={() => setPicking(false)} onConfirm={applyPicked} />
             )}
         </div>
     )

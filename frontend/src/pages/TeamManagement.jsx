@@ -183,28 +183,68 @@ function TeamModal({ team, teams, onClose, onSave, serverError }) {
 	)
 }
 
-function DeleteModal({ team, onClose, onDelete }) {
+function DeleteModal({ team, organization, onClose, onDelete }) {
 	const [confirmation, setConfirmation] = useState('')
+	const [impact, setImpact] = useState(null) // null = loading
+	const [failed, setFailed] = useState(false)
+	const [attempt, setAttempt] = useState(0)
+	const [deleting, setDeleting] = useState(false)
 	const matches = confirmation === team.name
+
+	useEffect(() => {
+		let cancelled = false
+		setImpact(null)
+		setFailed(false)
+		teamsAPI.deleteImpact(team.id, organization.id, organization.ownerId)
+			.then((res) => { if (!cancelled) setImpact(res) })
+			.catch(() => { if (!cancelled) setFailed(true) })
+		return () => { cancelled = true }
+	}, [team.id, organization.id, organization.ownerId, attempt])
+
+	const money = (n) => `$${(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+	const confirmDelete = async () => {
+		setDeleting(true)
+		try {
+			await onDelete(team.id, impact.records > 0)
+		} finally {
+			setDeleting(false)
+		}
+	}
 	return (
 		<Modal title={`Delete ${team.name}?`} description="This action cannot be undone. All team settings will be permanently removed." labelledBy="delete-team-title" onClose={onClose}>
 			<div className="grid gap-5">
 				<div className="rounded-lg border border-red-200 bg-red-50 p-4 text-[13px] leading-6 text-red-800">
 					Deleting this team is irreversible. Type the exact team name below to confirm.
 				</div>
+				{impact === null && !failed && <p className="flex items-center gap-2 text-xs text-muted"><Icon name="spinner" size={14} /> Checking what this team contains…</p>}
+				{failed && (
+					<p className="text-xs font-bold text-red-700" role="alert">
+						Couldn’t check what this team contains, so it can’t be deleted safely yet.{' '}
+						<button className="text-blue underline" type="button" onClick={() => setAttempt((n) => n + 1)}>Retry</button>
+					</p>
+				)}
+				{impact && (impact.receipts > 0 || impact.records > 0) && (
+					<div className="rounded-lg border border-red-300 bg-red-50 p-4 text-[13px] leading-6 text-red-900" role="alert">
+						<strong className="block">This will also permanently delete:</strong>
+						<ul className="mt-1 list-disc pl-5">
+							{impact.receipts > 0 && <li>{impact.receipts} receipt{impact.receipts === 1 ? '' : 's'}, including uploaded files</li>}
+							{impact.records > 0 && <li>{impact.records} reimbursement record{impact.records === 1 ? '' : 's'} ({impact.reimbursedRecords} already reimbursed, totalling {money(impact.reimbursedAmount)}). They are deleted forever, not just detached from the team.</li>}
+						</ul>
+						<p className="mt-1.5 text-xs">Everything is deleted together, or nothing is.</p>
+					</div>
+				)}
 				<label className={field}>
 					Team name
 					<input className={input} value={confirmation} onChange={(event) => setConfirmation(event.target.value)} placeholder={team.name} />
 				</label>
 				<div className="flex justify-end gap-2 border-t border-line pt-5">
-					<button className={button.secondary} type="button" onClick={onClose}>Cancel</button>
-					<button className="inline-flex min-h-10.5 items-center justify-center rounded-lg bg-red-600 px-4 text-[13px] font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40" type="button" disabled={!matches} onClick={() => onDelete(team.id)}>Delete team</button>
+					<button className={button.secondary} type="button" onClick={onClose} disabled={deleting}>Cancel</button>
+					<button className="inline-flex min-h-10.5 items-center justify-center rounded-lg bg-red-600 px-4 text-[13px] font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40" type="button" disabled={!matches || !impact || deleting} onClick={confirmDelete}>{deleting ? 'Deleting…' : 'Delete team'}</button>
 				</div>
 			</div>
 		</Modal>
 	)
 }
-
 function usagePercent(team, used) {
 	return team.budget > 0 ? Math.round((used / team.budget) * 100) : 0
 }
@@ -276,8 +316,8 @@ export default function TeamManagement() {
 		}
 	}
 
-	const onDeleteTeam = async (id) => {
-		await teamsAPI.deleteTeam(id, organization.id, organization.ownerId)
+	const onDeleteTeam = async (id, confirmRecords) => {
+		await teamsAPI.deleteTeam(id, organization.id, organization.ownerId, confirmRecords)
 		setTeams((current) => current.filter((team) => team.id !== id))
 	}
 
@@ -294,10 +334,10 @@ export default function TeamManagement() {
 		}
 	}
 
-	const removeTeam = async (id) => {
+	const removeTeam = async (id, confirmRecords = false) => {
 		try {
 			const team = teams.find(t => t.id === id)
-			await onDeleteTeam(id)
+			await onDeleteTeam(id, confirmRecords)
 			setDeleteTeam(null)
 			push(team ? `Team "${team.name}" deleted successfully` : 'Team deleted successfully', 'success')
 		} catch (e) {
@@ -355,7 +395,7 @@ export default function TeamManagement() {
 				)}
 			</section>
 			{(showForm || editingTeam) && <TeamModal team={editingTeam} teams={teams} onClose={() => { setShowForm(false); setEditingTeam(null); setServerError(null) }} onSave={saveTeam} serverError={serverError} />}
-			{deleteTeam && <DeleteModal team={deleteTeam} onClose={() => setDeleteTeam(null)} onDelete={removeTeam} />}
+			{deleteTeam && <DeleteModal team={deleteTeam} organization={organization} onClose={() => setDeleteTeam(null)} onDelete={removeTeam} />}
 		</>
 	)
 }

@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import APIRouter, HTTPException, Request, Depends, Response
+from pymongo.errors import OperationFailure, PyMongoError
 
 from starlette.concurrency import run_in_threadpool
 
@@ -15,8 +16,10 @@ router = APIRouter(prefix="/api")
 COLLECTION_NAME = "departments"
 ORG_COLLECTION = "organizations"
 RECEIPTS_COLLECTION = "receipts"
+REIMBURSEMENT_COLLECTION = "reimbursement"
 CACHE_KEY_NAME = "departments"
 RECEIPTS_CACHE_KEY_NAME = "receipts"
+NO_TRANSACTIONS = 20  # IllegalOperation: server is not a replica set / mongos
 
 def get_mongo(request: Request):
     return request.app.state.mongo
@@ -157,8 +160,8 @@ async def update_team(team_id: str, payload: UpdateTeamRequest, orgId: str | Non
     updated = await mongodb_ops.read(mongo, collection_name=COLLECTION_NAME, query={"_id": team_oid})
     return _to_out(updated)
 
-@router.delete("/teams/{team_id}", status_code=204)
-async def delete_team(team_id: str, orgId: str | None = None, ownerId: str | None = None, mongo=Depends(get_mongo), cache: CacheStore = Depends(get_cache_redis)):
+async def _team_for_delete(mongo, team_id: str, orgId: str | None, ownerId: str | None):
+    """Load a team and run the org/owner checks shared by delete and its impact preview."""
     if mongo is None:
         raise HTTPException(status_code=503, detail="Database not available")
     team_oid = _parse_id(team_id, "team id")
@@ -170,19 +173,87 @@ async def delete_team(team_id: str, orgId: str | None = None, ownerId: str | Non
     if orgId and str(_parse_id(orgId, "orgId")) != team_org_str and orgId != team_org_str:
         raise HTTPException(status_code=403, detail="Team does not belong to this organization")
     await _verify_org_owner(mongo, team_org_id if isinstance(team_org_id, ObjectId) else _parse_id(team_org_str, "orgId"), ownerId)
-    # cascade: remove every receipt the team owns (Mongo docs + Supabase files) so nothing is orphaned
+    return team_oid, team_org_str
+
+
+async def _delete_impact(mongo, team_oid: ObjectId) -> dict:
     receipts = await mongodb_ops.read(mongo, collection_name=RECEIPTS_COLLECTION, query={"departmentID": team_oid}, read_many=True)
-    for receipt in receipts or []:
+    records = await mongodb_ops.read(mongo, collection_name=REIMBURSEMENT_COLLECTION, query={"teamInvolvedId": team_oid}, read_many=True)
+    paid = [r.get("amount") or 0.0 for r in records or [] if r.get("status") == "Reimbursed"]
+    return {
+        "receipts": len(receipts or []),
+        "records": len(records or []),
+        "reimbursedRecords": len(paid),
+        "reimbursedAmount": round(sum(paid), 2),
+        "_receiptDocs": receipts or [],
+    }
+
+
+@router.get("/teams/{team_id}/delete-impact")
+async def team_delete_impact(team_id: str, orgId: str | None = None, ownerId: str | None = None, mongo=Depends(get_mongo)):
+    """What deleting this team would permanently destroy (shown in the confirmation dialog)."""
+    team_oid, _ = await _team_for_delete(mongo, team_id, orgId, ownerId)
+    impact = await _delete_impact(mongo, team_oid)
+    impact.pop("_receiptDocs")
+    return impact
+
+
+def _delete_team_data(mongo, team_oid: ObjectId) -> None:
+    """Receipts, reimbursement records and the team go in ONE transaction: all deleted, or none."""
+    def txn(session):
+        mongo[RECEIPTS_COLLECTION].delete_many({"departmentID": team_oid}, session=session)
+        mongo[REIMBURSEMENT_COLLECTION].delete_many({"teamInvolvedId": team_oid}, session=session)
+        mongo[COLLECTION_NAME].delete_one({"_id": team_oid}, session=session)
+
+    try:
+        with mongo.client.start_session() as session:
+            session.with_transaction(txn)
+    except OperationFailure as exc:
+        if exc.code != NO_TRANSACTIONS:
+            raise
+        # shortcut: a standalone server (no replica set) has no transactions; snapshot, delete, and restore
+        # on failure. Not crash-safe like a real transaction: run MongoDB as a replica set (Atlas always is).
+        _delete_team_data_compensating(mongo, team_oid)
+
+
+def _delete_team_data_compensating(mongo, team_oid: ObjectId) -> None:
+    steps = [
+        (RECEIPTS_COLLECTION, {"departmentID": team_oid}),
+        (REIMBURSEMENT_COLLECTION, {"teamInvolvedId": team_oid}),
+        (COLLECTION_NAME, {"_id": team_oid}),
+    ]
+    snapshot = [(name, list(mongo[name].find(query))) for name, query in steps]
+    try:
+        for name, query in steps:
+            mongo[name].delete_many(query)
+    except Exception:
+        for name, docs in snapshot:
+            for doc in docs:
+                mongo[name].replace_one({"_id": doc["_id"]}, doc, upsert=True)
+        raise
+
+
+@router.delete("/teams/{team_id}", status_code=204)
+async def delete_team(team_id: str, orgId: str | None = None, ownerId: str | None = None, confirmRecords: bool = False, mongo=Depends(get_mongo), cache: CacheStore = Depends(get_cache_redis)):
+    team_oid, team_org_str = await _team_for_delete(mongo, team_id, orgId, ownerId)
+    impact = await _delete_impact(mongo, team_oid)
+    if impact["records"] and not confirmRecords:
+        raise HTTPException(status_code=409, detail=f"This team has {impact['records']} reimbursement record(s) that would be deleted forever. Confirm to delete them.")
+    try:
+        await run_in_threadpool(_delete_team_data, mongo, team_oid)
+    except PyMongoError:
+        # includes servers without transaction support: refuse rather than delete part of the data
+        raise HTTPException(status_code=500, detail="Could not delete the team. Nothing was deleted.")
+    # committed: now clean up what a DB transaction can't cover (storage files, caches). Best-effort:
+    # a stray file is harmless, and the team data is already gone.
+    for receipt in impact["_receiptDocs"]:
         storage_path = receipt.get("storagePath")
         if storage_path:
-            # best-effort: a stray file is less harmful than blocking the whole team delete on a storage hiccup
             try:
                 await run_in_threadpool(supabase_ops.delete_receipt, storage_path)
             except Exception:
                 pass
             await cache.delete(cache.key_builder(str(receipt["_id"]), f"thumb:{storage_path}"))
-    await mongodb_ops.delete(mongo, collection_name=RECEIPTS_COLLECTION, query={"departmentID": team_oid}, delete_many=True)
     await cache.delete(cache.key_builder(str(team_oid), RECEIPTS_CACHE_KEY_NAME))
-    await mongodb_ops.delete(mongo, collection_name=COLLECTION_NAME, query={"_id": team_oid})
     await cache.delete(cache.key_builder(team_org_str, CACHE_KEY_NAME))
     return Response(status_code=204)

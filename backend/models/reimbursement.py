@@ -1,4 +1,4 @@
-import datetime as dt
+﻿import datetime as dt
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, StringConstraints
@@ -7,8 +7,8 @@ Status = Literal["Reimbursed", "Not reimbursed"]
 
 
 class ReceiptInvolved(BaseModel):
-    # names only: labels, not references (keeps docs small when a team has many receipts)
-    receiptNames: list[Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]] = Field(max_length=100)
+    # ids only: the server checks them against the team and fills in the names (receiptNames)
+    receiptIds: list[Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)]] = Field(max_length=100)
 
 
 class ReimbursementCreate(BaseModel):
