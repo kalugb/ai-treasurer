@@ -1,5 +1,4 @@
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
-import os 
 
 async def generate_embeddings(embedding_client: GoogleGenerativeAIEmbeddings, texts: list[str]) -> list[list[float]]:    
     return embedding_client.embed_documents(texts)
