@@ -4,8 +4,7 @@ import Icon from '../components/Icon'
 import { button } from '../components/button'
 import AddReceiptModal from '../components/AddReceiptModal'
 import { teamsAPI } from '../api/teams'
-import { API_BASE_URL } from '../api/client'
-import { receiptsAPI } from '../api/receipts'
+import { receiptsAPI, fetchReceipts, toReceipt } from '../api/receipts'
 import { OrganizationRequiredEmptyState } from '../components/OrganizationContext'
 import { useSelectedOrganization } from '../hooks/useSelectedOrganization'
 import { useSyncStatus } from '../context/syncStatus'
@@ -23,21 +22,6 @@ const readPreference = (key, allowed, fallback) => {
 	}
 }
 
-// backend returns persisted receipts; map to the shape the UI renders
-const toReceipt = (r) => ({
-	id: r.googleDriveFileId,
-	googleDriveFileId: r.googleDriveFileId,
-	filename: r.receiptName,
-	label: r.label ?? null,
-	description: r.description ?? null,
-	date: r.date || '—',
-	amount: r.receiptAmount ?? 0,
-	category: r.source === 'local_upload' ? 'Local upload' : 'Google Drive',
-	source: r.source === 'local_upload' ? 'manual' : 'google',
-	thumbnail: r.thumbnail ? `${API_BASE_URL}${r.thumbnail}` : null,
-})
-
-const fetchReceipts = (teamId, refresh = false) => receiptsAPI.getReceipts(teamId, refresh).then((list) => (Array.isArray(list) ? list.map(toReceipt) : []))
 
 function ReceiptPreview({ receipt, onClose, onPrev, onNext, index, total, onSave, onDelete, deleting }) {
 	const [loadedSrc, setLoadedSrc] = useState(null)

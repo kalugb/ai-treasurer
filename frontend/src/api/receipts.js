@@ -18,3 +18,19 @@ export const receiptsAPI = {
 	remove: (teamId, ids) =>
 		request(`/api/google-drive/teams/${teamId}/receipts/delete`, { method: 'POST', data: { ids } }),
 }
+
+// backend returns persisted receipts; map to the shape the UI renders (shared by Folders + ReceiptPickerModal)
+export const toReceipt = (r) => ({
+	id: r.googleDriveFileId,
+	googleDriveFileId: r.googleDriveFileId,
+	filename: r.receiptName,
+	label: r.label ?? null,
+	description: r.description ?? null,
+	date: r.date || '—',
+	amount: r.receiptAmount ?? 0,
+	category: r.source === 'local_upload' ? 'Local upload' : 'Google Drive',
+	source: r.source === 'local_upload' ? 'manual' : 'google',
+	thumbnail: r.thumbnail ? `${API_BASE_URL}${r.thumbnail}` : null,
+})
+
+export const fetchReceipts = (teamId, refresh = false) => receiptsAPI.getReceipts(teamId, refresh).then((list) => (Array.isArray(list) ? list.map(toReceipt) : []))

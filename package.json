@@ -8,7 +8,7 @@
   },
   "scripts": {
     "frontend": "cd frontend && bun run dev",
-    "backend": "cd backend && uv run uvicorn main:app --reload"
+    "backend": "cd backend && uv run uvicorn main:app --reload --timeout-graceful-shutdown 3"
   },
   "dependencies": {
     "@assistant-ui/react": "^0.15.15",

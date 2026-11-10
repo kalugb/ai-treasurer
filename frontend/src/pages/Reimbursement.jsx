@@ -1,33 +1,48 @@
 import { useEffect, useState } from 'react'
 import Icon from '../components/Icon'
 import { teamsAPI } from '../api/teams'
+import { reimbursementAPI } from '../api/reimbursement'
 import Modal from '../components/Modal'
 import AddReimbursementModal from '../components/AddReimbursementModal'
 import { button } from '../components/button'
 import { OrganizationRequiredEmptyState } from '../components/OrganizationContext'
 import { useSelectedOrganization } from '../hooks/useSelectedOrganization'
+import { useToast } from '../context/toast'
 
-// shortcut: records live in component state only (lost on reload), replace with a reimbursement API when the backend exists.
 const card = 'min-h-37.5 rounded-[14px] border p-5.5 max-[820px]:min-h-auto max-[560px]:p-4'
 const th = 'pb-3 pr-3 pl-0 text-left text-[10px] font-bold tracking-[0.06em] uppercase text-muted'
 const td = 'border-t border-line py-3.25 pr-3 pl-0 text-muted'
 const money = (n) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+const EMPTY = { records: [], totals: { reimbursed: 0, notReimbursed: 0, reimbursedCount: 0, notReimbursedCount: 0 } }
 
 export default function Reimbursement({ goTo }) {
 	const organization = useSelectedOrganization()
-	const [records, setRecords] = useState([])
-	const [adding, setAdding] = useState(false)
+	const { push } = useToast()
+	const [data, setData] = useState(EMPTY)
+	const [version, setVersion] = useState(0)
+	const [editing, setEditing] = useState(null) // null = closed, {} = add, record = edit
 	const [selecting, setSelecting] = useState(false)
 	const [selectedIds, setSelectedIds] = useState(new Set())
 	const [confirming, setConfirming] = useState(false)
 	const [teams, setTeams] = useState([])
+	const orgId = organization?.id
+	const ownerId = organization?.ownerId
 
 	useEffect(() => {
-		if (!organization?.id) return
-		teamsAPI.getTeams(organization.id, organization.ownerId)
+		if (!orgId) return
+		teamsAPI.getTeams(orgId, ownerId)
 			.then((res) => setTeams(Array.isArray(res) ? res : []))
 			.catch(() => setTeams([]))
-	}, [organization?.id, organization?.ownerId])
+	}, [orgId, ownerId])
+
+	useEffect(() => {
+		if (!orgId) return
+		reimbursementAPI.list(orgId, ownerId)
+			.then(setData)
+			.catch(() => { setData(EMPTY); push('Could not load reimbursements.', 'error') })
+	}, [orgId, ownerId, version, push])
+
+	const reload = () => setVersion((v) => v + 1)
 
 	const header = (
 		<header className="mb-9 flex items-end justify-between gap-6 max-[820px]:flex-col max-[820px]:items-start">
@@ -39,7 +54,7 @@ export default function Reimbursement({ goTo }) {
 				</p>
 			</div>
 			{organization && !selecting && (
-				<button className={button.primary} type="button" onClick={() => setAdding(true)}>
+				<button className={button.primary} type="button" onClick={() => setEditing({})}>
 					<Icon name="plus" size={16} /> Add reimbursement
 				</button>
 			)}
@@ -48,9 +63,7 @@ export default function Reimbursement({ goTo }) {
 
 	if (!organization) return <>{header}<OrganizationRequiredEmptyState onGoToOrganization={() => goTo('organization')} /></>
 
-	const paid = records.filter((r) => r.status === 'reimbursed')
-	const pending = records.filter((r) => r.status !== 'reimbursed')
-	const sum = (list) => list.reduce((s, r) => s + r.amount, 0)
+	const { records, totals } = data
 	const allSelected = records.length > 0 && selectedIds.size === records.length
 
 	const toggle = (id) => setSelectedIds((prev) => {
@@ -60,10 +73,25 @@ export default function Reimbursement({ goTo }) {
 		return next
 	})
 	const stopSelecting = () => { setSelecting(false); setSelectedIds(new Set()) }
-	const confirmDelete = () => {
-		setRecords((list) => list.filter((r) => !selectedIds.has(r.id)))
-		setConfirming(false)
-		stopSelecting()
+	const confirmDelete = async () => {
+		try {
+			const { deleted } = await reimbursementAPI.remove(orgId, [...selectedIds], ownerId)
+			push(`Deleted ${deleted} record${deleted === 1 ? '' : 's'}.`, 'success')
+			stopSelecting()
+			reload()
+		} catch {
+			push('Delete failed.', 'error')
+		} finally {
+			setConfirming(false)
+		}
+	}
+	// throws on failure so the modal stays open and shows the error
+	const save = async (payload) => {
+		if (editing?.id) await reimbursementAPI.update(editing.id, payload, ownerId)
+		else await reimbursementAPI.create({ ...payload, orgId }, ownerId)
+		push(editing?.id ? 'Reimbursement updated.' : 'Reimbursement added.', 'success')
+		setEditing(null)
+		reload()
 	}
 
 	return (
@@ -72,13 +100,13 @@ export default function Reimbursement({ goTo }) {
 			<section className="mb-3.5 grid grid-cols-2 gap-3.5 max-[820px]:grid-cols-1" aria-label="Reimbursement summary">
 				<article className={`${card} border-blue bg-blue text-white`}>
 					<span className="mb-2.5 text-[11px] font-bold tracking-widest uppercase text-white/72">Total reimbursed</span>
-					<strong className="mb-4 block font-display text-[30px] tracking-tighter">{money(sum(paid))}</strong>
-					<span className="flex items-center gap-1.25 text-xs text-white/72"><Icon name="check" size={15} /> {paid.length} receipts paid out</span>
+					<strong className="mb-4 block font-display text-[30px] tracking-tighter">{money(totals.reimbursed)}</strong>
+					<span className="flex items-center gap-1.25 text-xs text-white/72"><Icon name="check" size={15} /> {totals.reimbursedCount} records paid out</span>
 				</article>
 				<article className={`${card} border-line bg-white`}>
 					<span className="mb-2.5 text-[11px] font-bold tracking-widest uppercase text-muted">Yet to be reimbursed</span>
-					<strong className="mb-4 block font-display text-[30px] tracking-tighter">{money(sum(pending))}</strong>
-					<span className="flex items-center gap-1.25 text-xs text-muted"><Icon name="receipt" size={15} /> {pending.length} receipts pending</span>
+					<strong className="mb-4 block font-display text-[30px] tracking-tighter">{money(totals.notReimbursed)}</strong>
+					<span className="flex items-center gap-1.25 text-xs text-muted"><Icon name="receipt" size={15} /> {totals.notReimbursedCount} records not reimbursed</span>
 				</article>
 			</section>
 
@@ -86,7 +114,7 @@ export default function Reimbursement({ goTo }) {
 				<div className="mb-5 flex items-start justify-between gap-4.5 max-[560px]:flex-col">
 					<div>
 						<h2 className="font-display text-[17px] tracking-[-0.03em]">Reimbursement requests</h2>
-						<p className="mt-1.5 text-[13px] leading-[1.55] text-muted">Receipts awaiting or already reimbursed</p>
+						<p className="mt-1.5 text-[13px] leading-[1.55] text-muted">Records awaiting or already reimbursed</p>
 					</div>
 					{selecting ? (
 						<div className="flex gap-2">
@@ -110,7 +138,8 @@ export default function Reimbursement({ goTo }) {
 										<input type="checkbox" aria-label="Select all records" checked={allSelected} onChange={() => setSelectedIds(allSelected ? new Set() : new Set(records.map((r) => r.id)))} />
 									</th>
 								)}
-								<th className={th}>Date</th><th className={th}>Receipt</th><th className={th}>Team</th><th className={th}>Amount</th><th className={th}>Status</th>
+								<th className={th}>Date</th><th className={th}>Name</th><th className={th}>Receipts</th><th className={th}>Team</th><th className={th}>Amount</th><th className={th}>Status</th>
+								{!selecting && <th className={th}><span className="sr-only">Actions</span></th>}
 							</tr>
 						</thead>
 						<tbody>
@@ -118,22 +147,30 @@ export default function Reimbursement({ goTo }) {
 								<tr key={r.id} className={selecting ? 'cursor-pointer hover:bg-paper' : ''} onClick={selecting ? () => toggle(r.id) : undefined}>
 									{selecting && (
 										<td className={td}>
-											<input type="checkbox" aria-label={`Select ${r.receiptName}`} checked={selectedIds.has(r.id)} onChange={() => toggle(r.id)} onClick={(e) => e.stopPropagation()} />
+											<input type="checkbox" aria-label={`Select ${r.name}`} checked={selectedIds.has(r.id)} onChange={() => toggle(r.id)} onClick={(e) => e.stopPropagation()} />
 										</td>
 									)}
 									<td className={td}>{r.date}</td>
-									<td className={`${td} font-semibold text-ink`}>{r.receiptName}</td>
-									<td className={td}>{r.team}</td>
+									<td className={`${td} font-semibold text-ink`}>{r.name}</td>
+									<td className={td} title={r.receiptInvolved?.receiptNames?.join(', ')}>
+										{r.receiptInvolved?.receiptNames?.length ? `${r.receiptInvolved.receiptNames.length} receipt${r.receiptInvolved.receiptNames.length === 1 ? '' : 's'}` : '—'}
+									</td>
+									<td className={td}>{r.teamInvolved}</td>
 									<td className={`${td} font-semibold text-ink`}>{money(r.amount)}</td>
 									<td className={td}>
-										{r.status === 'reimbursed'
+										{r.status === 'Reimbursed'
 											? <span className="inline-flex rounded-[20px] bg-green-soft px-2 py-1.25 text-[10px] font-bold text-green">Reimbursed</span>
-											: <span className="inline-flex rounded-[20px] bg-brown-soft px-2 py-1.25 text-[10px] font-bold text-brown">Pending</span>}
+											: <span className="inline-flex rounded-[20px] bg-brown-soft px-2 py-1.25 text-[10px] font-bold text-brown">Not reimbursed</span>}
 									</td>
+									{!selecting && (
+										<td className={`${td} text-right`}>
+											<button className="border-0 bg-transparent p-0 text-xs font-bold text-blue" type="button" aria-label={`Edit ${r.name}`} onClick={() => setEditing(r)}>Edit</button>
+										</td>
+									)}
 								</tr>
 							)) : (
 								<tr>
-									<td className="border-t border-line p-0" colSpan="5">
+									<td className="border-t border-line p-0" colSpan="7">
 										<div className="grid min-h-48 place-items-center p-8 text-center">
 											<div>
 												<span className="mx-auto grid size-11 place-items-center rounded-xl bg-blue-soft text-blue"><Icon name="sync" size={20} /></span>
@@ -149,15 +186,15 @@ export default function Reimbursement({ goTo }) {
 				</div>
 			</article>
 
-			<AddReimbursementModal
-				open={adding}
-				teams={teams}
-				onClose={() => setAdding(false)}
-				onAdd={(record) => {
-					setRecords((list) => [{ ...record, id: crypto.randomUUID() }, ...list])
-					setAdding(false)
-				}}
-			/>
+			{/* mounted only while open, so every open starts from fresh form state */}
+			{editing !== null && (
+				<AddReimbursementModal
+					initial={editing.id ? editing : null}
+					teams={teams}
+					onClose={() => setEditing(null)}
+					onSave={save}
+				/>
+			)}
 
 			<Modal
 				isOpen={confirming}
