@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 
 from services.mongodb import mongodb_ops
 from services.ai import attachments as attachments_svc
+from services.ai import receipt_scan
 from models.agent import SendMessageRequest, RegenerateRequest, StopRequest
 
 router = APIRouter(prefix="/api/agent")
@@ -239,6 +240,22 @@ async def upload_attachment(file: UploadFile = File(...)):
     Transient: the bytes are discarded after conversion; only the text is returned."""
     data = await file.read()
     return await attachments_svc.convert(file.filename or "file", file.content_type or "", data)
+
+
+@router.post("/receipts/scan")
+async def scan_receipt(request: Request, file: UploadFile = File(...)):
+    """AI-extract receipt name/amount/description from an uploaded file (nothing is stored)."""
+    llm = request.app.state.llm_inference
+    if llm is None:
+        raise HTTPException(status_code=503, detail="LLM inference not available")
+    data = await file.read()
+    try:
+        return await receipt_scan.scan(llm, file.filename or "file", file.content_type or "", data)
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"receipt scan failed: {e}")
+        raise HTTPException(status_code=502, detail="Could not scan this receipt.")
 
 
 @router.post("/messages", status_code=202)

@@ -21,7 +21,11 @@ RECEIPTS_COLLECTION = "receipts"
 CACHE_KEY_NAME = "receipts"
 THUMBNAIL_CACHE_SECONDS = 86400
 FOLDER_MIME = "application/vnd.google-apps.folder"
-ALLOWED_UPLOAD_TYPES = ("image/", "application/pdf")
+UPLOAD_DOC_TYPES = {
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-excel",
+}
 
 
 def get_google_drive_service_instance(request: Request):
@@ -316,8 +320,8 @@ async def upload_team_receipt(
     mongo = _get_mongo(request)
 
     content_type = file.content_type or "application/octet-stream"
-    if not content_type.startswith("image/") and content_type != "application/pdf":
-        raise HTTPException(status_code=415, detail="Only image or PDF receipts can be uploaded")
+    if not content_type.startswith("image/") and content_type not in UPLOAD_DOC_TYPES:
+        raise HTTPException(status_code=415, detail="Only image, PDF or Excel receipts can be uploaded")
     if receiptAmount < 0:
         raise HTTPException(status_code=422, detail="Amount must be non-negative")
 
