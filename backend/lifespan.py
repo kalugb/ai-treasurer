@@ -89,11 +89,11 @@ def check_services(app: FastAPI):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    mongo_clients, supabase_client, llm_inference, embeddings_client = await asyncio.gather(
+    mongo_clients, supabase_client, = await asyncio.gather(
         init_mongodb(),
         init_supabase(),
-        init_llm_inference(),
-        init_embeddings_client()
+        # init_llm_inference(),
+        # init_embeddings_client()
     )
     
     # do this trick to unpack the clients tuple into individual variables
@@ -110,8 +110,8 @@ async def lifespan(app: FastAPI):
 
     app.state.ai_mongo = mongodb_client["ai"] if mongodb_client else None
     app.state.redis = redis_client 
-    app.state.llm_inference = llm_inference
-    app.state.embeddings_client = embeddings_client
+    app.state.llm_inference = None # llm_inference
+    app.state.embeddings_client = None # embeddings_client
     app.state.supabase = supabase_client
     app.state.google_drive_service_connected = google_drive_service_connected
     app.state.google_drive_service_instance = google_drive_service_instance
