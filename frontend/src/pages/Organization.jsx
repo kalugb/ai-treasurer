@@ -18,6 +18,79 @@ const getPublicIP = async () => {
 	}
 }
 
+function DeleteOrgModal({ org, ownerId, onClose, onDelete }) {
+	const field = 'grid gap-2 text-xs font-bold text-ink'
+	const input = 'h-10 w-full rounded-lg border border-line bg-paper px-3 text-[13px] text-ink outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]'
+	const [confirmation, setConfirmation] = useState('')
+	const [impact, setImpact] = useState(null) // null = loading
+	const [failed, setFailed] = useState(false)
+	const [attempt, setAttempt] = useState(0)
+	const [deleting, setDeleting] = useState(false)
+	const matches = confirmation === org.orgName
+
+	useEffect(() => {
+		let cancelled = false
+		organizationAPI.deleteImpact(org.id, ownerId)
+			.then((res) => { if (!cancelled) setImpact(res) })
+			.catch(() => { if (!cancelled) setFailed(true) })
+		return () => { cancelled = true }
+	}, [org.id, ownerId, attempt])
+
+	const money = (n) => `$${(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+	const confirmDelete = async () => {
+		setDeleting(true)
+		try {
+			await onDelete(org)
+		} finally {
+			setDeleting(false)
+		}
+	}
+
+	return (
+		<div className="fixed inset-0 z-20 grid place-items-center bg-[rgb(28_35_36/38%)] p-5" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+			<div className="max-h-[90vh] w-[min(100%,560px)] overflow-y-auto rounded-[14px] border border-line bg-white p-6 shadow-[0_20px_50px_rgb(28_35_36/18%)]" role="dialog" aria-modal="true" aria-labelledby="delete-org-title">
+				<div className="mb-6 flex items-start justify-between gap-5">
+					<div>
+						<h2 id="delete-org-title" className="font-display text-[20px] tracking-[-0.03em]">Delete {org.orgName}?</h2>
+						<p className="mt-1.5 text-[13px] leading-6 text-muted">This action cannot be undone. All organization settings will be permanently removed.</p>
+					</div>
+					<button className="rounded-lg px-2 py-1 text-xs font-bold text-blue focus-visible:outline-[3px] focus-visible:outline-blue-ring" type="button" onClick={onClose}>Close</button>
+				</div>
+				<div className="grid gap-5">
+					<div className="rounded-lg border border-red-200 bg-red-50 p-4 text-[13px] leading-6 text-red-800">
+						Deleting this organization is irreversible. Type the exact organization name below to confirm.
+					</div>
+					{impact === null && !failed && <p className="flex items-center gap-2 text-xs text-muted"><Icon name="spinner" size={14} /> Checking what this organization contains…</p>}
+					{failed && (
+						<p className="text-xs font-bold text-red-700" role="alert">
+							Couldn’t check what this organization contains, so it can’t be deleted safely yet.{' '}
+							<button className="text-blue underline" type="button" onClick={() => { setFailed(false); setImpact(null); setAttempt((n) => n + 1) }}>Retry</button>
+						</p>
+					)}
+					{impact && (impact.teams > 0 || impact.receipts > 0 || impact.records > 0) && (
+						<div className="rounded-lg border border-red-300 bg-red-50 p-4 text-[13px] leading-6 text-red-900" role="alert">
+							<strong className="block">This will also permanently delete:</strong>
+							<ul className="mt-1 list-disc pl-5">
+								{impact.teams > 0 && <li>{impact.teams} team{impact.teams === 1 ? '' : 's'}</li>}
+								{impact.receipts > 0 && <li>{impact.receipts} receipt{impact.receipts === 1 ? '' : 's'}, including uploaded files</li>}
+								{impact.records > 0 && <li>{impact.records} reimbursement record{impact.records === 1 ? '' : 's'} ({impact.reimbursedRecords} already reimbursed, totalling {money(impact.reimbursedAmount)}). They are deleted forever, not just detached.</li>}
+							</ul>
+						</div>
+					)}
+					<label className={field}>
+						Organization name
+						<input className={input} value={confirmation} onChange={(event) => setConfirmation(event.target.value)} placeholder={org.orgName} />
+					</label>
+					<div className="flex justify-end gap-2 border-t border-line pt-5">
+						<button className={button.secondary} type="button" onClick={onClose} disabled={deleting}>Cancel</button>
+						<button className="inline-flex min-h-10.5 items-center justify-center rounded-lg bg-red-600 px-4 text-[13px] font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40" type="button" disabled={!matches || !impact || deleting} onClick={confirmDelete}>{deleting ? 'Deleting…' : 'Delete organization'}</button>
+					</div>
+				</div>
+			</div>
+		</div>
+	)
+}
+
 export default function Organization({ selectedId = null, onSelect }) {
 	const [organizations, setOrganizations] = useState([])
 	const [name, setName] = useState('')
@@ -26,6 +99,7 @@ export default function Organization({ selectedId = null, onSelect }) {
 	const [toast, setToast] = useState(null)
 	const [loading, setLoading] = useState(true)
 	const [saving, setSaving] = useState(false)
+	const [deletingOrg, setDeletingOrg] = useState(null)
 	const hasFetched = useRef(false)
 	const ownerIdRef = useRef(null)
 
@@ -147,6 +221,8 @@ export default function Organization({ selectedId = null, onSelect }) {
 			setToast({ type: 'success', message: `Organization ${org?.orgName ?? ''} removed.` })
 		} catch (error) {
 			setToast({ type: 'error', message: error?.response?.data?.detail || 'Failed to remove organization.' })
+		} finally {
+			setDeletingOrg(null)
 		}
 	}
 
@@ -163,11 +239,12 @@ export default function Organization({ selectedId = null, onSelect }) {
 					{loading ? <div className="grid min-h-48 place-items-center p-8 text-center"><p className="text-sm text-muted">Loading…</p></div> : organizations.length ? organizations.map((org) => {
 						const created = formatCreatedAt(org.createdAt)
 						const isSelected = org.id === selectedId
-						return <div className={`flex items-center gap-3 border-t border-line py-4 ${isSelected ? 'rounded-lg bg-blue-soft/40 -mx-2 px-2' : ''}`} key={org.id}><span className="grid size-8.5 shrink-0 place-items-center rounded-lg bg-blue-soft text-blue"><Icon name="grid" size={16} /></span><span className="grid flex-1 gap-1.25"><strong className="flex items-center gap-2">{org.orgName}{isSelected && <span className="rounded-full bg-blue px-2 py-0.5 text-[10px] font-bold text-white">Selected</span>}</strong><small className="text-xs text-muted">{created ? `Created ${created} • Synced from server` : 'Synced from server'}</small></span><span className="flex items-center gap-2"><button className={`rounded-md border px-1.75 py-1.25 text-[10px] font-bold ${isSelected ? 'border-blue bg-blue text-white' : 'border-line bg-transparent text-blue hover:border-blue hover:bg-blue-soft'}`} onClick={() => select(org)} disabled={isSelected} aria-pressed={isSelected}>{isSelected ? 'Selected' : 'Select'}</button><button className="rounded-md border border-line bg-transparent px-1.75 py-1.25 text-[10px] font-bold text-blue hover:border-blue hover:bg-blue-soft" onClick={() => edit(org.id)}>Edit</button><button className="rounded-md border border-line bg-transparent px-1.75 py-1.25 text-[10px] font-bold text-brown hover:border-brown hover:bg-brown-soft" onClick={() => remove(org.id)}>Remove</button></span></div>
+						return <div className={`flex items-center gap-3 border-t border-line py-4 ${isSelected ? 'rounded-lg bg-blue-soft/40 -mx-2 px-2' : ''}`} key={org.id}><span className="grid size-8.5 shrink-0 place-items-center rounded-lg bg-blue-soft text-blue"><Icon name="grid" size={16} /></span><span className="grid flex-1 gap-1.25"><strong className="flex items-center gap-2">{org.orgName}{isSelected && <span className="rounded-full bg-blue px-2 py-0.5 text-[10px] font-bold text-white">Selected</span>}</strong><small className="text-xs text-muted">{created ? `Created ${created} • Synced from server` : 'Synced from server'}</small></span><span className="flex items-center gap-2"><button className={`rounded-md border px-1.75 py-1.25 text-[10px] font-bold ${isSelected ? 'border-blue bg-blue text-white' : 'border-line bg-transparent text-blue hover:border-blue hover:bg-blue-soft'}`} onClick={() => select(org)} disabled={isSelected} aria-pressed={isSelected}>{isSelected ? 'Selected' : 'Select'}</button><button className="rounded-md border border-line bg-transparent px-1.75 py-1.25 text-[10px] font-bold text-blue hover:border-blue hover:bg-blue-soft" onClick={() => edit(org.id)}>Edit</button><button className="rounded-md border border-line bg-transparent px-1.75 py-1.25 text-[10px] font-bold text-brown hover:border-brown hover:bg-brown-soft" onClick={() => setDeletingOrg(org)}>Remove</button></span></div>
 					}) : <div className="grid min-h-48 place-items-center p-8 text-center"><div><span className="mx-auto grid size-12 place-items-center rounded-2xl bg-blue-soft text-blue"><Icon name="grid" size={22} /></span><h3 className="mt-4 font-display text-[16px]">No organizations yet</h3><p className="mt-1 text-xs text-muted">Create your first organization to keep your finances separate.</p></div></div>}
 				</div>
 			</section>
-			{showModal && <div className="fixed inset-0 z-20 grid place-items-center bg-[rgb(28_35_36/38%)] p-5" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && closeModal()}><div className="w-[min(100%,480px)] rounded-[14px] border border-line bg-white p-6 shadow-[0_20px_50px_rgb(28_35_36/18%)]" role="dialog" aria-modal="true" aria-labelledby="organization-modal-title"><div className="mb-6 flex items-start justify-between gap-4"><div><h2 id="organization-modal-title" className="font-display text-[20px] tracking-[-0.03em]">{editingId === null ? 'Add organization' : 'Edit organization'}</h2><p className="mt-1.5 text-[13px] leading-6 text-muted">Give this organization a clear, recognizable name.</p></div><button className="rounded-lg px-2 py-1 text-xs font-bold text-blue focus-visible:outline-[3px] focus-visible:outline-blue-ring" type="button" onClick={closeModal}>Close</button></div><form className="grid gap-5" onSubmit={save}><label className="grid gap-2 text-xs font-bold text-ink">Organization name<input className="h-10 w-full rounded-lg border border-line bg-paper px-3 text-[13px] text-ink outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Acme Inc." autoFocus disabled={saving} /></label><div className="flex gap-2 border-t border-line pt-5"><button className={button.primary} type="submit" disabled={saving}>{saving ? 'Saving…' : editingId === null ? 'Create organization' : 'Save changes'}</button><button className={button.secondary} type="button" onClick={closeModal} disabled={saving}>Cancel</button></div></form></div></div>}
+			{showModal && <div className="fixed inset-0 z-20 grid place-items-center bg-[rgb(28_35_36/38%)] p-5" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && closeModal()}><div className="max-h-full w-[min(100%,480px)] overflow-y-auto rounded-[14px] border border-line bg-white p-6 shadow-[0_20px_50px_rgb(28_35_36/18%)]" role="dialog" aria-modal="true" aria-labelledby="organization-modal-title"><div className="mb-6 flex items-start justify-between gap-4"><div><h2 id="organization-modal-title" className="font-display text-[20px] tracking-[-0.03em]">{editingId === null ? 'Add organization' : 'Edit organization'}</h2><p className="mt-1.5 text-[13px] leading-6 text-muted">Give this organization a clear, recognizable name.</p></div><button className="rounded-lg px-2 py-1 text-xs font-bold text-blue focus-visible:outline-[3px] focus-visible:outline-blue-ring" type="button" onClick={closeModal}>Close</button></div><form className="grid gap-5" onSubmit={save}><label className="grid gap-2 text-xs font-bold text-ink">Organization name<input className="h-10 w-full rounded-lg border border-line bg-paper px-3 text-[13px] text-ink outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Acme Inc." autoFocus disabled={saving} /></label><div className="flex gap-2 border-t border-line pt-5"><button className={button.primary} type="submit" disabled={saving}>{saving ? 'Saving…' : editingId === null ? 'Create organization' : 'Save changes'}</button><button className={button.secondary} type="button" onClick={closeModal} disabled={saving}>Cancel</button></div></form></div></div>}
+			{deletingOrg && <DeleteOrgModal org={deletingOrg} ownerId={TEMP_USER_ID} onClose={() => setDeletingOrg(null)} onDelete={(org) => remove(org.id)} />}
 		</>
 	)
 }

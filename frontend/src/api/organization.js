@@ -23,9 +23,16 @@ async function updateOrganization(orgId, payload) {
 
 async function deleteOrganization(orgId) {
     return request(
-        `/api/organizations/${orgId}`, 
+        `/api/organizations/${orgId}`,
         { method: 'DELETE' }
-    )  
+    )
+}
+
+async function deleteImpact(orgId, ownerId) {
+    return request(
+        `/api/organizations/${orgId}/delete-impact`,
+        { method: 'GET', params: { ownerId } }
+    )
 }
 
 export const organizationAPI = {
@@ -33,4 +40,5 @@ export const organizationAPI = {
     createOrganization,
     updateOrganization,
     deleteOrganization,
+    deleteImpact,
 }

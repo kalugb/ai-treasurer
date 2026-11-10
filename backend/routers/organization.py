@@ -3,15 +3,25 @@ from datetime import datetime, timezone
 from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import APIRouter, HTTPException, Request, Depends, Response
+from starlette.concurrency import run_in_threadpool
 
 from services.mongodb import mongodb_ops
 from services.redis.cache import CacheStore
+from services.supabase import supabase_ops
+from routers.teams import (
+    RECEIPTS_CACHE_KEY_NAME,
+    RECEIPTS_COLLECTION,
+    REIMBURSEMENT_COLLECTION,
+    COLLECTION_NAME as TEAMS_COLLECTION,
+    _verify_org_owner,
+)
 
 from models.organization import CreateOrganizationRequest, UpdateOrganizationRequest
 
 router = APIRouter(prefix="/api")
 COLLECTION_NAME = "organizations"
 CACHE_KEY_NAME = "organizations"
+UNLINKED_TEAM_CACHE_KEY = "teams"
 
 def get_mongo(request: Request):
     return request.app.state.mongo
@@ -102,6 +112,52 @@ async def update_organization(org_id: str, payload: UpdateOrganizationRequest, m
     updated = await mongodb_ops.read(mongo, collection_name=COLLECTION_NAME, query={"_id": oid})
     return _to_out(updated)
 
+def _cascade_queries(oid: ObjectId, org_id: str, team_oids: list[ObjectId]) -> list[tuple[str, dict]]:
+    """Org delete removes receipts + reimbursement records + teams before the org doc.
+    Ids are stored as ObjectId by new code and as strings by legacy docs, so match both."""
+    org_forms = [oid, org_id]
+    return [
+        (RECEIPTS_COLLECTION, {"$or": [{"departmentID": {"$in": team_oids}}, {"orgID": {"$in": org_forms}}]}),
+        (REIMBURSEMENT_COLLECTION, {"$or": [{"teamInvolvedId": {"$in": team_oids}}, {"orgId": {"$in": org_forms}}]}),
+        (TEAMS_COLLECTION, {"orgId": {"$in": org_forms}}),
+        (COLLECTION_NAME, {"_id": oid}),
+    ]
+
+
+async def _cascade_scopes(mongo, oid: ObjectId, org_id: str):
+    """Reads exactly what _cascade_queries would delete (for the impact preview + file cleanup)."""
+    teams = await mongodb_ops.read(mongo, collection_name=TEAMS_COLLECTION, query={"orgId": {"$in": [oid, org_id]}}, read_many=True)
+    team_oids = [team["_id"] for team in teams or []]
+    receipts, records = [], []
+    for name, query in _cascade_queries(oid, org_id, team_oids):
+        if name == RECEIPTS_COLLECTION:
+            receipts = await mongodb_ops.read(mongo, collection_name=name, query=query, read_many=True) or []
+        elif name == REIMBURSEMENT_COLLECTION:
+            records = await mongodb_ops.read(mongo, collection_name=name, query=query, read_many=True) or []
+    return team_oids, receipts, records
+
+
+@router.get("/organizations/{org_id}/delete-impact")
+async def organization_delete_impact(org_id: str, ownerId: str | None = None, mongo=Depends(get_mongo)):
+    """What deleting this organization would permanently destroy (shown in the confirmation dialog)."""
+    if mongo is None:
+        raise HTTPException(status_code=503, detail="Database not available")
+    oid = _parse_id(org_id)
+    existing = await mongodb_ops.read(mongo, collection_name=COLLECTION_NAME, query={"_id": oid})
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    await _verify_org_owner(mongo, oid, ownerId)
+    team_oids, receipts, records = await _cascade_scopes(mongo, oid, org_id)
+    paid = [record.get("amount") or 0.0 for record in records if record.get("status") == "Reimbursed"]
+    return {
+        "teams": len(team_oids),
+        "receipts": len(receipts),
+        "records": len(records),
+        "reimbursedRecords": len(paid),
+        "reimbursedAmount": round(sum(paid), 2),
+    }
+
+
 @router.delete("/organizations/{org_id}", status_code=204)
 async def delete_organization(org_id: str, mongo=Depends(get_mongo), cache: CacheStore = Depends(get_cache_redis)):
     if mongo is None:
@@ -111,10 +167,22 @@ async def delete_organization(org_id: str, mongo=Depends(get_mongo), cache: Cach
     if existing is None:
         raise HTTPException(status_code=404, detail="Organization not found")
     owner_id_val = existing.get("ownerId", existing.get("owner_id", existing.get("ownerID")))
-    await mongodb_ops.delete(mongo, collection_name=COLLECTION_NAME, query={"_id": oid})
-    # delete orphan teams for this org — fresh start
-    await mongodb_ops.delete(mongo, collection_name="teams", query={"orgId": oid}, delete_many=True)
-    await mongodb_ops.delete(mongo, collection_name="teams", query={"orgId": org_id}, delete_many=True)
+    team_oids, receipts, _ = await _cascade_scopes(mongo, oid, org_id)
+    # shortcut: sequential deletes, not a transaction (org delete was already non-transactional before
+    # receipts/reimbursements were included) — a mid-run failure can leave partial deletes.
+    for name, query in _cascade_queries(oid, org_id, team_oids):
+        await mongodb_ops.delete(mongo, collection_name=name, query=query, delete_many=True)
+    # committed: now clean up what the DB can't cover (storage files, caches). Best-effort.
+    for receipt in receipts:
+        storage_path = receipt.get("storagePath")
+        if storage_path:
+            try:
+                await run_in_threadpool(supabase_ops.delete_receipt, storage_path)
+            except Exception:
+                pass
+            await cache.delete(cache.key_builder(str(receipt["_id"]), f"thumb:{storage_path}"))
+    for team_oid in team_oids:
+        await cache.delete(cache.key_builder(str(team_oid), RECEIPTS_CACHE_KEY_NAME))
     await cache.delete(cache.key_builder(owner_id_val, CACHE_KEY_NAME))
-    await cache.delete(cache.key_builder(str(oid), "teams"))
+    await cache.delete(cache.key_builder(str(oid), UNLINKED_TEAM_CACHE_KEY))
     return Response(status_code=204)

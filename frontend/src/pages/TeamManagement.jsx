@@ -230,7 +230,6 @@ function DeleteModal({ team, organization, onClose, onDelete }) {
 							{impact.receipts > 0 && <li>{impact.receipts} receipt{impact.receipts === 1 ? '' : 's'}, including uploaded files</li>}
 							{impact.records > 0 && <li>{impact.records} reimbursement record{impact.records === 1 ? '' : 's'} ({impact.reimbursedRecords} already reimbursed, totalling {money(impact.reimbursedAmount)}). They are deleted forever, not just detached from the team.</li>}
 						</ul>
-						<p className="mt-1.5 text-xs">Everything is deleted together, or nothing is.</p>
 					</div>
 				)}
 				<label className={field}>
