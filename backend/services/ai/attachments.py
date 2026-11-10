@@ -1,7 +1,7 @@
 """Convert an uploaded file to text before it reaches the agent.
 
 - Excel (.xlsx/.xls) and PDF -> markdown via Microsoft MarkItDown.
-- Images -> transcribed/described via the NVIDIA (omni) vision model ("the model's own OCR").
+- Images -> transcribed/described by the shared chat models (Groq first, NVIDIA fallback) via LLMInference.describe_image.
 Transient: callers pass raw bytes and get text back; nothing is stored.
 """
 import base64
@@ -20,16 +20,6 @@ _MARKITDOWN_TYPES = {
 }
 
 _md = MarkItDown()
-_vision_llm = None
-
-
-async def _get_vision_llm():
-    # lazy singleton; the omni model accepts image_url content (verified)
-    global _vision_llm
-    if _vision_llm is None:
-        from services.ai.load_models.load_nvidia import load_nvidia_llm
-        _vision_llm = await load_nvidia_llm()
-    return _vision_llm
 
 
 def _convert_markitdown(data: bytes, extension: str) -> str:
@@ -37,23 +27,10 @@ def _convert_markitdown(data: bytes, extension: str) -> str:
     return (result.markdown or "").strip()
 
 
-async def _convert_image(data: bytes, content_type: str) -> str:
-    from langchain_core.messages import HumanMessage
-    llm = await _get_vision_llm()
-    b64 = base64.b64encode(data).decode()
-    msg = HumanMessage(content=[
-        {"type": "text", "text": "Transcribe all text in this image exactly, then briefly describe any charts, tables, or figures. If there is no text, describe the image."},
-        {"type": "image_url", "image_url": {"url": f"data:{content_type};base64,{b64}"}},
-    ])
-    resp = await llm.ainvoke([msg])
-    content = getattr(resp, "content", resp)
-    if isinstance(content, list):  # some providers return content blocks
-        content = "".join(b.get("text", "") if isinstance(b, dict) else str(b) for b in content)
-    return (content or "").strip()
-
-
-async def convert(filename: str, content_type: str, data: bytes) -> dict:
-    """Returns {filename, kind, text}. Raises HTTPException(415) unsupported, (413) too large, (422) empty result."""
+async def convert(filename: str, content_type: str, data: bytes, llm=None) -> dict:
+    """Returns {filename, kind, text}. Raises HTTPException(415) unsupported, (413) too large,
+    (422) empty result, (503) image but no LLM, (502) both vision models failed.
+    `llm` is the shared LLMInference; only needed for images."""
     if len(data) > MAX_BYTES:
         raise HTTPException(status_code=413, detail="File is too large (max 10 MB).")
 
@@ -65,7 +42,13 @@ async def convert(filename: str, content_type: str, data: bytes) -> dict:
         text = await run_in_threadpool(_convert_markitdown, data, extension)
     elif content_type.startswith("image/"):
         kind = "image"
-        text = await _convert_image(data, content_type)
+        if llm is None:
+            raise HTTPException(status_code=503, detail="AI model is not available to read images right now.")
+        try:
+            text = await llm.describe_image(base64.b64encode(data).decode(), content_type)
+        except Exception as e:
+            print(f"attachment image failed: {e}")
+            raise HTTPException(status_code=502, detail="Couldn't read this image (both AI models failed). Try again.")
     else:
         raise HTTPException(status_code=415, detail="Only Excel, PDF, or image files are supported.")
 

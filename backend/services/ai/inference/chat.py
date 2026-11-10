@@ -134,6 +134,28 @@ class LLMInference:
             "description": (result.description or "").strip() or None,
         }
 
+    async def describe_image(self, image_b64: str, mime: str = "image/png") -> str:
+        """Transcribe/describe a chat image attachment. Groq first, NVIDIA (reasoning off) as fallback — no other model.
+        Raises RuntimeError if both fail or return nothing."""
+        content = [
+            {"type": "text", "text": "Transcribe all text in this image exactly, then briefly describe any charts, tables, or figures. If there is no text, describe the image."},
+            {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{image_b64}"}},
+        ]
+        # NVIDIA's reasoning can eat its 1024-token default and return empty content; transcription needs no reasoning
+        models = [self.groq_llm, self.nvidia_llm.bind(chat_template_kwargs={"enable_thinking": False})]
+        last_error = None
+        for name, model in zip(("groq", "nvidia"), models):
+            try:
+                text = self._extract_text((await model.ainvoke([HumanMessage(content=content)])).content)
+                if text:
+                    print(f"describe_image answered by {name}")
+                    return text
+                last_error = "empty reply"
+            except Exception as e:  # try the next provider
+                last_error = e
+            print(f"describe_image: {name} failed ({last_error}), trying next")
+        raise RuntimeError(f"image transcription failed: {last_error}")
+
     async def run_llm(self, user_input, chat_history=None, context: dict | None = None, on_delta=None, memories: list[dict] | None = None):
         # Stateless: history is passed in and the per-call tool log is returned,
         # so concurrent runs (one shared instance) never corrupt each other.

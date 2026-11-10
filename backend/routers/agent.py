@@ -280,11 +280,11 @@ async def get_messages(conversation_id: str, userId: str = "1", ai_mongo=Depends
 
 
 @router.post("/attachments")
-async def upload_attachment(file: UploadFile = File(...)):
-    """Convert one uploaded file (Excel/PDF via MarkItDown, image via vision model) to text.
+async def upload_attachment(request: Request, file: UploadFile = File(...)):
+    """Convert one uploaded file (Excel/PDF via MarkItDown, image via the shared Groq/NVIDIA models) to text.
     Transient: the bytes are discarded after conversion; only the text is returned."""
     data = await file.read()
-    return await attachments_svc.convert(file.filename or "file", file.content_type or "", data)
+    return await attachments_svc.convert(file.filename or "file", file.content_type or "", data, llm=request.app.state.llm_inference)
 
 
 @router.post("/receipts/scan")
