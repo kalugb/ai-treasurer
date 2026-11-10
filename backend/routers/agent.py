@@ -11,13 +11,14 @@ from fastapi.responses import StreamingResponse
 from services.mongodb import mongodb_ops
 from services.ai import attachments as attachments_svc
 from services.ai import receipt_scan
+from services.ai.embeddings.long_term_memory import embed_turn
 from models.agent import SendMessageRequest, RegenerateRequest, StopRequest
 
 router = APIRouter(prefix="/api/agent")
 COLLECTION_NAME = "memories"
 
 STATUS_IN_PROGRESS = "In Progress"
-STATUS_SUCCESS = "Successed"
+STATUS_SUCCESS = "Succeeded"
 STATUS_FAILED = "Failed"
 
 # In-flight agent runs, keyed by str(memory_id), so /stop can actually cancel the task.
@@ -82,6 +83,22 @@ async def _publish(redis, user_oid: ObjectId, payload: dict):
         print(f"agent publish failed: {e}")
 
 
+async def _save_embedding(app, memory_id: ObjectId, user_input: str, output: str):
+    # Best effort: the turn is already Succeeded + delivered; a failure only means no vector.
+    client = getattr(app.state, "embeddings_client", None)
+    if client is None:
+        return
+    try:
+        vector = await embed_turn(client, user_input, output)
+        await mongodb_ops.update(
+            app.state.ai_mongo, collection_name=COLLECTION_NAME,
+            query={"_id": memory_id},
+            update_data={"textEmbedding": vector},
+        )
+    except Exception as e:
+        print(f"agent embedding failed for {memory_id}: {e}")
+
+
 async def _run_agent(app, user_oid: ObjectId, conversation_oid: ObjectId, memory_id: ObjectId, user_input: str, owner_id: str, org_id: str | None, attachments: list | None = None):
     # Tracked asyncio.Task (see _running): /stop can cancel it to truly kill the in-flight LLM call.
     # Decoupled from any client connection, so navigating away never kills the run.
@@ -138,6 +155,10 @@ async def _run_agent(app, user_oid: ObjectId, conversation_oid: ObjectId, memory
             "status": STATUS_SUCCESS,
             "output": output,
         })
+        # Unregister first so a late /stop can't cancel (and flip to Failed) an already-delivered turn.
+        _running.pop(str(memory_id), None)
+        # Raw typed input (not attachment text) so file dumps don't dominate the vector.
+        await _save_embedding(app, memory_id, user_input, output)
     except asyncio.CancelledError:
         # /stop cancelled the task: kill the run, mark Failed, tell the UI.
         print(f"agent run cancelled: {memory_id}")

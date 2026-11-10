@@ -41,11 +41,11 @@ export default function AgentStatusPill() {
 			{finished.map(([cid, r]) => (
 				<div
 					key={cid}
-					className={`flex items-center gap-3 rounded-lg border border-line/50 bg-white px-4 py-3 shadow-xl animate-slide-in ${r.status === 'Successed' ? 'text-green' : 'text-red'}`}
+					className={`flex items-center gap-3 rounded-lg border border-line/50 bg-white px-4 py-3 shadow-xl animate-slide-in ${r.status === 'Succeeded' ? 'text-green' : 'text-red'}`}
 				>
-					<Icon name={r.status === 'Successed' ? 'check' : 'close'} size={16} className="shrink-0" />
+					<Icon name={r.status === 'Succeeded' ? 'check' : 'close'} size={16} className="shrink-0" />
 					<span className="text-[13px] font-medium">
-						{r.status === 'Successed' ? 'AI agent generated a response' : 'AI agent run failed'}
+						{r.status === 'Succeeded' ? 'AI agent generated a response' : 'AI agent run failed'}
 					</span>
 					<button onClick={() => clearRun(cid)} className="ml-2 rounded p-1 hover:bg-black/10 transition-colors" aria-label="Dismiss">
 						<Icon name="close" size={14} />

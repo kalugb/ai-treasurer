@@ -37,7 +37,7 @@ class MemoryOut(BaseModel):
     output: str | None = None
     tools: list[ToolUsage] = []
     attachments: list[Attachment] = []  # filename/kind for UI chips (text carried too)
-    status: str  # "Successed" | "Failed" | "In Progress"
+    status: str  # "Succeeded" | "Failed" | "In Progress"
     time: str | None = None
 
 
