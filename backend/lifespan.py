@@ -75,9 +75,9 @@ def check_services(app: FastAPI):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    mongo_clients, llm_inference, supabase_client = await asyncio.gather(
+    mongo_clients, supabase_client = await asyncio.gather(
         init_mongodb(),
-        init_llm_inference(),
+        # init_llm_inference(),
         init_supabase()
     )
     
@@ -95,7 +95,7 @@ async def lifespan(app: FastAPI):
 
     app.state.ai_mongo = mongodb_client["ai"] if mongodb_client else None
     app.state.redis = redis_client  # shared for agent run pub/sub
-    app.state.llm_inference = llm_inference
+    app.state.llm_inference = None
     app.state.supabase = supabase_client
     app.state.google_drive_service_connected = google_drive_service_connected
     app.state.google_drive_service_instance = google_drive_service_instance
