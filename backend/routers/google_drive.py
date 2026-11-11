@@ -246,9 +246,10 @@ def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
-@router.get("/teams/{team_id}/receipts/sync/stream")
+@router.post("/teams/{team_id}/receipts/sync/stream")
 async def sync_team_receipts_stream(team_id: str, request: Request):
     """SSE variant: runs the sync and streams `started` then `done`/`error`.
+    POST only (it writes), so opening the URL in a browser can't trigger a sync.
     The whole job runs inside this request; closing the connection stops it."""
     async def event_source():
         yield _sse("started", {"teamId": team_id})

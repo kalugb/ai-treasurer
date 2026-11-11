@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { receiptsAPI, syncStreamUrl } from '../api/receipts'
+import { receiptsAPI, streamSync } from '../api/receipts'
 import { getActiveSnapshot } from '../api/snapshotMode'
 import { SyncStatusContext } from './syncStatus'
 
@@ -15,7 +15,7 @@ export function SyncStatusProvider({ children }) {
 
 	const closeSource = () => {
 		if (sourceRef.current) {
-			sourceRef.current.close()
+			sourceRef.current.abort() // AbortController of the in-flight sync stream
 			sourceRef.current = null
 		}
 	}
@@ -29,8 +29,8 @@ export function SyncStatusProvider({ children }) {
 		setError(null)
 		setStatus('syncing')
 
-		// EventSource is unavailable (SSR/old env) -> fall back to the blocking POST
-		if (typeof EventSource === 'undefined') {
+		// streaming fetch unavailable (old env) -> fall back to the blocking POST
+		if (typeof TextDecoderStream === 'undefined') {
 			receiptsAPI.sync(id)
 				.then((res) => { setResult(res); setStatus('done') })
 				.catch(() => { setError('Sync failed. Check the Google Drive connection.'); setStatus('error') })
@@ -39,38 +39,27 @@ export function SyncStatusProvider({ children }) {
 		}
 
 		closeSource()
-		const source = new EventSource(syncStreamUrl(id))
-		sourceRef.current = source
-
-		source.addEventListener('done', (event) => {
-			try { setResult(JSON.parse(event.data)) } catch { setResult(null) }
-			setStatus('done')
+		const controller = new AbortController()
+		sourceRef.current = controller
+		let finished = false
+		const finish = (ok, payload) => {
+			if (finished || sourceRef.current !== controller) return // already reported, or superseded/unmounted
+			finished = true
+			if (ok) { setResult(payload); setStatus('done') } else { setError(payload); setStatus('error') }
 			setCompletedAt((n) => n + 1)
-			closeSource()
+			sourceRef.current = null
+		}
+
+		streamSync(id, {
+			signal: controller.signal,
+			onEvent: (name, data) => {
+				if (name === 'done') finish(true, data)
+				else if (name === 'error') finish(false, data?.detail || 'Sync failed. Check the Google Drive connection.')
+			},
 		})
-		source.addEventListener('error', (event) => {
-			// EventSource fires a native 'error' on every stream close too — including the normal
-			// close right after our 'done'. Only a server-sent payload (event.data) is a real failure;
-			// a dataless close means the stream ended (done/error already handled) — ignore it so a
-			// successful sync isn't flipped to "failed". A real transport drop leaves readyState
-			// CONNECTING (reconnecting) while we never got a terminal event -> surface that.
-			if (event?.data) {
-				let detail = 'Sync failed. Check the Google Drive connection.'
-				try { detail = JSON.parse(event.data).detail || detail } catch { /* keep default */ }
-				setError(detail)
-				setStatus('error')
-				setCompletedAt((n) => n + 1)
-				closeSource()
-				return
-			}
-			// dataless: only an error if we're still syncing and the socket genuinely broke
-			if (sourceRef.current && source.readyState !== EventSource.CLOSED) {
-				setError('Sync connection lost. Check the Google Drive connection.')
-				setStatus('error')
-				setCompletedAt((n) => n + 1)
-				closeSource()
-			}
-		})
+			// the stream ended without a done/error frame -> the connection dropped mid-sync
+			.then(() => finish(false, 'Sync connection lost. Check the Google Drive connection.'))
+			.catch(() => finish(false, 'Sync failed. Check the Google Drive connection.'))
 	}, [status])
 
 	const dismiss = useCallback(() => {

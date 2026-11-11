@@ -3,8 +3,28 @@ import { request, requestWithFile, API_BASE_URL } from './client'
 // Drive sync lists + reconciles the whole folder; allow generous time for large folders.
 export const SYNC_TIMEOUT_MS = 120000
 
-// absolute URL for the SSE stream (EventSource can't use the axios client)
-export const syncStreamUrl = (teamId) => `${API_BASE_URL}/api/google-drive/teams/${teamId}/receipts/sync/stream`
+// Drive sync stream: POST (it writes, so a typed URL must not trigger it), read as SSE frames.
+// EventSource only does GET, hence fetch. Calls onEvent(name, data) per frame; resolves when the stream ends.
+// Not routed through client.js: the snapshot read-only gate for this lives in SyncStatusContext.startSync.
+export async function streamSync(teamId, { signal, onEvent }) {
+	const response = await fetch(`${API_BASE_URL}/api/google-drive/teams/${teamId}/receipts/sync/stream`, { method: 'POST', signal, headers: { Accept: 'text/event-stream' } })
+	if (!response.ok || !response.body) throw new Error(`Sync request failed (${response.status})`)
+	const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
+	let buffer = ''
+	for (;;) {
+		const { value, done } = await reader.read()
+		if (done) return
+		buffer += value
+		let end
+		while ((end = buffer.indexOf('\n\n')) !== -1) {
+			const frame = buffer.slice(0, end)
+			buffer = buffer.slice(end + 2)
+			const name = frame.match(/^event: (.*)$/m)?.[1]
+			const data = frame.match(/^data: (.*)$/m)?.[1]
+			if (name) onEvent(name, data ? JSON.parse(data) : null)
+		}
+	}
+}
 
 export const receiptsAPI = {
 	getReceipts: (teamId, refresh = false) =>
