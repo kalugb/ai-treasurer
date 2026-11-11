@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import Icon from './Icon'
 import { navGroups } from '../api/mockData'
 import { useSelectedOrganization } from '../hooks/useSelectedOrganization'
@@ -6,6 +7,9 @@ const navFocus = 'focus-visible:outline-[3px] focus-visible:outline-blue-ring fo
 
 export default function Sidebar({ page, setPage }) {
 	const organization = useSelectedOrganization()
+	const [pinned, setPinned] = useState({}) // groups opened by click
+	const [hovered, setHovered] = useState(null)
+	const [muted, setMuted] = useState(null) // group just closed by click; ignore hover until the pointer leaves
 	return (
 		<div className="sticky top-0 h-svh w-(--sidebar-width) max-w-[50%] min-w-55 shrink-0 max-[560px]:w-14.5 max-[560px]:min-w-14.5">
 			<aside className="flex h-full w-full flex-col overflow-hidden border-r border-line bg-sidebar pt-7 pr-3.5 pb-4.5 pl-3.5 transition-[width] duration-150 ease-out max-[560px]:px-2">
@@ -15,21 +19,44 @@ export default function Sidebar({ page, setPage }) {
 				</div>
 
 				<nav aria-label="Main navigation" className="grid">
-					{navGroups.map((group) => (
-						<div className="mb-4 grid gap-1 max-[560px]:mb-3" key={group.label}>
-							<span className="px-3 pb-1.25 text-[10px] font-bold tracking-[0.12em] uppercase text-muted max-[560px]:hidden">{group.label}</span>
-							{group.items.map((item) => (
+					{navGroups.map((group) => {
+						const isOpen = !!pinned[group.label] || (hovered === group.label && muted !== group.label)
+						return (
+							<div
+								className="mb-2 grid gap-1 max-[560px]:mb-3"
+								key={group.label}
+								onMouseEnter={() => setHovered(group.label)}
+								onMouseLeave={() => { setHovered(null); setMuted(null) }}
+							>
 								<button
-									key={item.id}
-									className={`flex min-h-10 w-full items-center gap-3 rounded-[9px] border-0 px-3 text-left text-[14px] whitespace-nowrap text-muted transition-colors duration-200 ease-out hover:bg-blue-soft hover:text-blue max-[560px]:justify-center max-[560px]:px-0 ${navFocus} ${page === item.id ? 'bg-blue-soft text-blue' : ''}`}
-									onClick={() => setPage(item.id)}
+									className={`flex w-full items-center justify-between rounded-[9px] border-0 px-3 py-2 text-left text-[10px] font-bold tracking-[0.12em] uppercase text-muted hover:text-blue max-[560px]:hidden ${navFocus}`}
+									aria-expanded={isOpen}
+									onClick={() => {
+										// Click pins the group open; clicking again closes it even while the pointer is still over it.
+										if (pinned[group.label]) setMuted(group.label)
+										setPinned((p) => ({ ...p, [group.label]: !p[group.label] }))
+									}}
 								>
-									<Icon name={item.icon} size={16} />
-									<span className="shrink-0 max-[560px]:hidden">{item.label}</span>
+									{group.label}
+									<span className={`transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`}><Icon name="chevron" size={12} /></span>
 								</button>
-							))}
-						</div>
-					))}
+								<div className={`grid transition-[grid-template-rows] duration-200 ease-out max-[560px]:grid-rows-[1fr] ${isOpen ? 'grid-rows-[1fr]' : 'invisible grid-rows-[0fr] max-[560px]:visible'}`}>
+									<div className="grid min-h-0 gap-1 overflow-hidden">
+										{group.items.map((item) => (
+											<button
+												key={item.id}
+												className={`flex min-h-10 w-full items-center gap-3 rounded-[9px] border-0 px-3 text-left text-[14px] whitespace-nowrap text-muted transition-colors duration-200 ease-out hover:bg-blue-soft hover:text-blue max-[560px]:justify-center max-[560px]:px-0 ${navFocus} ${page === item.id ? 'bg-blue-soft text-blue' : ''}`}
+												onClick={() => setPage(item.id)}
+											>
+												<Icon name={item.icon} size={16} />
+												<span className="shrink-0 max-[560px]:hidden">{item.label}</span>
+											</button>
+										))}
+									</div>
+								</div>
+							</div>
+						)
+					})}
 				</nav>
 
 				<div className="mt-auto grid gap-3 border-t border-line pt-3">

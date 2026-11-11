@@ -6,7 +6,7 @@ import { googleAPI } from '../api/googleConnect'
 import Modal from '../components/Modal'
 import { useToast } from '../context/toast'
 
-export default function Integration() {
+export default function IntegrationSection() {
 	const { connected, setConnected, loading, setLoading } = useGoogleIntegration();
 	const [showDisconnectModal, setShowDisconnectModal] = useState(false);
 	const { push } = useToast();
@@ -48,14 +48,8 @@ export default function Integration() {
 
 	return (
 		<>
-			<header className="mb-9 flex items-end justify-between gap-6 max-[820px]:flex-col max-[820px]:items-start">
-				<div>
-					<p className="mb-2.5 text-[11px] font-bold tracking-widest uppercase text-muted">Settings / Integration</p>
-					<h1 className="font-display text-[clamp(28px,3vw,42px)] leading-[1.08] tracking-tighter text-ink">Connect your tools.</h1>
-					<p className="mt-3 text-[13px] leading-[1.55] text-muted">Bring the places where your financial records already live into AI Treasurer.</p>
-				</div>
-			</header>
-			<section className="grid grid-cols-[minmax(0,620px)]">
+
+			<section className="mt-3.5">
 				<article className="flex items-start gap-4.5 rounded-[14px] border border-line bg-white p-5.5 max-[560px]:p-4">
 					<div className="grid size-12 shrink-0 place-items-center rounded-xl bg-blue-soft font-display text-2xl font-extrabold text-[#4285f4]">G</div>
 					<div className="flex-1">

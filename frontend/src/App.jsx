@@ -3,12 +3,12 @@ import Sidebar from './components/Sidebar'
 import Dashboard from './pages/Dashboard'
 import Agent from './pages/Agent'
 import Settings from './pages/Settings'
-import Integration from './pages/Integration'
 import MockPage from './pages/MockPage'
 import Organization from './pages/Organization'
 import Folders from './pages/Folders'
 import TeamManagement from './pages/TeamManagement'
 import Reimbursement from './pages/Reimbursement'
+import Snapshots from './pages/Snapshots'
 import NotFound from './pages/NotFound'
 import { dispatchOrgChange } from './hooks/useSelectedOrganization'
 import { SyncStatusProvider } from './context/SyncStatusContext'
@@ -20,7 +20,10 @@ import ToastStack from './components/ToastStack'
 
 export default function App() {
 	const [page, setPage] = useState(() => {
-		try { return sessionStorage.getItem('page') || 'dashboard' } catch { return 'dashboard' }
+		try {
+			const saved = sessionStorage.getItem('page') || 'dashboard'
+			return saved === 'integration' ? 'settings' : saved // Integration page merged into Settings
+		} catch { return 'dashboard' }
 	})
 	const [sidebar, setSidebar] = useState(15)
 	useEffect(() => {
@@ -66,15 +69,15 @@ export default function App() {
 					? <TeamManagement />
 					: page === 'reimbursement'
 					? <Reimbursement goTo={setPage} />
+					: page === 'snapshots'
+					? <Snapshots />
 					: page === 'agent'
 						? <Agent />
 						: page === 'settings'
 							? <Settings />
-							: page === 'integration'
-								? <Integration />
-								: page === 'not-found'
-									? <NotFound goTo={setPage} />
-									: <MockPage key={page} type={page} />
+							: page === 'not-found'
+								? <NotFound goTo={setPage} />
+								: <MockPage key={page} type={page} />
 
 	return (
 		<ToastProvider>

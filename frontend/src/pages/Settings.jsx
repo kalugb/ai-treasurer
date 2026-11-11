@@ -1,4 +1,5 @@
 import { button } from '../components/button'
+import Integration from './Integration'
 
 const field = 'h-10.5 w-full rounded-[7px] border border-line bg-paper px-3 text-ink outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]'
 
@@ -22,6 +23,7 @@ export default function Settings() {
 					<label className="grid gap-1.75 text-xs font-bold text-ink">Default currency<select className={field} defaultValue="USD"><option>USD — US Dollar</option><option>CAD — Canadian Dollar</option><option>GBP — Pound Sterling</option></select></label>
 				</article>
 			</section>
+			<Integration />
 		</>
 	)
 }
