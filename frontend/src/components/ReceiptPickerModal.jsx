@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import Icon from './Icon'
 import { button } from './button'
-import { fetchReceipts } from '../api/receipts'
+import { fetchReceipts, receiptAmountText } from '../api/receipts'
 
 const formatMoney = (amount) => `$${(amount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const pill = (active) => `min-h-8 rounded-md px-2.5 text-xs font-bold transition ${active ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`
@@ -114,7 +114,7 @@ export default function ReceiptPickerModal({ teamId, selectedIds = [], recordId 
 											{receipt.reimbursement && <span className={`absolute top-2 left-2 rounded-full px-2 py-0.5 text-[10px] font-bold ${receipt.reimbursed ? 'bg-green text-white' : 'bg-brown-soft text-brown'}`}>{receipt.reimbursed ? 'Reimbursed' : 'Pending'}</span>}
 										</div>
 										<strong className="mt-3 block overflow-hidden text-ellipsis whitespace-nowrap text-[13px] text-ink">{receipt.filename}</strong>
-										<span className="mt-1 block truncate text-xs text-muted">{receipt.date} · {formatMoney(receipt.amount)}</span>
+										<span className="mt-1 block truncate text-xs text-muted">{receipt.date} · {receiptAmountText(receipt)}</span>
 										{isBlocked && <span className="mt-0.5 block truncate text-[11px] font-bold text-brown">In “{receipt.reimbursement.name}”</span>}
 									</button>
 								)
