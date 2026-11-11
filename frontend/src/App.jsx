@@ -9,6 +9,8 @@ import Folders from './pages/Folders'
 import TeamManagement from './pages/TeamManagement'
 import Reimbursement from './pages/Reimbursement'
 import Snapshots from './pages/Snapshots'
+import SnapshotBanner from './components/SnapshotBanner'
+import { useSnapshotMode } from './context/snapshotMode'
 import NotFound from './pages/NotFound'
 import { dispatchOrgChange } from './hooks/useSelectedOrganization'
 import { SyncStatusProvider } from './context/SyncStatusContext'
@@ -26,6 +28,10 @@ export default function App() {
 		} catch { return 'dashboard' }
 	})
 	const [sidebar, setSidebar] = useState(15)
+	const snapshotMode = useSnapshotMode()
+	// entering/leaving a snapshot remounts every page (see the keyed wrapper in <main>), so each one refetches: saved data in, live data out
+	const viewSnapshot = async (id) => { await snapshotMode.enter(id); setPage('teams') }
+	const exitSnapshot = () => { snapshotMode.exit(); setPage('snapshots') }
 	useEffect(() => {
 		try { sessionStorage.setItem('page', page) } catch { /* ignore */ }
 	}, [page])
@@ -69,8 +75,8 @@ export default function App() {
 					? <TeamManagement />
 					: page === 'reimbursement'
 					? <Reimbursement goTo={setPage} />
-					: page === 'snapshots'
-					? <Snapshots />
+				: page === 'snapshots' || page === 'snapshot-view'
+					? <Snapshots goTo={setPage} onView={viewSnapshot} />
 					: page === 'agent'
 						? <Agent />
 						: page === 'settings'
@@ -85,7 +91,12 @@ export default function App() {
 				<AgentRunProvider>
 					<div className="flex min-h-screen bg-paper" style={{ '--sidebar-width': `${sidebar}%` }}>
 						<Sidebar page={page} setPage={setPage} />
-						<main className="mx-auto min-w-0 max-w-360 flex-1 px-[clamp(24px,5vw,72px)] py-13 max-[820px]:px-5 max-[820px]:py-8 max-[560px]:px-3.5 max-[560px]:py-7">{content}</main>
+						<main className="mx-auto min-w-0 max-w-360 flex-1 px-[clamp(24px,5vw,72px)] py-13 max-[820px]:px-5 max-[820px]:py-8 max-[560px]:px-3.5 max-[560px]:py-7">
+							{snapshotMode.readOnly && <SnapshotBanner snapshot={snapshotMode.snapshot} onExit={exitSnapshot} />}
+							{snapshotMode.status === 'loading'
+								? <p className="py-10 text-center text-[13px] text-muted">Loading snapshot…</p>
+								: <div key={snapshotMode.snapshot?.id ?? 'live'}>{content}</div>}
+						</main>
 					</div>
 					<SyncStatusPill />
 					<AgentStatusPill />

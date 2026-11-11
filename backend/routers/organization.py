@@ -20,6 +20,7 @@ from models.organization import CreateOrganizationRequest, UpdateOrganizationReq
 
 router = APIRouter(prefix="/api")
 COLLECTION_NAME = "organizations"
+SNAPSHOTS_COLLECTION = "snapshots"
 CACHE_KEY_NAME = "organizations"
 UNLINKED_TEAM_CACHE_KEY = "teams"
 
@@ -138,7 +139,7 @@ async def _cascade_scopes(mongo, oid: ObjectId, org_id: str):
 
 
 @router.get("/organizations/{org_id}/delete-impact")
-async def organization_delete_impact(org_id: str, ownerId: str | None = None, mongo=Depends(get_mongo)):
+async def organization_delete_impact(org_id: str, request: Request, ownerId: str | None = None, mongo=Depends(get_mongo)):
     """What deleting this organization would permanently destroy (shown in the confirmation dialog)."""
     if mongo is None:
         raise HTTPException(status_code=503, detail="Database not available")
@@ -149,17 +150,19 @@ async def organization_delete_impact(org_id: str, ownerId: str | None = None, mo
     await _verify_org_owner(mongo, oid, ownerId)
     team_oids, receipts, records = await _cascade_scopes(mongo, oid, org_id)
     paid = [record.get("amount") or 0.0 for record in records if record.get("status") == "Reimbursed"]
+    history = request.app.state.history_mongo
     return {
         "teams": len(team_oids),
         "receipts": len(receipts),
         "records": len(records),
         "reimbursedRecords": len(paid),
         "reimbursedAmount": round(sum(paid), 2),
+        "snapshots": history[SNAPSHOTS_COLLECTION].count_documents({"orgId": oid}) if history is not None else 0,
     }
 
 
 @router.delete("/organizations/{org_id}", status_code=204)
-async def delete_organization(org_id: str, mongo=Depends(get_mongo), cache: CacheStore = Depends(get_cache_redis)):
+async def delete_organization(org_id: str, request: Request, mongo=Depends(get_mongo), cache: CacheStore = Depends(get_cache_redis)):
     if mongo is None:
         raise HTTPException(status_code=503, detail="Database not available")
     oid = _parse_id(org_id)
@@ -172,6 +175,13 @@ async def delete_organization(org_id: str, mongo=Depends(get_mongo), cache: Cach
     # receipts/reimbursements were included) — a mid-run failure can leave partial deletes.
     for name, query in _cascade_queries(oid, org_id, team_oids):
         await mongodb_ops.delete(mongo, collection_name=name, query=query, delete_many=True)
+    # the org's snapshots go with it (best-effort: a different DB, so not part of the cascade above)
+    history = request.app.state.history_mongo
+    if history is not None:
+        try:
+            history[SNAPSHOTS_COLLECTION].delete_many({"orgId": oid})
+        except Exception:
+            pass
     # committed: now clean up what the DB can't cover (storage files, caches). Best-effort.
     for receipt in receipts:
         storage_path = receipt.get("storagePath")

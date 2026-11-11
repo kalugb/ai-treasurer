@@ -6,6 +6,7 @@ import { teamsAPI } from '../api/teams'
 import { receiptsAPI } from '../api/receipts'
 import { OrganizationRequiredEmptyState } from '../components/OrganizationContext'
 import { useSelectedOrganization } from '../hooks/useSelectedOrganization'
+import { useSnapshotMode } from '../context/snapshotMode'
 import { useToast } from '../context/toast'
 
 const users = ['Alex Morgan', 'Jamie Lee', 'Sam Rivera', 'Priya Shah', 'Taylor Kim']
@@ -258,6 +259,7 @@ export default function TeamManagement() {
 	const [loading, setLoading] = useState(false)
 	const [serverError, setServerError] = useState(null)
 	const { push } = useToast()
+	const { readOnly } = useSnapshotMode()
 
 	useEffect(() => {
 		if (!organization?.id) return
@@ -289,7 +291,7 @@ export default function TeamManagement() {
 
 	useEffect(() => {
 		const autoEditTeamId = sessionStorage.getItem('autoEditTeamId')
-		if (autoEditTeamId && teams.length > 0) {
+		if (autoEditTeamId && teams.length > 0 && !readOnly) {
 			const teamToEdit = teams.find(t => t.id === autoEditTeamId)
 			if (teamToEdit) {
 				setEditingTeam(teamToEdit)
@@ -297,7 +299,7 @@ export default function TeamManagement() {
 				sessionStorage.removeItem('autoEditTeamId')
 			}
 		}
-	}, [teams])
+	}, [teams, readOnly])
 
 	const onSaveTeam = async (team) => {
 		const { id, ...input } = team
@@ -356,7 +358,7 @@ export default function TeamManagement() {
 					<h1 className="font-display text-[clamp(28px,3vw,42px)] leading-[1.08] tracking-tighter text-ink">Team management</h1>
 					<p className="mt-3 text-[13px] leading-6 text-muted">Keep budgets, ownership, and team roles in one place.</p>
 				</div>
-				<button className={button.primary} type="button" onClick={() => setShowForm(true)}><Icon name="plus" size={16} /> Add team</button>
+				{!readOnly && <button className={button.primary} type="button" onClick={() => setShowForm(true)}><Icon name="plus" size={16} /> Add team</button>}
 			</header>
 			<section className="grid gap-3">
 				{loading ? <div className="grid min-h-32 place-items-center rounded-[14px] border border-line bg-white p-8"><p className="text-sm text-muted">Loading teams…</p></div> : teams.length ? teams.map((team) => {
@@ -369,10 +371,10 @@ export default function TeamManagement() {
 									<span className="grid size-10 shrink-0 place-items-center rounded-xl bg-blue-soft text-blue"><Icon name="users" size={19} /></span>
 									<div className="min-w-0"><h2 className="font-display text-[18px] tracking-[-0.03em] text-ink">{team.name}</h2><p className="mt-1 text-xs text-muted">{(team.members?.length ?? 0)} {(team.members?.length ?? 0) === 1 ? 'member' : 'members'} {team.orgName ? `· ${team.orgName}` : ''}</p></div>
 								</div>
-								<div className="flex gap-2">
+								{!readOnly && <div className="flex gap-2">
 									<button className={button.secondary} type="button" onClick={() => { setEditingTeam(team); setShowForm(true) }}>Edit</button>
 									<button className="inline-flex min-h-10.5 items-center justify-center rounded-lg border border-red-200 px-3.75 text-[13px] font-bold text-red-600 transition hover:bg-red-50 focus-visible:outline-[3px] focus-visible:outline-blue-ring" type="button" onClick={() => setDeleteTeam(team)}>Delete</button>
-								</div>
+								</div>}
 							</div>
 							<div className="mt-5 grid grid-cols-[1.2fr_1fr] gap-6 border-t border-line pt-5 max-[700px]:grid-cols-1">
 								<div>

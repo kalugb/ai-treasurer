@@ -116,6 +116,12 @@ async def lifespan(app: FastAPI):
             print(f"Could not create the reimbursement receipt-link index: {e}")
 
     app.state.ai_mongo = mongodb_client["ai"] if mongodb_client else None
+    app.state.history_mongo = mongodb_client["history"] if mongodb_client else None  # snapshots; same cluster/client as the main DB
+    if app.state.history_mongo is not None:
+        try:
+            app.state.history_mongo["snapshots"].create_index([("orgId", 1), ("userId", 1), ("snapshotTime", -1)], name="org_user_time")
+        except Exception as e:  # listing still works, just unindexed
+            print(f"Could not create the snapshots index: {e}")
     app.state.redis = redis_client 
     app.state.llm_inference = None # llm_inference
     app.state.embeddings_client = None # embeddings_client

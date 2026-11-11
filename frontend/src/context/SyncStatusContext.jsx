@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { receiptsAPI, syncStreamUrl } from '../api/receipts'
+import { getActiveSnapshot } from '../api/snapshotMode'
 import { SyncStatusContext } from './syncStatus'
 
 // Global Google Drive sync status. The SSE connection lives here (mounted once in App),
@@ -22,7 +23,7 @@ export function SyncStatusProvider({ children }) {
 	useEffect(() => closeSource, [])
 
 	const startSync = useCallback((id) => {
-		if (!id || status === 'syncing') return
+		if (!id || status === 'syncing' || getActiveSnapshot()) return // a sync writes; never during a snapshot
 		setTeamId(id)
 		setResult(null)
 		setError(null)

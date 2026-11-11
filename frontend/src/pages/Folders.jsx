@@ -9,6 +9,7 @@ import { OrganizationRequiredEmptyState } from '../components/OrganizationContex
 import { useSelectedOrganization } from '../hooks/useSelectedOrganization'
 import { useSyncStatus } from '../context/syncStatus'
 import { useToast } from '../context/toast'
+import { useSnapshotMode } from '../context/snapshotMode'
 import Modal from '../components/Modal'
 
 const formatMoney = (amount) => amount == null ? '—' : `$${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -23,7 +24,7 @@ const readPreference = (key, allowed, fallback) => {
 }
 
 
-function ReceiptPreview({ receipt, onClose, onPrev, onNext, index, total, onSave, onDelete, deleting }) {
+function ReceiptPreview({ receipt, onClose, onPrev, onNext, index, total, onSave, onDelete, deleting, readOnly }) {
 	const [loadedSrc, setLoadedSrc] = useState(null)
 	const [errorSrc, setErrorSrc] = useState(null)
 	const [amount, setAmount] = useState('')
@@ -74,7 +75,8 @@ function ReceiptPreview({ receipt, onClose, onPrev, onNext, index, total, onSave
 	const handlePointerUp = () => { dragRef.current = null; setDragging(false) }
 
 	if (!receipt) return null
-	const previewSrc = receipt.thumbnail ? `${receipt.thumbnail}?size=640` : null
+	// the snapshot thumbnail URL already carries a query string
+	const previewSrc = receipt.thumbnail ? `${receipt.thumbnail}${receipt.thumbnail.includes('?') ? '&' : '?'}size=640` : null
 	const imageError = Boolean(previewSrc) && errorSrc === previewSrc
 	const imageLoading = Boolean(previewSrc) && !imageError && loadedSrc !== previewSrc
 
@@ -122,12 +124,14 @@ function ReceiptPreview({ receipt, onClose, onPrev, onNext, index, total, onSave
 						<div className="grid grid-cols-3 gap-4 text-[13px]"><div><span className="block text-xs text-muted">Date</span><strong className="mt-1 block">{receipt.date}</strong></div><div><span className="block text-xs text-muted">Category</span><strong className="mt-1 block">{receipt.category}</strong></div><div><span className="block text-xs text-muted">Filename</span><strong className="mt-1 block truncate" title={receipt.filename}>{receipt.filename}</strong></div></div>
 						<p className={`mt-3 rounded-lg px-3 py-2 text-xs font-bold ${receipt.reimbursed ? 'bg-green-soft text-green' : receipt.reimbursement ? 'bg-brown-soft text-brown' : 'bg-paper text-muted'}`}>{receipt.reimbursed ? `Reimbursed · record “${receipt.reimbursement.name}”` : receipt.reimbursement ? `Not reimbursed yet · pending in record “${receipt.reimbursement.name}”` : 'Not reimbursed · not in any reimbursement record'}</p>
 						<form className="mt-5 border-t border-line pt-4" onSubmit={handleSave}>
-							<p className="mb-3 text-[11px] font-bold tracking-widest text-muted uppercase">Edit details</p>
+							<p className="mb-3 text-[11px] font-bold tracking-widest text-muted uppercase">{readOnly ? 'Details (snapshot, read-only)' : 'Edit details'}</p>
+							<fieldset disabled={readOnly} className="contents">
 							<label className="grid gap-1.5 text-xs font-bold text-ink">Amount<input className="h-10 rounded-lg border border-line bg-white px-3 text-[13px] outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)] disabled:cursor-not-allowed disabled:bg-paper disabled:text-muted" type="number" min="0" step="0.01" inputMode="decimal" placeholder="0.00" value={amount} onChange={(event) => setAmount(event.target.value)} disabled={receipt.reimbursed} aria-describedby={receipt.reimbursed ? 'amount-locked' : undefined} />{receipt.reimbursed && <span id="amount-locked" className="text-[11px] font-semibold text-muted">Locked: this receipt is reimbursed in record “{receipt.reimbursement.name}”. Set the record to Not reimbursed to change it.</span>}</label>
 							<label className="mt-3 grid gap-1.5 text-xs font-bold text-ink">Label (optional)<input className="h-10 rounded-lg border border-line bg-white px-3 text-[13px] outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" type="text" placeholder="e.g. Team lunch" value={label} onChange={(event) => setLabel(event.target.value)} /></label>
 							<label className="mt-3 grid gap-1.5 text-xs font-bold text-ink">Notes (optional)<textarea className="min-h-24 rounded-lg border border-line bg-white px-3 py-2 text-[13px] outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" placeholder="Personal notes about this receipt" value={description} onChange={(event) => setDescription(event.target.value)} /></label>
 							{saveError && <p className="mt-2 text-xs font-bold text-red-700">{saveError}</p>}
-							<div className={`mt-4 flex items-center gap-3 ${receipt.source === 'manual' ? 'justify-between' : 'justify-end'}`}>{receipt.source === 'manual' && <button className={`${button.danger} disabled:opacity-60`} type="button" onClick={onDelete} disabled={deleting}><Icon name="trash" size={15} /> Delete receipt</button>}<button className={`${button.primary} disabled:opacity-60`} type="submit" disabled={saving}><Icon name={saving ? 'spinner' : 'check'} size={15} /> {saving ? 'Saving…' : 'Save details'}</button></div>
+							</fieldset>
+							{!readOnly && <div className={`mt-4 flex items-center gap-3 ${receipt.source === 'manual' ? 'justify-between' : 'justify-end'}`}>{receipt.source === 'manual' && <button className={`${button.danger} disabled:opacity-60`} type="button" onClick={onDelete} disabled={deleting}><Icon name="trash" size={15} /> Delete receipt</button>}<button className={`${button.primary} disabled:opacity-60`} type="submit" disabled={saving}><Icon name={saving ? 'spinner' : 'check'} size={15} /> {saving ? 'Saving…' : 'Save details'}</button></div>}
 						</form>
 					</div>
 				</div>
@@ -173,6 +177,7 @@ export default function Folders({ goTo }) {
 	const [driveReceipts, setDriveReceipts] = useState([])
 	const [refreshing, setRefreshing] = useState(false)
 	const { push } = useToast()
+	const { readOnly } = useSnapshotMode()
 	const [addOpen, setAddOpen] = useState(false)
 	const [selecting, setSelecting] = useState(false)
 	const [selectedIds, setSelectedIds] = useState(() => new Set())
@@ -294,9 +299,9 @@ export default function Folders({ goTo }) {
 		return () => { document.body.style.overflow = previousOverflow }
 	}, [preview])
 
-	const needsGDriveSetup = sourceFilter === 'google' && team && !team.googleDriveFolderId
+	const needsGDriveSetup = sourceFilter === 'google' && team && !team.googleDriveFolderId && !readOnly
 
-	const localReceiptCount = filteredReceipts.filter((r) => r.source === 'manual').length
+	const localReceiptCount = readOnly ? 0 : filteredReceipts.filter((r) => r.source === 'manual').length // 0 hides "Select for deletion"
 	const selectedReceipts = allReceipts.filter((receipt) => selectedIds.has(receipt.id))
 
 	const handleGDrivePromptAction = () => {
@@ -324,7 +329,7 @@ export default function Folders({ goTo }) {
 						{alert && <p className="mt-4 flex items-center gap-2 text-xs font-bold"><Icon name="insight" size={15} /> Less than 10% of this team’s budget remains.</p>}
 					</section>
 					<section>
-						<div className="mb-4 flex items-center justify-between gap-4"><div><div className="flex flex-wrap items-center gap-3"><h2 className="font-display text-[18px] tracking-[-0.03em]">Team receipts</h2></div><div className="mt-2 flex flex-wrap items-end gap-4"><fieldset className="w-fit max-w-full"><legend className="text-xs font-bold text-ink">Source</legend><div className="mt-1.5 inline-flex w-fit max-w-full flex-wrap gap-1 rounded-lg border border-line bg-white p-1"><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'all' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'all'} onClick={() => setSourceFilter('all')}>All</button><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'google' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'google'} onClick={() => setSourceFilter('google')}>Google Drive</button><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'manual' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'manual'} onClick={() => setSourceFilter('manual')}>Local upload</button></div></fieldset><fieldset className="w-fit max-w-full"><legend className="text-xs font-bold text-ink">Reimbursement</legend><div className="mt-1.5 inline-flex w-fit max-w-full flex-wrap gap-1 rounded-lg border border-line bg-white p-1">{[['all', 'All'], ['unreimbursed', 'Not reimbursed'], ['reimbursed', 'Reimbursed']].map(([value, label]) => <button key={value} className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${reimbursedFilter === value ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={reimbursedFilter === value} onClick={() => setReimbursedFilter(value)}>{label}</button>)}</div></fieldset><label className="grid gap-1.5 text-xs font-bold text-ink">Sort by date<select className="h-9 rounded-lg border border-line bg-white px-2 text-[12px] outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" value={dateOrder} onChange={(event) => setDateOrder(event.target.value)}><option value="desc">Newest first</option><option value="asc">Oldest first</option></select></label>{selecting ? <><button className={`${button.danger} disabled:opacity-60`} type="button" onClick={() => setDeleteTargets(selectedReceipts)} disabled={selectedIds.size === 0}><Icon name="trash" size={15} /> Delete{selectedIds.size ? ` (${selectedIds.size})` : ''}</button><button className={button.secondary} type="button" onClick={exitSelection} disabled={deleting}>Cancel</button></> : localReceiptCount > 0 && <button className={button.secondary} type="button" onClick={() => setSelecting(true)} title="Select local-upload receipts to delete"><Icon name="check" size={15} /> Select for deletion</button>}</div><p className="mt-2 text-xs text-muted">{filteredReceipts.length} {filteredReceipts.length === 1 ? 'receipt' : 'receipts'}</p></div><div className="flex flex-wrap items-center gap-2">{team && <button className={`${button.secondary} disabled:opacity-60`} type="button" onClick={handleRefresh} disabled={refreshing} title="Re-read from the database (picks up external edits)"><Icon name={refreshing ? 'spinner' : 'sync'} size={15} /> {refreshing ? 'Refreshing…' : 'Refresh'}</button>}{team?.googleDriveFolderId && sourceFilter !== 'manual' && <button className={`${button.secondary} disabled:opacity-60`} type="button" onClick={handleSync} disabled={syncing}><Icon name={syncing ? 'spinner' : 'sync'} size={15} /> {syncing ? 'Syncing…' : 'Sync Google Drive'}</button>}{!selecting && <button className={button.secondary} type="button" onClick={() => setAddOpen(true)}><Icon name="plus" size={15} /> Add receipt</button>}</div></div>
+						<div className="mb-4 flex items-center justify-between gap-4"><div><div className="flex flex-wrap items-center gap-3"><h2 className="font-display text-[18px] tracking-[-0.03em]">Team receipts</h2></div><div className="mt-2 flex flex-wrap items-end gap-4"><fieldset className="w-fit max-w-full"><legend className="text-xs font-bold text-ink">Source</legend><div className="mt-1.5 inline-flex w-fit max-w-full flex-wrap gap-1 rounded-lg border border-line bg-white p-1"><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'all' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'all'} onClick={() => setSourceFilter('all')}>All</button><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'google' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'google'} onClick={() => setSourceFilter('google')}>Google Drive</button><button className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${sourceFilter === 'manual' ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={sourceFilter === 'manual'} onClick={() => setSourceFilter('manual')}>Local upload</button></div></fieldset><fieldset className="w-fit max-w-full"><legend className="text-xs font-bold text-ink">Reimbursement</legend><div className="mt-1.5 inline-flex w-fit max-w-full flex-wrap gap-1 rounded-lg border border-line bg-white p-1">{[['all', 'All'], ['unreimbursed', 'Not reimbursed'], ['reimbursed', 'Reimbursed']].map(([value, label]) => <button key={value} className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition ${reimbursedFilter === value ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`} type="button" aria-pressed={reimbursedFilter === value} onClick={() => setReimbursedFilter(value)}>{label}</button>)}</div></fieldset><label className="grid gap-1.5 text-xs font-bold text-ink">Sort by date<select className="h-9 rounded-lg border border-line bg-white px-2 text-[12px] outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" value={dateOrder} onChange={(event) => setDateOrder(event.target.value)}><option value="desc">Newest first</option><option value="asc">Oldest first</option></select></label>{selecting ? <><button className={`${button.danger} disabled:opacity-60`} type="button" onClick={() => setDeleteTargets(selectedReceipts)} disabled={selectedIds.size === 0}><Icon name="trash" size={15} /> Delete{selectedIds.size ? ` (${selectedIds.size})` : ''}</button><button className={button.secondary} type="button" onClick={exitSelection} disabled={deleting}>Cancel</button></> : localReceiptCount > 0 && <button className={button.secondary} type="button" onClick={() => setSelecting(true)} title="Select local-upload receipts to delete"><Icon name="check" size={15} /> Select for deletion</button>}</div><p className="mt-2 text-xs text-muted">{filteredReceipts.length} {filteredReceipts.length === 1 ? 'receipt' : 'receipts'}</p></div><div className="flex flex-wrap items-center gap-2">{team && <button className={`${button.secondary} disabled:opacity-60`} type="button" onClick={handleRefresh} disabled={refreshing} title="Re-read from the database (picks up external edits)"><Icon name={refreshing ? 'spinner' : 'sync'} size={15} /> {refreshing ? 'Refreshing…' : 'Refresh'}</button>}{team?.googleDriveFolderId && sourceFilter !== 'manual' && <button className={`${button.secondary} disabled:opacity-60`} type="button" onClick={handleSync} disabled={syncing}><Icon name={syncing ? 'spinner' : 'sync'} size={15} /> {syncing ? 'Syncing…' : 'Sync Google Drive'}</button>}{!selecting && !readOnly && <button className={button.secondary} type="button" onClick={() => setAddOpen(true)}><Icon name="plus" size={15} /> Add receipt</button>}</div></div>
 						{needsGDriveSetup ? (
 							<div className="grid min-h-55 place-items-center rounded-[14px] border border-dashed border-line bg-white p-8 text-center">
 								<div className="max-w-md">
@@ -355,6 +360,7 @@ export default function Folders({ goTo }) {
 				onSave={handleSaveReceipt}
 				onDelete={() => setDeleteTargets([preview])}
 				deleting={deleting}
+				readOnly={readOnly}
 			/>
 			<AddReceiptModal open={addOpen} onClose={() => setAddOpen(false)} onUpload={handleUploadReceipt} />
 			<Modal isOpen={deleteTargets.length > 0} onClose={() => { if (!deleting) setDeleteTargets([]) }} title={`Delete ${deleteTargets.length} receipt${deleteTargets.length === 1 ? '' : 's'}?`} footer={

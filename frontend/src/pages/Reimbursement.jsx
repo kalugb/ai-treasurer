@@ -8,6 +8,7 @@ import { button } from '../components/button'
 import { OrganizationRequiredEmptyState } from '../components/OrganizationContext'
 import { useSelectedOrganization } from '../hooks/useSelectedOrganization'
 import { useToast } from '../context/toast'
+import { useSnapshotMode } from '../context/snapshotMode'
 
 const card = 'min-h-37.5 rounded-[14px] border p-5.5 max-[820px]:min-h-auto max-[560px]:p-4'
 const th = 'pb-3 pr-3 pl-0 text-left text-[10px] font-bold tracking-[0.06em] uppercase text-muted'
@@ -18,6 +19,7 @@ const EMPTY = { records: [], totals: { reimbursed: 0, notReimbursed: 0, reimburs
 export default function Reimbursement({ goTo }) {
 	const organization = useSelectedOrganization()
 	const { push } = useToast()
+	const { readOnly } = useSnapshotMode()
 	const [data, setData] = useState(EMPTY)
 	const [version, setVersion] = useState(0)
 	const [editing, setEditing] = useState(null) // null = closed, {} = add, record = edit
@@ -53,7 +55,7 @@ export default function Reimbursement({ goTo }) {
 					{organization ? `Reimbursement status for ${organization.orgName ?? organization.name}.` : 'Reimbursement totals appear after you choose an organization.'}
 				</p>
 			</div>
-			{organization && !selecting && (
+			{organization && !selecting && !readOnly && (
 				<button className={button.primary} type="button" onClick={() => setEditing({})}>
 					<Icon name="plus" size={16} /> Add reimbursement
 				</button>
@@ -140,7 +142,7 @@ export default function Reimbursement({ goTo }) {
 							</button>
 							<button className={button.secondary} type="button" onClick={stopSelecting}>Cancel</button>
 						</div>
-					) : records.length > 0 && (
+					) : records.length > 0 && !readOnly && (
 						<button className={button.secondary} type="button" onClick={() => setSelecting(true)}>
 							<Icon name="trash" size={16} /> Select for deletion
 						</button>
@@ -184,7 +186,7 @@ export default function Reimbursement({ goTo }) {
 											? <span className="inline-flex rounded-[20px] bg-green-soft px-2 py-1.25 text-[10px] font-bold text-green">Reimbursed</span>
 											: <span className="inline-flex rounded-[20px] bg-brown-soft px-2 py-1.25 text-[10px] font-bold text-brown">Not reimbursed</span>}
 									</td>
-									{!selecting && (
+									{!selecting && !readOnly && (
 										<td className={`${td} text-right`}>
 											<button className="border-0 bg-transparent p-0 text-xs font-bold text-blue" type="button" aria-label={`Edit ${r.name}`} onClick={() => setEditing(r)}>Edit</button>
 										</td>

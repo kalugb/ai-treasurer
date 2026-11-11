@@ -435,7 +435,11 @@ async def get_team_receipt_thumbnail(team_id: str, file_id: str, request: Reques
     doc = await _find_receipt(request, dept_oid, file_id)
     if doc is None:
         raise HTTPException(status_code=404, detail="Receipt not found")
+    return await serve_receipt_thumbnail(request, doc, file_id)
 
+
+async def serve_receipt_thumbnail(request: Request, doc: dict, file_id: str) -> Response:
+    """Cache-first image bytes for a receipt doc (shared by the live route and the snapshot route)."""
     content_type = "application/octet-stream"
     raw_meta = doc.get("receiptMetadata")
     if isinstance(raw_meta, str) and raw_meta:
