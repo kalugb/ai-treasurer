@@ -16,8 +16,10 @@ router = APIRouter(prefix="/api")
 COLLECTION_NAME = "departments"
 ORG_COLLECTION = "organizations"
 RECEIPTS_COLLECTION = "receipts"
-REIMBURSEMENT_COLLECTION = "reimbursement"
-CASHIN_COLLECTION = "cashin"
+CASHFLOW_COLLECTION = "cashFlow"  # the ONE collection for everything on the Cash flow page: cash in AND reimbursement records
+REIMBURSEMENT_COLLECTION = CASHFLOW_COLLECTION
+TYPE_CASH_IN = "Cash in"  # `type` field value, tells the two record kinds apart inside cashFlow
+TYPE_REIMBURSEMENT = "Reimbursement"
 CACHE_KEY_NAME = "departments"
 RECEIPTS_CACHE_KEY_NAME = "receipts"
 NO_TRANSACTIONS = 20  # IllegalOperation: server is not a replica set / mongos

@@ -11,8 +11,8 @@ from services.supabase import supabase_ops
 from routers.teams import (
     RECEIPTS_CACHE_KEY_NAME,
     RECEIPTS_COLLECTION,
-    REIMBURSEMENT_COLLECTION,
-    CASHIN_COLLECTION,
+    CASHFLOW_COLLECTION,
+    TYPE_CASH_IN,
     COLLECTION_NAME as TEAMS_COLLECTION,
     _verify_org_owner,
 )
@@ -115,13 +115,12 @@ async def update_organization(org_id: str, payload: UpdateOrganizationRequest, m
     return _to_out(updated)
 
 def _cascade_queries(oid: ObjectId, org_id: str, team_oids: list[ObjectId]) -> list[tuple[str, dict]]:
-    """Org delete removes receipts + reimbursement + cash in records + teams before the org doc.
+    """Org delete removes receipts + cash flow records (cash in AND reimbursement, one collection) + teams before the org doc.
     Ids are stored as ObjectId by new code and as strings by legacy docs, so match both."""
     org_forms = [oid, org_id]
     return [
         (RECEIPTS_COLLECTION, {"$or": [{"departmentID": {"$in": team_oids}}, {"orgID": {"$in": org_forms}}]}),
-        (REIMBURSEMENT_COLLECTION, {"$or": [{"teamInvolvedId": {"$in": team_oids}}, {"orgId": {"$in": org_forms}}]}),
-        (CASHIN_COLLECTION, {"orgId": {"$in": org_forms}}),
+        (CASHFLOW_COLLECTION, {"$or": [{"teamInvolvedId": {"$in": team_oids}}, {"orgId": {"$in": org_forms}}]}),
         (TEAMS_COLLECTION, {"orgId": {"$in": org_forms}}),
         (COLLECTION_NAME, {"_id": oid}),
     ]
@@ -135,13 +134,15 @@ async def _cascade_scopes(mongo, oid: ObjectId, org_id: str):
     for name, query in _cascade_queries(oid, org_id, team_oids):
         if name == RECEIPTS_COLLECTION:
             receipts = await mongodb_ops.read(mongo, collection_name=name, query=query, read_many=True) or []
-        elif name == REIMBURSEMENT_COLLECTION:
-            records = await mongodb_ops.read(mongo, collection_name=name, query=query, read_many=True) or []
+        elif name == CASHFLOW_COLLECTION:
+            # the collection also holds cash in records; the impact's "records" are reimbursement records only
+            docs = await mongodb_ops.read(mongo, collection_name=name, query=query, read_many=True) or []
+            records = [d for d in docs if d.get("type") != TYPE_CASH_IN]
     return team_oids, receipts, records
 
 
 async def _org_cashins(mongo, oid: ObjectId, org_id: str) -> list[dict]:
-    return await mongodb_ops.read(mongo, collection_name=CASHIN_COLLECTION, query={"orgId": {"$in": [oid, org_id]}}, read_many=True) or []
+    return await mongodb_ops.read(mongo, collection_name=CASHFLOW_COLLECTION, query={"orgId": {"$in": [oid, org_id]}, "type": TYPE_CASH_IN}, read_many=True) or []
 
 
 @router.get("/organizations/{org_id}/delete-impact")

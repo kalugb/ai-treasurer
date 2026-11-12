@@ -9,15 +9,14 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Respon
 from starlette.concurrency import run_in_threadpool
 
 from models.cashin import CashInDelete
-from routers.teams import _parse_id, _verify_org_owner, get_mongo
+from routers.teams import CASHFLOW_COLLECTION, TYPE_CASH_IN, TYPE_REIMBURSEMENT, _parse_id, _verify_org_owner, get_mongo
 from services.mongodb import mongodb_ops
 from services.supabase import supabase_ops
 
 router = APIRouter(prefix="/api")
-COLLECTION_NAME = "cashin"
-REIMBURSEMENT_COLLECTION = "reimbursement"
-TYPE = "Cash in"
-REIMBURSEMENT = "Reimbursement"
+COLLECTION_NAME = CASHFLOW_COLLECTION  # cash in and reimbursement records share this one collection, told apart by `type`
+TYPE = TYPE_CASH_IN
+REIMBURSEMENT = TYPE_REIMBURSEMENT
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 # raster images only: no SVG (a script when opened directly) and no PDFs (proof is an image)
 IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp", "image/gif"}
@@ -133,7 +132,7 @@ async def list_cashins(orgId: str, ownerId: str = Query(min_length=1), mongo=Dep
     _require_db(mongo)
     org_oid = _parse_id(orgId, "orgId")
     await _verify_org_owner(mongo, org_oid, ownerId)
-    docs = await mongodb_ops.read(mongo, collection_name=COLLECTION_NAME, query={"orgId": org_oid}, read_many=True)
+    docs = await mongodb_ops.read(mongo, collection_name=COLLECTION_NAME, query={"orgId": org_oid, "type": TYPE}, read_many=True)
     docs = sorted(docs or [], key=lambda d: (_utc(d.get("datetime")), str(d["_id"])), reverse=True)
     records = [_to_out(d) for d in docs]
     return {"records": records, "total": round(sum(r["amount"] for r in records), 2), "count": len(records)}
@@ -150,9 +149,11 @@ async def get_cashflow(
     _require_db(mongo)
     org_oid = _parse_id(orgId, "orgId")
     await _verify_org_owner(mongo, org_oid, ownerId)
-    cashins = await mongodb_ops.read(mongo, collection_name=COLLECTION_NAME, query={"orgId": org_oid}, read_many=True)
-    reimbursements = await mongodb_ops.read(mongo, collection_name=REIMBURSEMENT_COLLECTION, query={"orgId": org_oid}, read_many=True)
-    return build_cashflow(cashins or [], reimbursements or [], limit, offset)
+    # one collection holds both kinds; split by type
+    docs = await mongodb_ops.read(mongo, collection_name=COLLECTION_NAME, query={"orgId": org_oid, "type": {"$in": [TYPE, REIMBURSEMENT]}}, read_many=True) or []
+    cashins = [d for d in docs if d.get("type") == TYPE]
+    reimbursements = [d for d in docs if d.get("type") == REIMBURSEMENT]
+    return build_cashflow(cashins, reimbursements, limit, offset)
 
 
 @router.post("/cashins", status_code=201)
@@ -208,7 +209,7 @@ async def update_cashin(
 ):
     _require_db(mongo)
     record_oid = _parse_id(record_id, "cash in id")
-    existing = await mongodb_ops.read(mongo, collection_name=COLLECTION_NAME, query={"_id": record_oid})
+    existing = await mongodb_ops.read(mongo, collection_name=COLLECTION_NAME, query={"_id": record_oid, "type": TYPE})
     if existing is None:
         raise HTTPException(status_code=404, detail="Cash in record not found")
     org_oid = existing["orgId"]
@@ -256,7 +257,7 @@ async def delete_cashins(payload: CashInDelete, ownerId: str = Query(min_length=
     await _verify_org_owner(mongo, org_oid, ownerId)
     ids = [_parse_id(i, "cash in id") for i in payload.ids]
     # orgId in the filter: ids from another org are never deleted
-    query = {"_id": {"$in": ids}, "orgId": org_oid}
+    query = {"_id": {"$in": ids}, "orgId": org_oid, "type": TYPE}  # type: a reimbursement record is never deleted here
     docs = await mongodb_ops.read(mongo, collection_name=COLLECTION_NAME, query=query, read_many=True) or []
     deleted = await mongodb_ops.delete(mongo, collection_name=COLLECTION_NAME, query=query, delete_many=True)
     for doc in docs:  # records first, then files: a record never points at a missing file
@@ -268,7 +269,7 @@ async def delete_cashins(payload: CashInDelete, ownerId: str = Query(min_length=
 async def get_cashin_image(record_id: str, ownerId: str = Query(min_length=1), mongo=Depends(get_mongo)):
     """The proof image. Private: served here after the owner check, never through a public bucket URL."""
     _require_db(mongo)
-    doc = await mongodb_ops.read(mongo, collection_name=COLLECTION_NAME, query={"_id": _parse_id(record_id, "cash in id")})
+    doc = await mongodb_ops.read(mongo, collection_name=COLLECTION_NAME, query={"_id": _parse_id(record_id, "cash in id"), "type": TYPE})
     if doc is None:
         raise HTTPException(status_code=404, detail="Cash in record not found")
     await _verify_org_owner(mongo, doc["orgId"], ownerId)

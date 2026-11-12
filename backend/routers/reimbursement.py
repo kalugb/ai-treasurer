@@ -5,11 +5,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from pymongo.errors import DuplicateKeyError
 
 from models.reimbursement import ReimbursementCreate, ReimbursementDelete, ReimbursementUpdate
-from routers.teams import _parse_id, _verify_org_owner, get_mongo
+from routers.teams import CASHFLOW_COLLECTION, TYPE_REIMBURSEMENT, _parse_id, _verify_org_owner, get_mongo
 from services.mongodb import mongodb_ops
 
 router = APIRouter(prefix="/api")
-COLLECTION_NAME = "reimbursement"
+COLLECTION_NAME = CASHFLOW_COLLECTION
 TEAMS_COLLECTION = "departments"
 RECEIPTS_COLLECTION = "receipts"
 REIMBURSED = "Reimbursed"
@@ -37,7 +37,7 @@ async def receipt_links(mongo, ids: list[str]) -> dict[str, dict]:
     wanted = set(ids)
     if not wanted:
         return {}
-    docs = await mongodb_ops.read(mongo, collection_name=COLLECTION_NAME, query={"receiptInvolved.receiptIds": {"$in": list(wanted)}}, read_many=True)
+    docs = await mongodb_ops.read(mongo, collection_name=COLLECTION_NAME, query={"type": TYPE_REIMBURSEMENT, "receiptInvolved.receiptIds": {"$in": list(wanted)}}, read_many=True)
     links: dict[str, dict] = {}
     for d in docs or []:
         for rid in (d.get("receiptInvolved") or {}).get("receiptIds", []):
@@ -74,7 +74,7 @@ async def _build_receipt_involved(mongo, team_oid: ObjectId, receipt, keep: dict
     found = await _existing_receipts(mongo, ids, team_oid)
     if any(i not in found and i not in keep for i in ids):
         raise HTTPException(status_code=400, detail="Some selected receipts do not belong to this team")
-    query: dict = {"receiptInvolved.receiptIds": {"$in": ids}}
+    query: dict = {"type": TYPE_REIMBURSEMENT, "receiptInvolved.receiptIds": {"$in": ids}}
     if exclude_oid is not None:
         query["_id"] = {"$ne": exclude_oid}
     taken = await mongodb_ops.read(mongo, collection_name=COLLECTION_NAME, query=query, read_many=True)
@@ -154,7 +154,7 @@ async def list_reimbursements(orgId: str, ownerId: str | None = None, mongo=Depe
     org_oid = _parse_id(orgId, "orgId")
     await _verify_org_owner(mongo, org_oid, ownerId)
     # shortcut: returns and sums the whole org list in Python, switch to a $group aggregation + pagination when records grow large
-    docs = await mongodb_ops.read(mongo, collection_name=COLLECTION_NAME, query={"orgId": org_oid}, read_many=True)
+    docs = await mongodb_ops.read(mongo, collection_name=COLLECTION_NAME, query={"orgId": org_oid, "type": TYPE_REIMBURSEMENT}, read_many=True)
     docs = sorted(docs or [], key=lambda d: d.get("datetime") or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
     missing = await _missing_receipts(mongo, docs)
     records = [_to_out(d, missing[d["_id"]]) for d in docs]
@@ -167,6 +167,7 @@ async def create_reimbursement(payload: ReimbursementCreate, ownerId: str | None
     org_oid = _parse_id(payload.orgId, "orgId")
     await _verify_org_owner(mongo, org_oid, ownerId)
     doc = {
+        "type": TYPE_REIMBURSEMENT,
         "name": payload.name.strip(),
         "datetime": _as_datetime(payload.date),
         "amount": float(payload.amount),
@@ -199,7 +200,7 @@ async def create_reimbursement(payload: ReimbursementCreate, ownerId: str | None
 async def update_reimbursement(record_id: str, payload: ReimbursementUpdate, ownerId: str | None = None, mongo=Depends(get_mongo)):
     _require_db(mongo)
     record_oid = _parse_id(record_id, "reimbursement id")
-    existing = await mongodb_ops.read(mongo, collection_name=COLLECTION_NAME, query={"_id": record_oid})
+    existing = await mongodb_ops.read(mongo, collection_name=COLLECTION_NAME, query={"_id": record_oid, "type": TYPE_REIMBURSEMENT})
     if existing is None:
         raise HTTPException(status_code=404, detail="Reimbursement not found")
     org_oid = existing["orgId"]
@@ -273,6 +274,6 @@ async def delete_reimbursements(payload: ReimbursementDelete, ownerId: str | Non
     org_oid = _parse_id(payload.orgId, "orgId")
     await _verify_org_owner(mongo, org_oid, ownerId)
     ids = [_parse_id(i, "reimbursement id") for i in payload.ids]
-    # orgId in the filter: ids from another org are never deleted
-    deleted = await mongodb_ops.delete(mongo, collection_name=COLLECTION_NAME, query={"_id": {"$in": ids}, "orgId": org_oid}, delete_many=True)
+    # orgId in the filter: ids from another org are never deleted; type: a cash in record is never deleted here
+    deleted = await mongodb_ops.delete(mongo, collection_name=COLLECTION_NAME, query={"_id": {"$in": ids}, "orgId": org_oid, "type": TYPE_REIMBURSEMENT}, delete_many=True)
     return {"deleted": deleted}

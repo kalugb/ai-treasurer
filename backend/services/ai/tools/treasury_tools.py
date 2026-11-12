@@ -15,7 +15,7 @@ from langgraph.runtime import get_runtime
 ORG_COLLECTION = "organizations"
 TEAMS_COLLECTION = "departments"
 RECEIPTS_COLLECTION = "receipts"
-REIMBURSEMENT_COLLECTION = "reimbursement"
+REIMBURSEMENT_COLLECTION = "cashFlow"  # same collection as cash in; reimbursement records have type "Reimbursement"
 
 
 @dataclass

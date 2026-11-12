@@ -12,14 +12,13 @@ from models.snapshot import SnapshotCreate
 from routers.cashin import _to_out as _cashin_out, image_response
 from routers.google_drive import _find_receipt, _to_out as _receipt_out, serve_receipt_thumbnail
 from routers.reimbursement import _to_out as _record_out
-from routers.teams import NO_TRANSACTIONS, _parse_id, _verify_org_owner
+from routers.teams import CASHFLOW_COLLECTION, NO_TRANSACTIONS, TYPE_CASH_IN, TYPE_REIMBURSEMENT, _parse_id, _verify_org_owner
 
 router = APIRouter(prefix="/api/snapshots")
 COLLECTION = "snapshots"
 TEAMS = "departments"
 RECEIPTS = "receipts"
-RECORDS = "reimbursement"
-CASHIN = "cashin"
+CASHFLOW = CASHFLOW_COLLECTION  # one collection holds cash in and reimbursement records, split by `type`
 MAX_PER_ORG = 50
 MAX_RECEIPTS = 5000
 MAX_RECORDS = 5000
@@ -106,13 +105,14 @@ def _read_everything(mongo, session, org_oid: ObjectId) -> dict:
     teams = list(mongo[TEAMS].find({"orgId": {"$in": forms}}, session=session))
     team_oids = [t["_id"] for t in teams]
     receipts = list(mongo[RECEIPTS].find({"departmentID": {"$in": team_oids}}, session=session))
-    records = list(mongo[RECORDS].find({"orgId": {"$in": forms}}, session=session))
-    cashins = list(mongo[CASHIN].find({"orgId": {"$in": forms}}, session=session))
+    flow = list(mongo[CASHFLOW].find({"orgId": {"$in": forms}}, session=session))  # cash in + reimbursement, one query
+    records = [d for d in flow if d.get("type") == TYPE_REIMBURSEMENT]
+    cashins = [d for d in flow if d.get("type") == TYPE_CASH_IN]
     return {"at": at, "teams": teams, "receipts": receipts, "records": records, "cashins": cashins}
 
 
 def _hash(mongo) -> str:
-    return mongo.command("dbHash", collections=[TEAMS, RECEIPTS, RECORDS, CASHIN])["md5"]
+    return mongo.command("dbHash", collections=[TEAMS, RECEIPTS, CASHFLOW])["md5"]
 
 
 def _take_verified(mongo, org_oid: ObjectId) -> dict:
