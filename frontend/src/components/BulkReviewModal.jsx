@@ -22,7 +22,7 @@ export default function BulkReviewModal() {
 					<div><p className="text-[11px] font-bold tracking-widest text-muted uppercase">Filled by AI · review</p><h2 id="bulk-review-title" className="mt-1 font-display text-[20px] tracking-[-0.03em]">{receipt.label || receipt.filename}</h2></div>
 					<div className="flex items-center gap-3"><span className="text-xs font-bold text-muted">{reviewIndex + 1} / {total}</span><button className="rounded-lg px-2 py-1 text-xs font-bold text-blue focus-visible:outline-[3px] focus-visible:outline-blue-ring" type="button" onClick={close}>Close</button></div>
 				</div>
-				<ReceiptEditor key={receipt.id} receipt={receipt} readOnly={readOnly} onSave={(patch) => saveReviewed(receipt.googleDriveFileId, patch)} onScan={() => receiptsAPI.scan(report.teamId, receipt.googleDriveFileId)}>
+				<ReceiptEditor key={receipt.id} receipt={receipt} readOnly={readOnly} onSave={(patch) => saveReviewed(receipt.googleDriveFileId, patch)} onScan={() => receiptsAPI.scan(report.teamId, receipt.googleDriveFileId, { ownerId: report.ownerId })}>
 					<button className={`${arrow} left-3`} type="button" aria-label="Previous receipt" onClick={() => setReviewIndex(reviewIndex - 1)} disabled={reviewIndex <= 0}><span className="rotate-180"><Icon name="chevron" size={18} /></span></button>
 					<button className={`${arrow} right-3`} type="button" aria-label="Next receipt" onClick={() => setReviewIndex(reviewIndex + 1)} disabled={reviewIndex >= total - 1}><Icon name="chevron" size={18} /></button>
 				</ReceiptEditor>

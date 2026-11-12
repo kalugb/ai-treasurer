@@ -11,6 +11,7 @@ from fastapi.responses import StreamingResponse
 from services.mongodb import mongodb_ops
 from services.ai import attachments as attachments_svc
 from services.ai import receipt_scan
+from services.ai import history as ai_history
 from services.ai.embeddings.long_term_memory import embed_turn, retrieve_embedding
 from models.agent import SendMessageRequest, RegenerateRequest, StopRequest
 
@@ -288,14 +289,22 @@ async def upload_attachment(request: Request, file: UploadFile = File(...)):
 
 
 @router.post("/receipts/scan")
-async def scan_receipt(request: Request, file: UploadFile = File(...)):
-    """AI-extract receipt name/amount/description from an uploaded file (nothing is stored)."""
+async def scan_receipt(request: Request, file: UploadFile = File(...), ownerId: str | None = None, orgId: str | None = None, teamId: str | None = None):
+    """AI-extract receipt name/amount/description from an uploaded file (nothing is stored except the AI history entry,
+    which is skipped when ownerId/orgId are missing). The file itself is never kept: this is the upload form's scan."""
     llm = request.app.state.llm_inference
     if llm is None:
         raise HTTPException(status_code=503, detail="LLM inference not available")
     data = await file.read()
+    filename, content_type = file.filename or "file", file.content_type or ""
     try:
-        return await receipt_scan.scan(llm, file.filename or "file", file.content_type or "", data)
+        result, history_id = await ai_history.run_logged(
+            request,
+            {"owner_id": ownerId, "org_id": orgId, "team_id": teamId, "trigger": "upload_form"},
+            {"filename": filename, "mimeType": content_type, "size": len(data)}, None,
+            lambda meta: receipt_scan.scan(llm, filename, content_type, data, meta),
+        )
+        return {**result, "historyId": history_id}
     except HTTPException:
         raise
     except Exception as e:

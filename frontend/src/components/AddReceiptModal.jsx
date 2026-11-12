@@ -8,7 +8,8 @@ import { agentAPI } from '../api/agent'
 const field = 'grid gap-1.75 text-xs font-bold text-ink'
 const input = 'h-10.5 w-full rounded-[7px] border border-line bg-paper px-3 text-ink outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]'
 
-export default function AddReceiptModal({ open, onClose, onUpload }) {
+// scanContext = { ownerId, orgId, teamId }: lets the server log the AI scan in the AI history
+export default function AddReceiptModal({ open, onClose, onUpload, scanContext }) {
 	const [file, setFile] = useState(null)
 	const [receiptName, setReceiptName] = useState('')
 	const [receiptAmount, setReceiptAmount] = useState('')
@@ -44,7 +45,7 @@ export default function AddReceiptModal({ open, onClose, onUpload }) {
 		setError(null)
 		setScanNote(null)
 		try {
-			const res = await agentAPI.scanReceipt(file)
+			const res = await agentAPI.scanReceipt(file, scanContext)
 			let filled = 0
 			if (res.receiptName && !receiptName.trim()) { setReceiptName(res.receiptName); filled++ }
 			if (res.receiptAmount != null && receiptAmount === '') { setReceiptAmount(String(res.receiptAmount)); filled++ }

@@ -122,6 +122,11 @@ async def lifespan(app: FastAPI):
             app.state.history_mongo["snapshots"].create_index([("orgId", 1), ("userId", 1), ("snapshotTime", -1)], name="org_user_time")
         except Exception as e:  # listing still works, just unindexed
             print(f"Could not create the snapshots index: {e}")
+        try:
+            from services.ai.history import ensure_indexes as ensure_ai_history_indexes
+            ensure_ai_history_indexes(app.state.history_mongo)  # incl. the 14-day TTL on startedAt
+        except Exception as e:
+            print(f"Could not create the AI history indexes: {e}")
     app.state.redis = redis_client 
     app.state.llm_inference = llm_inference
     app.state.embeddings_client = None # embeddings_client

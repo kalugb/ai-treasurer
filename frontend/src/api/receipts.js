@@ -31,13 +31,15 @@ export const receiptsAPI = {
 		request(`/api/google-drive/teams/${teamId}/receipts`, { method: 'GET', ...(refresh ? { params: { refresh: true } } : {}) }),
 	sync: (teamId) =>
 		request(`/api/google-drive/teams/${teamId}/receipts/sync`, { method: 'POST', timeout: SYNC_TIMEOUT_MS }),
-	updateReceipt: (teamId, fileId, patch) =>
-		request(`/api/google-drive/teams/${teamId}/receipts/${fileId}`, { method: 'PATCH', data: patch }),
+	// historyId + ownerId (bulk AI run): the server records in the AI history that the AI saved this patch
+	updateReceipt: (teamId, fileId, patch, { ownerId, historyId } = {}) =>
+		request(`/api/google-drive/teams/${teamId}/receipts/${fileId}`, { method: 'PATCH', data: patch, ...(historyId ? { params: { ownerId, historyId } } : {}) }),
 	upload: (teamId, formData) =>
 		requestWithFile(`/api/google-drive/teams/${teamId}/receipts/upload`, formData),
 	// AI-extract { receiptName, receiptAmount, description } from the stored original file (nothing is saved)
-	scan: (teamId, fileId, signal) =>
-		request(`/api/google-drive/teams/${teamId}/receipts/${fileId}/scan`, { method: 'POST', signal }),
+	// ownerId makes the server log the scan in the AI history; trigger is receipt_edit (default) or bulk (+ runId)
+	scan: (teamId, fileId, { signal, ownerId, trigger, runId } = {}) =>
+		request(`/api/google-drive/teams/${teamId}/receipts/${fileId}/scan`, { method: 'POST', signal, params: { ownerId, trigger, runId } }),
 	remove: (teamId, ids, confirmLinked = false) =>
 		request(`/api/google-drive/teams/${teamId}/receipts/delete`, { method: 'POST', data: { ids, confirmLinked } }),
 }

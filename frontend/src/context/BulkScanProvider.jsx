@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BulkScanContext, runBulkScan } from './bulkScan'
 import { useToast } from './toast'
 import { receiptsAPI, toReceipt } from '../api/receipts'
+import { aiHistoryAPI } from '../api/aiHistory'
 
 // Owns the "fill all unset receipts with AI" run so it keeps going when the modal closes or the page changes.
 // It lives in the browser: a reload or closed tab stops it (receipts already saved stay saved).
@@ -17,18 +18,22 @@ export function BulkScanProvider({ children }) {
 	const controllerRef = useRef(null)
 	const running = run !== null
 
-	const start = useCallback(async (teamId, receipts) => {
+	// ctx = { ownerId, orgId } of the selected organization: needed to log the run in the AI history (skipped without it)
+	const start = useCallback(async (teamId, receipts, ctx = {}) => {
 		if (controllerRef.current || !receipts.length) return
 		const controller = new AbortController()
 		controllerRef.current = controller
 		setReport(null)
 		setReviewIndex(null)
 		setRun({ teamId, total: receipts.length, done: 0, filled: 0, nothingFound: 0, failed: 0, current: null })
+		const { ownerId, orgId } = ctx
+		// best effort: a failure here only means this run is not in the history
+		const runId = ownerId && orgId ? await aiHistoryAPI.createRun(orgId, ownerId, teamId, receipts.length).then((r) => r.runId).catch(() => null) : null
 		let n = 0
 		const stats = await runBulkScan({
 			receipts,
-			scan: (fileId, signal) => receiptsAPI.scan(teamId, fileId, signal),
-			save: async (fileId, patch) => toReceipt(await receiptsAPI.updateReceipt(teamId, fileId, patch)),
+			scan: (fileId, signal) => receiptsAPI.scan(teamId, fileId, { signal, ownerId, trigger: 'bulk', runId }),
+			save: async (fileId, patch, found) => toReceipt(await receiptsAPI.updateReceipt(teamId, fileId, patch, { ownerId, historyId: found?.historyId })),
 			signal: controller.signal,
 			onStart: (receipt) => setRun((current) => current && { ...current, current: receipt.label || receipt.filename }),
 			onProgress: (s, saved) => {
@@ -37,9 +42,10 @@ export function BulkScanProvider({ children }) {
 			},
 		})
 		controllerRef.current = null
+		if (runId) aiHistoryAPI.finishRun(runId, orgId, ownerId, stats.cancelled ? 'Cancelled' : stats.stopped ? 'Stopped' : 'Finished', stats.lastError).catch(() => {})
 		setRun(null)
 		setCompleted({ teamId, at: Date.now() })
-		setReport({ ...stats, teamId, total: receipts.length, outcome: stats.cancelled ? 'cancelled' : stats.stopped ? 'stopped' : 'finished' })
+		setReport({ ...stats, teamId, ownerId, total: receipts.length, outcome: stats.cancelled ? 'cancelled' : stats.stopped ? 'stopped' : 'finished' })
 	}, [])
 
 	const cancel = useCallback(() => controllerRef.current?.abort(), [])

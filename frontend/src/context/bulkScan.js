@@ -26,6 +26,7 @@ const errorText = (e) => e?.response?.data?.detail || e?.message || 'unknown err
 // MAX_CONSECUTIVE_FAILURES in a row ends the run (stopped). Cancelling (signal) aborts the scan in
 // flight and drops its result; saves already made stay. Result: { done, filled, nothingFound, failed,
 // cancelled, stopped, lastError, edited: [saved receipts] }.
+// save(fileId, patch, found) gets the scan result too (its historyId links the save to the AI history).
 // onStart(receipt) before each scan; onProgress(statsCopy, savedReceipt?) after each receipt.
 export async function runBulkScan({ receipts, scan, save, signal, onStart, onProgress }) {
 	const stats = { done: 0, filled: 0, nothingFound: 0, failed: 0, cancelled: false, stopped: false, lastError: null, edited: [] }
@@ -39,7 +40,7 @@ export async function runBulkScan({ receipts, scan, save, signal, onStart, onPro
 			if (signal.aborted) { stats.cancelled = true; break }
 			const patch = buildPatch(receipt, found)
 			if (!patch) stats.nothingFound++
-			else { saved = await save(receipt.googleDriveFileId, patch); stats.filled++; stats.edited.push(saved) }
+			else { saved = await save(receipt.googleDriveFileId, patch, found); stats.filled++; stats.edited.push(saved) }
 			streak = 0
 		} catch (e) {
 			if (signal.aborted) { stats.cancelled = true; break }

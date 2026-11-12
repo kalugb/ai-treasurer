@@ -17,10 +17,11 @@ export const agentAPI = {
 		return requestWithFile('/api/agent/attachments', fd)
 	},
 	// one-shot AI extraction of a receipt file -> { receiptName, receiptAmount, description } (nulls when unsure)
-	scanReceipt: (file) => {
+	// ownerId + orgId (+ teamId) make the server log the scan in the AI history
+	scanReceipt: (file, { ownerId, orgId, teamId } = {}) => {
 		const fd = new FormData()
 		fd.append('file', file)
-		return requestWithFile('/api/agent/receipts/scan', fd)
+		return requestWithFile('/api/agent/receipts/scan', fd, { params: { ownerId, orgId, teamId } })
 	},
 	sendMessage: (input, conversationId = null, orgId = null, attachments = [], userId = USER_ID) =>
 		request('/api/agent/messages', { method: 'POST', data: { input, conversationId, orgId, attachments, userId } }),

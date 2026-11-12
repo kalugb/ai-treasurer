@@ -13,6 +13,7 @@ from starlette.responses import StreamingResponse
 from models.receipt import ReceiptDelete, ReceiptUpdate
 from routers.reimbursement import receipt_key, receipt_links
 from services.ai import receipt_scan
+from services.ai import history as ai_history
 from services.google.google_ops import GoogleDriveService
 from services.mongodb import mongodb_ops
 from services.supabase import supabase_ops
@@ -270,9 +271,10 @@ async def sync_team_receipts_stream(team_id: str, request: Request):
 
 
 @router.patch("/teams/{team_id}/receipts/{file_id}")
-async def update_team_receipt(team_id: str, file_id: str, payload: ReceiptUpdate, request: Request):
-    """Persist user-editable fields (amount, description, label) on a receipt."""
-    dept_oid, _org_id, _folder_id = await _team_ids(request, team_id)
+async def update_team_receipt(team_id: str, file_id: str, payload: ReceiptUpdate, request: Request, historyId: str | None = None, ownerId: str | None = None):
+    """Persist user-editable fields (amount, description, label) on a receipt.
+    historyId + ownerId (sent by the bulk AI run) record in the AI history that the AI saved these fields."""
+    dept_oid, org_id, _folder_id = await _team_ids(request, team_id)
     mongo = _get_mongo(request)
 
     fields = payload.model_dump(exclude_none=True)
@@ -290,6 +292,9 @@ async def update_team_receipt(team_id: str, file_id: str, payload: ReceiptUpdate
             raise HTTPException(status_code=409, detail=f"This receipt is reimbursed in record '{link['name']}', so its amount can't be changed. Set the record to Not reimbursed first.")
 
     await mongodb_ops.update(mongo, query={"_id": doc["_id"]}, collection_name=RECEIPTS_COLLECTION, update_data=fields)
+    if historyId:
+        org_oid = org_id if isinstance(org_id, ObjectId) else ObjectId(str(org_id))
+        await ai_history.mark_applied(request, historyId, ownerId, org_oid, receipt_key(doc), fields)
     doc = await mongodb_ops.read(mongo, collection_name=RECEIPTS_COLLECTION, query={"_id": doc["_id"]})
 
     cache = request.app.state.cache
@@ -441,14 +446,16 @@ async def get_team_receipt_thumbnail(team_id: str, file_id: str, request: Reques
 
 
 @router.post("/teams/{team_id}/receipts/{file_id}/scan")
-async def scan_team_receipt(team_id: str, file_id: str, request: Request):
-    """AI-extract name/amount/description from a stored receipt (nothing is saved).
+async def scan_team_receipt(team_id: str, file_id: str, request: Request, ownerId: str | None = None, trigger: str = "receipt_edit", runId: str | None = None):
+    """AI-extract name/amount/description from a stored receipt (nothing is saved on the receipt).
     Uses the ORIGINAL file, so a PDF goes text-first (MarkItDown -> LLM) and is only
-    read visually when it has no text layer; images go to the vision model."""
+    read visually when it has no text layer; images go to the vision model.
+    Logged to the AI history when ownerId is sent; the response carries `historyId` so the caller can
+    pass it back on the receipt PATCH (that is what records "the AI saved this")."""
     llm = request.app.state.llm_inference
     if llm is None:
         raise HTTPException(status_code=503, detail="LLM inference not available")
-    dept_oid, _org_id, _folder_id = await _team_ids(request, team_id)
+    dept_oid, org_id, _folder_id = await _team_ids(request, team_id)
     doc = await _find_receipt(request, dept_oid, file_id)
     if doc is None:
         raise HTTPException(status_code=404, detail="Receipt not found")
@@ -467,8 +474,16 @@ async def scan_team_receipt(team_id: str, file_id: str, request: Request):
             data = await run_in_threadpool(get_google_drive_service_instance(request).download_files_bytes, file_id)
     except Exception:
         raise HTTPException(status_code=502, detail="Could not fetch the receipt file")
+    name = doc.get("receiptName") or "receipt"
     try:
-        return await receipt_scan.scan(llm, doc.get("receiptName") or "receipt", mime, data)
+        result, history_id = await ai_history.run_logged(
+            request,
+            {"owner_id": ownerId, "org_id": str(org_id), "team_id": team_id, "trigger": trigger, "run_id": runId},
+            {"filename": name, "mimeType": mime, "size": len(data)},
+            {"receiptId": receipt_key(doc), "name": name, "source": "local_upload" if doc.get("createdFrom") == "local_upload" else "google"},
+            lambda meta: receipt_scan.scan(llm, name, mime, data, meta),
+        )
+        return {**result, "historyId": history_id}
     except HTTPException:
         raise
     except Exception as e:

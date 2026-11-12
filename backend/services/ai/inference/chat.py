@@ -90,7 +90,7 @@ class LLMInference:
         return str(content).strip()
     
 
-    async def extract_receipt(self, text: str | None = None, image_b64: str | None = None, mime: str = "image/png") -> dict:
+    async def extract_receipt(self, text: str | None = None, image_b64: str | None = None, mime: str = "image/png", meta: dict | None = None) -> dict:
         """One-shot receipt field extraction (no tools, no history, nothing persisted).
         Text goes Groq -> NVIDIA; images go to NVIDIA only (the vision model).
         Returns {receiptName, receiptAmount, description}; unknown/invalid fields are None."""
@@ -104,9 +104,11 @@ class LLMInference:
             content = [{"type": "text", "text": instruction},
                        {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{image_b64}"}}]
             models = [self.nvidia_llm]
+            names = ["nvidia"]
         else:
             content = f"{instruction}\n\n<document>\n{(text or '')[:20000]}\n</document>"
             models = [self.groq_llm, self.nvidia_llm]
+            names = ["groq", "nvidia"]
         # JSON mode forces a JSON reply. NVIDIA's model is a reasoning model and its reasoning was the scan's bottleneck
         # (7-41s, up to ~4k tokens) and overran the 1024-token default (empty reply). Extraction needs no reasoning:
         # disabled it's ~2-3s. The client doesn't know this model, so `thinking_mode=False` is a no-op -- pass the flag raw.
@@ -115,12 +117,14 @@ class LLMInference:
         models = [m.bind(**json_mode, **no_think) if m is self.nvidia_llm else m.bind(**json_mode) for m in models]
 
         last_error = None
-        for model in [m for m in models for _ in (0, 1)]:  # 2 attempts per provider: the reasoning model occasionally returns an unparseable reply
+        for name, model in [(n, m) for n, m in zip(names, models) for _ in (0, 1)]:  # 2 attempts per provider: the reasoning model occasionally returns an unparseable reply
             try:
                 # parse the JSON ourselves: provider-side structured output (guided_json) is rejected by some NVIDIA endpoints
                 reply = await model.ainvoke([HumanMessage(content=content)])
                 raw = self._extract_text(reply.content)
                 result = ReceiptExtraction.model_validate_json(raw[raw.index("{"): raw.rindex("}") + 1])
+                if meta is not None:
+                    meta["provider"] = name  # for the AI history
                 break
             except Exception as e:  # try the next provider
                 last_error = e

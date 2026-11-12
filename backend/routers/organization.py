@@ -189,6 +189,7 @@ async def delete_organization(org_id: str, request: Request, mongo=Depends(get_m
     if history is not None:
         try:
             history[SNAPSHOTS_COLLECTION].delete_many({"orgId": oid})
+            history["AIHistory"].delete_many({"orgId": oid})  # the org's AI history goes with it
         except Exception:
             pass
     # committed: now clean up what the DB can't cover (storage files, caches). Best-effort.

@@ -9,6 +9,7 @@ import Folders from './pages/Folders'
 import TeamManagement from './pages/TeamManagement'
 import CashFlow from './pages/CashFlow'
 import Snapshots from './pages/Snapshots'
+import AIHistory from './pages/AIHistory'
 import SnapshotBanner from './components/SnapshotBanner'
 import { useSnapshotMode } from './context/snapshotMode'
 import NotFound from './pages/NotFound'
@@ -81,6 +82,8 @@ export default function App() {
 					? <Snapshots goTo={setPage} onView={viewSnapshot} />
 					: page === 'agent'
 						? <Agent />
+						: page === 'ai-history'
+							? <AIHistory goTo={setPage} />
 						: page === 'settings'
 							? <Settings />
 							: page === 'not-found'

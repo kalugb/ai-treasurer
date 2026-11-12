@@ -7,7 +7,7 @@ import { button } from './button'
 // Shared by the receipt preview and the "set missing amounts" modal.
 // onSave(patch) must throw on failure; the error is shown under the form.
 // The form is seeded from the receipt once: callers must pass key={receipt.id} to reset it for another receipt.
-export default function ReceiptEditor({ receipt, readOnly, onSave, onScan, actions, submitLabel = 'Save details', children }) {
+export default function ReceiptEditor({ receipt, readOnly, onSave, onScan, actions, submitLabel = 'Save details', readOnlyLabel = 'Details (snapshot, read-only)', children }) {
 	const [loadedSrc, setLoadedSrc] = useState(null)
 	const [errorSrc, setErrorSrc] = useState(null)
 	const [amount, setAmount] = useState(() => receipt.amount ? String(receipt.amount) : '') // blank for 0 so an unset amount doesn't look typed
@@ -79,7 +79,7 @@ export default function ReceiptEditor({ receipt, readOnly, onSave, onScan, actio
 				<div className="grid grid-cols-3 gap-4 text-[13px]"><div><span className="block text-xs text-muted">Date</span><strong className="mt-1 block">{receipt.date}</strong></div><div><span className="block text-xs text-muted">Category</span><strong className="mt-1 block">{receipt.category}</strong></div><div><span className="block text-xs text-muted">Filename</span><strong className="mt-1 block truncate" title={receipt.filename}>{receipt.filename}</strong></div></div>
 				<p className={`mt-3 rounded-lg px-3 py-2 text-xs font-bold ${receipt.reimbursed ? 'bg-green-soft text-green' : receipt.reimbursement ? 'bg-brown-soft text-brown' : 'bg-paper text-muted'}`}>{receipt.reimbursed ? `Reimbursed · record “${receipt.reimbursement.name}”` : receipt.reimbursement ? `Not reimbursed yet · pending in record “${receipt.reimbursement.name}”` : 'Not reimbursed · not in any reimbursement record'}</p>
 				<form className="mt-5 border-t border-line pt-4" onSubmit={handleSave}>
-					<p className="mb-3 text-[11px] font-bold tracking-widest text-muted uppercase">{readOnly ? 'Details (snapshot, read-only)' : 'Edit details'}</p>
+					<p className="mb-3 text-[11px] font-bold tracking-widest text-muted uppercase">{readOnly ? readOnlyLabel : 'Edit details'}</p>
 					<fieldset disabled={readOnly} className="contents">
 					<div className="mb-3 flex flex-wrap items-center gap-3"><button className={`${button.secondary} disabled:opacity-60`} type="button" onClick={scan} disabled={scanning || saving}><Icon name={scanning ? 'spinner' : 'receipt'} size={16} /> {scanning ? 'Scanning…' : 'Scan with AI'}</button>{scanNote && <p className="text-xs text-muted">{scanNote}</p>}</div>
 					<label className="grid gap-1.5 text-xs font-bold text-ink">Amount<input className="h-10 rounded-lg border border-line bg-white px-3 text-[13px] outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)] disabled:cursor-not-allowed disabled:bg-paper disabled:text-muted" type="number" min="0" step="0.01" inputMode="decimal" placeholder="0.00" value={amount} onChange={(event) => setAmount(event.target.value)} disabled={receipt.reimbursed} aria-describedby={receipt.reimbursed ? 'amount-locked' : undefined} />{receipt.reimbursed && <span id="amount-locked" className="text-[11px] font-semibold text-muted">Locked: this receipt is reimbursed in record “{receipt.reimbursement.name}”. Set the record to Not reimbursed to change it.</span>}</label>

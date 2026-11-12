@@ -132,7 +132,7 @@ export default function Folders({ goTo }) {
 		push('Receipt details saved.', 'success')
 	}
 
-	const handleScanReceipt = (fileId) => receiptsAPI.scan(team.id, fileId)
+	const handleScanReceipt = (fileId) => receiptsAPI.scan(team.id, fileId, { ownerId: organization?.ownerId })
 
 	// background "fill all with AI" run (BulkScanProvider): apply each saved receipt live, refetch once when it ends
 	useEffect(() => {
@@ -299,8 +299,8 @@ export default function Folders({ goTo }) {
 				deleting={deleting}
 				readOnly={readOnly}
 			/>
-			{amountsOpen && <SetAmountsModal receipts={allReceipts} onClose={() => setAmountsOpen(false)} onSave={handleSaveReceipt} onScan={handleScanReceipt} running={bulk.running} onFillAll={(list) => bulk.start(team.id, list)} onCancelRun={bulk.cancel} />}
-			<AddReceiptModal open={addOpen} onClose={() => setAddOpen(false)} onUpload={handleUploadReceipt} />
+			{amountsOpen && <SetAmountsModal receipts={allReceipts} onClose={() => setAmountsOpen(false)} onSave={handleSaveReceipt} onScan={handleScanReceipt} running={bulk.running} onFillAll={(list) => bulk.start(team.id, list, { ownerId: organization?.ownerId, orgId: organization?.id })} onCancelRun={bulk.cancel} />}
+			<AddReceiptModal open={addOpen} onClose={() => setAddOpen(false)} onUpload={handleUploadReceipt} scanContext={{ ownerId: organization?.ownerId, orgId: organization?.id, teamId: team?.id }} />
 			<Modal isOpen={deleteTargets.length > 0} onClose={() => { if (!deleting) setDeleteTargets([]) }} title={`Delete ${deleteTargets.length} receipt${deleteTargets.length === 1 ? '' : 's'}?`} footer={
 				<>
 					<button className={button.secondary} type="button" onClick={() => setDeleteTargets([])} disabled={deleting}>Cancel</button>
