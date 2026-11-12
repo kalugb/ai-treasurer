@@ -4,7 +4,7 @@
 
 const READ_ONLY = 'Read-only: you are viewing a snapshot. Exit the snapshot to make changes.'
 // data that lives inside a snapshot; any other read (organizations, agent chats, Drive status) stays live
-const SCOPED = ['/api/teams', '/api/google-drive', '/api/reimbursements']
+const SCOPED = ['/api/teams', '/api/google-drive', '/api/reimbursements', '/api/cashins', '/api/cashflow']
 export const PASS = Symbol('pass') // "not answered by the snapshot, send to the server"
 
 let active = null // { snapshot, orgId, ownerId }
@@ -66,6 +66,38 @@ function reimbursementsOut({ snapshot }) {
 	return { records, totals: { reimbursed: sum(paid), notReimbursed: sum(unpaid), reimbursedCount: paid.length, notReimbursedCount: unpaid.length } }
 }
 
+// cash in: snapshots made before cash in existed have no `cashIn` list
+const cashInList = ({ snapshot }) => snapshot.cashIn ?? []
+const EMPTY_CASHFLOW = { balance: 0, totalCashIn: 0, totalReimbursement: 0, cashInCount: 0, reimbursementCount: 0, history: [], total: 0, hasMore: false }
+
+function cashInsOut({ snapshot, orgId, ownerId }) {
+	const scope = new URLSearchParams({ orgId, ownerId })
+	const records = cashInList({ snapshot }).map((c) => ({
+		...c,
+		// the file as stored now (images are not frozen), through the owner-checked snapshot route
+		imageUrl: c.hasImage ? `/api/snapshots/${snapshot.id}/cashin/${c.id}/image?${scope}` : null,
+	})).sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '') || b.id.localeCompare(a.id))
+	return { records, total: round(records.reduce((s, c) => s + c.amount, 0)), count: records.length }
+}
+
+// same rule and shape as routers/cashin.py `build_cashflow`: balance = total cash in - total reimbursement (every record)
+function cashflowOut({ snapshot }, params) {
+	const limit = Number(params.limit ?? 5)
+	const offset = Number(params.offset ?? 0)
+	const cashIns = cashInList({ snapshot })
+	const entries = [
+		...cashIns.map((c) => ({ kind: 'Cash in', id: c.id, name: c.name, date: c.date, amount: c.amount ?? 0, detail: c.source })),
+		...snapshot.records.map((r) => ({ kind: 'Reimbursement', id: r.recordId, name: r.name, date: r.date, amount: r.amount ?? 0, detail: r.teamInvolved })),
+	].sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '') || b.id.localeCompare(a.id))
+	const totalIn = round(cashIns.reduce((s, c) => s + (c.amount ?? 0), 0))
+	const totalOut = round(snapshot.records.reduce((s, r) => s + (r.amount ?? 0), 0))
+	return {
+		balance: round(totalIn - totalOut), totalCashIn: totalIn, totalReimbursement: totalOut,
+		cashInCount: cashIns.length, reimbursementCount: snapshot.records.length,
+		history: entries.slice(offset, offset + limit), total: entries.length, hasMore: offset + limit < entries.length,
+	}
+}
+
 // Answer a request from the active snapshot. Returns PASS when it should go to the server; throws on writes.
 export function answerFromSnapshot(path, method = 'GET', params = {}) {
 	if (!active) return PASS
@@ -73,6 +105,8 @@ export function answerFromSnapshot(path, method = 'GET', params = {}) {
 	if (!SCOPED.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))) return PASS
 	if (path === '/api/teams') return params.orgId === active.orgId ? teamsOut(active) : []
 	if (path === '/api/reimbursements') return params.orgId === active.orgId ? reimbursementsOut(active) : { records: [], totals: { reimbursed: 0, notReimbursed: 0, reimbursedCount: 0, notReimbursedCount: 0 } }
+	if (path === '/api/cashins') return params.orgId === active.orgId ? cashInsOut(active) : { records: [], total: 0, count: 0 }
+	if (path === '/api/cashflow') return params.orgId === active.orgId ? cashflowOut(active, params) : EMPTY_CASHFLOW
 	const receipts = path.match(/^\/api\/google-drive\/teams\/([^/]+)\/receipts$/)
 	if (receipts) return receiptsOut(active, receipts[1])
 	throw readOnlyError() // other team/receipt endpoints (delete impact, sync, …) are write flows

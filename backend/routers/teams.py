@@ -17,6 +17,7 @@ COLLECTION_NAME = "departments"
 ORG_COLLECTION = "organizations"
 RECEIPTS_COLLECTION = "receipts"
 REIMBURSEMENT_COLLECTION = "reimbursement"
+CASHIN_COLLECTION = "cashin"
 CACHE_KEY_NAME = "departments"
 RECEIPTS_CACHE_KEY_NAME = "receipts"
 NO_TRANSACTIONS = 20  # IllegalOperation: server is not a replica set / mongos

@@ -12,6 +12,7 @@ from routers.teams import (
     RECEIPTS_CACHE_KEY_NAME,
     RECEIPTS_COLLECTION,
     REIMBURSEMENT_COLLECTION,
+    CASHIN_COLLECTION,
     COLLECTION_NAME as TEAMS_COLLECTION,
     _verify_org_owner,
 )
@@ -114,12 +115,13 @@ async def update_organization(org_id: str, payload: UpdateOrganizationRequest, m
     return _to_out(updated)
 
 def _cascade_queries(oid: ObjectId, org_id: str, team_oids: list[ObjectId]) -> list[tuple[str, dict]]:
-    """Org delete removes receipts + reimbursement records + teams before the org doc.
+    """Org delete removes receipts + reimbursement + cash in records + teams before the org doc.
     Ids are stored as ObjectId by new code and as strings by legacy docs, so match both."""
     org_forms = [oid, org_id]
     return [
         (RECEIPTS_COLLECTION, {"$or": [{"departmentID": {"$in": team_oids}}, {"orgID": {"$in": org_forms}}]}),
         (REIMBURSEMENT_COLLECTION, {"$or": [{"teamInvolvedId": {"$in": team_oids}}, {"orgId": {"$in": org_forms}}]}),
+        (CASHIN_COLLECTION, {"orgId": {"$in": org_forms}}),
         (TEAMS_COLLECTION, {"orgId": {"$in": org_forms}}),
         (COLLECTION_NAME, {"_id": oid}),
     ]
@@ -136,6 +138,10 @@ async def _cascade_scopes(mongo, oid: ObjectId, org_id: str):
         elif name == REIMBURSEMENT_COLLECTION:
             records = await mongodb_ops.read(mongo, collection_name=name, query=query, read_many=True) or []
     return team_oids, receipts, records
+
+
+async def _org_cashins(mongo, oid: ObjectId, org_id: str) -> list[dict]:
+    return await mongodb_ops.read(mongo, collection_name=CASHIN_COLLECTION, query={"orgId": {"$in": [oid, org_id]}}, read_many=True) or []
 
 
 @router.get("/organizations/{org_id}/delete-impact")
@@ -157,6 +163,7 @@ async def organization_delete_impact(org_id: str, request: Request, ownerId: str
         "records": len(records),
         "reimbursedRecords": len(paid),
         "reimbursedAmount": round(sum(paid), 2),
+        "cashIns": len(await _org_cashins(mongo, oid, org_id)),
         "snapshots": history[SNAPSHOTS_COLLECTION].count_documents({"orgId": oid}) if history is not None else 0,
     }
 
@@ -171,6 +178,7 @@ async def delete_organization(org_id: str, request: Request, mongo=Depends(get_m
         raise HTTPException(status_code=404, detail="Organization not found")
     owner_id_val = existing.get("ownerId", existing.get("owner_id", existing.get("ownerID")))
     team_oids, receipts, _ = await _cascade_scopes(mongo, oid, org_id)
+    cashins = await _org_cashins(mongo, oid, org_id)
     # shortcut: sequential deletes, not a transaction (org delete was already non-transactional before
     # receipts/reimbursements were included) — a mid-run failure can leave partial deletes.
     for name, query in _cascade_queries(oid, org_id, team_oids):
@@ -191,6 +199,13 @@ async def delete_organization(org_id: str, request: Request, mongo=Depends(get_m
             except Exception:
                 pass
             await cache.delete(cache.key_builder(str(receipt["_id"]), f"thumb:{storage_path}"))
+    for cashin in cashins:  # proof images of the deleted cash in records
+        image_path = (cashin.get("imageMetadata") or {}).get("storagePath")
+        if image_path:
+            try:
+                await run_in_threadpool(supabase_ops.delete_cashin_image, image_path)
+            except Exception:
+                pass
     for team_oid in team_oids:
         await cache.delete(cache.key_builder(str(team_oid), RECEIPTS_CACHE_KEY_NAME))
     await cache.delete(cache.key_builder(owner_id_val, CACHE_KEY_NAME))

@@ -7,7 +7,7 @@ import MockPage from './pages/MockPage'
 import Organization from './pages/Organization'
 import Folders from './pages/Folders'
 import TeamManagement from './pages/TeamManagement'
-import Reimbursement from './pages/Reimbursement'
+import CashFlow from './pages/CashFlow'
 import Snapshots from './pages/Snapshots'
 import SnapshotBanner from './components/SnapshotBanner'
 import { useSnapshotMode } from './context/snapshotMode'
@@ -74,7 +74,7 @@ export default function App() {
 				: page === 'teams'
 					? <TeamManagement />
 					: page === 'reimbursement'
-					? <Reimbursement goTo={setPage} />
+					? <CashFlow goTo={setPage} />
 				: page === 'snapshots' || page === 'snapshot-view'
 					? <Snapshots goTo={setPage} onView={viewSnapshot} />
 					: page === 'agent'

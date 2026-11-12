@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import Icon from './Icon'
+import ZoomableImage from './ZoomableImage'
 import { button } from './button'
 import { pdfFirstPageToImageUrl } from '../api/pdfPreview'
 import { agentAPI } from '../api/agent'
@@ -18,48 +19,17 @@ export default function AddReceiptModal({ open, onClose, onUpload }) {
 	const [renderingPreview, setRenderingPreview] = useState(false)
 	const [scanning, setScanning] = useState(false)
 	const [scanNote, setScanNote] = useState(null)
-	const [zoom, setZoom] = useState({ scale: 1, tx: 0, ty: 0 })
-	const [dragging, setDragging] = useState(false)
-	const dragRef = useRef(null)
 
 	// revoke the object URL on unmount so the last preview doesn't leak
 	useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl) }, [previewUrl])
 
 	if (!open) return null
 
-	const resetZoom = () => { setZoom({ scale: 1, tx: 0, ty: 0 }); dragRef.current = null; setDragging(false) }
-
-	// wheel zooms toward the cursor; translate is adjusted so the point under the cursor stays put. clamped 1x–5x
-	const handleWheel = (event) => {
-		event.preventDefault()
-		const rect = event.currentTarget.getBoundingClientRect()
-		const cx = event.clientX - rect.left - rect.width / 2
-		const cy = event.clientY - rect.top - rect.height / 2
-		setZoom((current) => {
-			const scale = Math.min(5, Math.max(1, current.scale - event.deltaY * 0.0015))
-			if (scale <= 1) return { scale: 1, tx: 0, ty: 0 }
-			const ratio = scale / current.scale
-			return { scale, tx: cx - (cx - current.tx) * ratio, ty: cy - (cy - current.ty) * ratio }
-		})
-	}
-	const handlePointerDown = (event) => {
-		if (zoom.scale <= 1) return
-		event.currentTarget.setPointerCapture(event.pointerId)
-		dragRef.current = { x: event.clientX, y: event.clientY, tx: zoom.tx, ty: zoom.ty }
-		setDragging(true)
-	}
-	const handlePointerMove = (event) => {
-		if (!dragRef.current) return
-		setZoom((current) => ({ ...current, tx: dragRef.current.tx + (event.clientX - dragRef.current.x), ty: dragRef.current.ty + (event.clientY - dragRef.current.y) }))
-	}
-	const handlePointerUp = () => { dragRef.current = null; setDragging(false) }
-
 	const reset = () => {
 		setFile(null)
 		if (previewUrl) URL.revokeObjectURL(previewUrl)
 		setPreviewUrl(null)
 		setRenderingPreview(false)
-		resetZoom()
 		setReceiptName('')
 		setReceiptAmount('')
 		setDescription('')
@@ -93,7 +63,6 @@ export default function AddReceiptModal({ open, onClose, onUpload }) {
 		if (previewUrl) URL.revokeObjectURL(previewUrl)  // revoke the previous preview before replacing it
 		setPreviewUrl(null)
 		setFile(next)
-		resetZoom()
 		setError(null)
 		setScanNote(null)
 		if (!next) { setRenderingPreview(false); return }
@@ -182,20 +151,7 @@ export default function AddReceiptModal({ open, onClose, onUpload }) {
 						</div>
 
 						{previewUrl ? (
-							<div className="relative grid min-h-70 flex-1 place-items-center overflow-hidden rounded-[7px] border border-line bg-paper min-[720px]:min-h-100" onWheel={handleWheel}>
-								<img
-									src={previewUrl}
-									alt={`Preview of ${file.name}`}
-									draggable={false}
-									className="absolute inset-0 h-full w-full touch-none object-contain"
-									style={{ transform: `translate(${zoom.tx}px, ${zoom.ty}px) scale(${zoom.scale})`, cursor: zoom.scale > 1 ? (dragging ? 'grabbing' : 'grab') : 'zoom-in' }}
-									onPointerDown={handlePointerDown}
-									onPointerMove={handlePointerMove}
-									onPointerUp={handlePointerUp}
-									onPointerCancel={handlePointerUp}
-								/>
-								{zoom.scale > 1 && <span className="absolute bottom-2 left-2 rounded-full bg-[rgb(28_35_36/70%)] px-2.5 py-1 text-[11px] font-bold text-white">{zoom.scale.toFixed(1)}×</span>}
-							</div>
+							<ZoomableImage key={previewUrl} src={previewUrl} alt={`Preview of ${file.name}`} className="min-h-70 flex-1 rounded-[7px] border border-line bg-paper min-[720px]:min-h-100" />
 						) : (
 							<div className="grid min-h-70 flex-1 place-items-center rounded-[7px] border border-dashed border-line bg-paper text-center text-muted min-[720px]:min-h-100">
 								{renderingPreview

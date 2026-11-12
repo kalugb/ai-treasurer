@@ -5,8 +5,6 @@ import { reimbursementAPI } from '../api/reimbursement'
 import Modal from '../components/Modal'
 import AddReimbursementModal from '../components/AddReimbursementModal'
 import { button } from '../components/button'
-import { OrganizationRequiredEmptyState } from '../components/OrganizationContext'
-import { useSelectedOrganization } from '../hooks/useSelectedOrganization'
 import { useToast } from '../context/toast'
 import { useSnapshotMode } from '../context/snapshotMode'
 
@@ -16,8 +14,7 @@ const td = 'border-t border-line py-3.25 pr-3 pl-0 text-muted'
 const money = (n) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const EMPTY = { records: [], totals: { reimbursed: 0, notReimbursed: 0, reimbursedCount: 0, notReimbursedCount: 0 } }
 
-export default function Reimbursement({ goTo }) {
-	const organization = useSelectedOrganization()
+export default function Reimbursement({ organization }) {
 	const { push } = useToast()
 	const { readOnly } = useSnapshotMode()
 	const [data, setData] = useState(EMPTY)
@@ -45,25 +42,6 @@ export default function Reimbursement({ goTo }) {
 	}, [orgId, ownerId, version, push])
 
 	const reload = () => setVersion((v) => v + 1)
-
-	const header = (
-		<header className="mb-9 flex items-end justify-between gap-6 max-[820px]:flex-col max-[820px]:items-start">
-			<div>
-				<p className="mb-2.5 text-[11px] font-bold tracking-widest uppercase text-muted">Finance / Reimbursement</p>
-				<h1 className="font-display text-[clamp(28px,3vw,42px)] leading-[1.08] tracking-tighter text-ink">Reimbursement</h1>
-				<p className="mt-3 text-[13px] leading-[1.55] text-muted">
-					{organization ? `Reimbursement status for ${organization.orgName ?? organization.name}.` : 'Reimbursement totals appear after you choose an organization.'}
-				</p>
-			</div>
-			{organization && !selecting && !readOnly && (
-				<button className={button.primary} type="button" onClick={() => setEditing({})}>
-					<Icon name="plus" size={16} /> Add reimbursement
-				</button>
-			)}
-		</header>
-	)
-
-	if (!organization) return <>{header}<OrganizationRequiredEmptyState onGoToOrganization={() => goTo('organization')} /></>
 
 	const { records, totals } = data
 	const allSelected = records.length > 0 && selectedIds.size === records.length
@@ -100,7 +78,6 @@ export default function Reimbursement({ goTo }) {
 
 	return (
 		<>
-			{header}
 			<section className="mb-3.5 grid grid-cols-2 gap-3.5 max-[820px]:grid-cols-1" aria-label="Reimbursement summary">
 				<article className={`${card} border-blue bg-blue text-white`}>
 					<span className="mb-2.5 text-[11px] font-bold tracking-widest uppercase text-white/72">Total reimbursed</span>
@@ -142,10 +119,17 @@ export default function Reimbursement({ goTo }) {
 							</button>
 							<button className={button.secondary} type="button" onClick={stopSelecting}>Cancel</button>
 						</div>
-					) : records.length > 0 && !readOnly && (
-						<button className={button.secondary} type="button" onClick={() => setSelecting(true)}>
-							<Icon name="trash" size={16} /> Select for deletion
-						</button>
+					) : !readOnly && (
+						<div className="flex gap-2">
+							{records.length > 0 && (
+								<button className={button.secondary} type="button" onClick={() => setSelecting(true)}>
+									<Icon name="trash" size={16} /> Select for deletion
+								</button>
+							)}
+							<button className={button.primary} type="button" onClick={() => setEditing({})}>
+								<Icon name="plus" size={16} /> Add reimbursement
+							</button>
+						</div>
 					)}
 				</div>
 				<div className="overflow-x-auto">

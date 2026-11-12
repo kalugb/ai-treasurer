@@ -9,6 +9,7 @@ from pymongo.read_concern import ReadConcern
 from starlette.concurrency import run_in_threadpool
 
 from models.snapshot import SnapshotCreate
+from routers.cashin import _to_out as _cashin_out, image_response
 from routers.google_drive import _find_receipt, _to_out as _receipt_out, serve_receipt_thumbnail
 from routers.reimbursement import _to_out as _record_out
 from routers.teams import NO_TRANSACTIONS, _parse_id, _verify_org_owner
@@ -18,13 +19,14 @@ COLLECTION = "snapshots"
 TEAMS = "departments"
 RECEIPTS = "receipts"
 RECORDS = "reimbursement"
+CASHIN = "cashin"
 MAX_PER_ORG = 50
 MAX_RECEIPTS = 5000
 MAX_RECORDS = 5000
 VERIFY_ATTEMPTS = 5  # standalone fallback: re-reads before giving up
 CACHE_MAX_ITEMS = 2000  # ~1 MB; bigger details skip Redis so they can't fill a small plan
 # summary = everything except the heavy copies
-SUMMARY_FIELDS = {"name": 1, "snapshotTime": 1, "teamCount": 1, "receiptCount": 1, "recordCount": 1, "totalAmount": 1, "reimbursedAmount": 1}
+SUMMARY_FIELDS = {"name": 1, "snapshotTime": 1, "teamCount": 1, "receiptCount": 1, "recordCount": 1, "totalAmount": 1, "reimbursedAmount": 1, "cashInCount": 1, "cashInAmount": 1}
 
 
 def _history(request: Request):
@@ -70,6 +72,8 @@ def _summary(doc: dict) -> dict:
         "recordCount": doc.get("recordCount", 0),
         "totalAmount": doc.get("totalAmount", 0.0),
         "reimbursedAmount": doc.get("reimbursedAmount", 0.0),
+        "cashInCount": doc.get("cashInCount", 0),  # snapshots made before cash in existed have none
+        "cashInAmount": doc.get("cashInAmount", 0.0),
     }
 
 
@@ -82,6 +86,8 @@ def _detail(doc: dict) -> dict:
             {**r, "recordId": str(r["recordId"]), "teamInvolvedId": str(r["teamInvolvedId"]) if r.get("teamInvolvedId") else None}
             for r in doc.get("reimbursementsRecorded", [])
         ],
+        # the stored copy of _cashin_out; storagePath stays server-side (images are served through the snapshot image route)
+        "cashIn": [{k: v for k, v in c.items() if k not in ("cashInId", "storagePath")} for c in doc.get("cashInRecorded", [])],
     }
 
 
@@ -101,11 +107,12 @@ def _read_everything(mongo, session, org_oid: ObjectId) -> dict:
     team_oids = [t["_id"] for t in teams]
     receipts = list(mongo[RECEIPTS].find({"departmentID": {"$in": team_oids}}, session=session))
     records = list(mongo[RECORDS].find({"orgId": {"$in": forms}}, session=session))
-    return {"at": at, "teams": teams, "receipts": receipts, "records": records}
+    cashins = list(mongo[CASHIN].find({"orgId": {"$in": forms}}, session=session))
+    return {"at": at, "teams": teams, "receipts": receipts, "records": records, "cashins": cashins}
 
 
 def _hash(mongo) -> str:
-    return mongo.command("dbHash", collections=[TEAMS, RECEIPTS, RECORDS])["md5"]
+    return mongo.command("dbHash", collections=[TEAMS, RECEIPTS, RECORDS, CASHIN])["md5"]
 
 
 def _take_verified(mongo, org_oid: ObjectId) -> dict:
@@ -158,6 +165,10 @@ def _build(user_oid: ObjectId, org_oid: ObjectId, name: str, data: dict) -> dict
             "receiptIds": out["receiptInvolved"]["receiptIds"],
             "receiptNames": out["receiptInvolved"]["receiptNames"],
         })
+    cash_in_recorded = [
+        {**_cashin_out(doc), "cashInId": doc["_id"], "storagePath": (doc.get("imageMetadata") or {}).get("storagePath")}
+        for doc in data["cashins"]
+    ]
     return {
         "userId": user_oid,
         "orgId": org_oid,
@@ -166,11 +177,14 @@ def _build(user_oid: ObjectId, org_oid: ObjectId, name: str, data: dict) -> dict
         "teamCount": len(teams_recorded),
         "receiptCount": len(data["receipts"]),
         "recordCount": len(records_recorded),
+        "cashInCount": len(cash_in_recorded),
         "totalAmount": round(total, 2),
         "reimbursedAmount": round(reimbursed, 2),
+        "cashInAmount": round(sum(c["amount"] for c in cash_in_recorded), 2),
         "teamsRecorded": teams_recorded,
         "receiptsRecorded": receipts_recorded,
         "reimbursementsRecorded": records_recorded,
+        "cashInRecorded": cash_in_recorded,
     }
 
 
@@ -223,7 +237,7 @@ async def create_snapshot(payload: SnapshotCreate, request: Request, ownerId: st
         if exc.code != NO_TRANSACTIONS:
             raise
         data = await run_in_threadpool(_take_verified, mongo, org_oid)  # standalone (local dev)
-    if len(data["receipts"]) > MAX_RECEIPTS or len(data["records"]) > MAX_RECORDS:
+    if len(data["receipts"]) > MAX_RECEIPTS or len(data["records"]) > MAX_RECORDS or len(data["cashins"]) > MAX_RECORDS:
         raise HTTPException(status_code=413, detail="This organization is too large to snapshot")
 
     doc = _build(user_oid, org_oid, payload.name, data)
@@ -262,7 +276,7 @@ async def get_snapshot(snapshot_id: str, request: Request, orgId: str, ownerId: 
     if doc is None:
         raise HTTPException(status_code=404, detail="Snapshot not found")
     result = _detail(doc)
-    if doc.get("receiptCount", 0) + doc.get("recordCount", 0) <= CACHE_MAX_ITEMS:
+    if doc.get("receiptCount", 0) + doc.get("recordCount", 0) + doc.get("cashInCount", 0) <= CACHE_MAX_ITEMS:
         await _cache_set(request, key, result)
     return result
 
@@ -294,3 +308,18 @@ async def get_snapshot_receipt_thumbnail(snapshot_id: str, team_id: str, receipt
     if doc is None:
         raise HTTPException(status_code=404, detail="The receipt file no longer exists")
     return await serve_receipt_thumbnail(request, doc, receipt_id)
+
+
+@router.get("/{snapshot_id}/cashin/{cash_in_id}/image")
+async def get_snapshot_cashin_image(snapshot_id: str, cash_in_id: str, request: Request, orgId: str, ownerId: str = Query(min_length=1)):
+    """The proof image of a cash in record listed in this snapshot (the file as stored now: images are not frozen)."""
+    org_oid, user_oid = await _authorize(request, orgId, ownerId)
+    history = _history(request)
+    cash_in_oid = _parse_id(cash_in_id, "cash in id")
+    doc = history[COLLECTION].find_one(
+        {**_scope(snapshot_id, org_oid, user_oid), "cashInRecorded.cashInId": cash_in_oid}, {"cashInRecorded.$": 1}
+    )
+    record = (doc or {}).get("cashInRecorded", [None])[0]
+    if record is None or not record.get("storagePath"):
+        raise HTTPException(status_code=404, detail="Proof image not found in this snapshot")
+    return await image_response({"storagePath": record["storagePath"], "mimeType": (record.get("imageMetadata") or {}).get("mimeType")})

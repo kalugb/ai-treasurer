@@ -77,7 +77,7 @@ export default function Snapshots({ goTo, onView }) {
 				<div>
 					<p className="mb-2.5 text-[11px] font-bold tracking-widest uppercase text-muted">Snapshots / Management</p>
 					<h1 className="font-display text-[clamp(28px,3vw,42px)] leading-[1.08] tracking-tighter text-ink">Snapshot management.</h1>
-					<p className="mt-3 text-[13px] leading-[1.55] text-muted">Save the state of your organization's teams, receipts and reimbursements, then view the whole app as it was (read-only).</p>
+					<p className="mt-3 text-[13px] leading-[1.55] text-muted">Save the state of your organization's teams, receipts, reimbursements and cash in, then view the whole app as it was (read-only).</p>
 				</div>
 				{orgId && !readOnly && <button className={button.primary} onClick={openCreate}><Icon name="plus" size={16} /> Create snapshot</button>}
 			</header>
@@ -109,7 +109,7 @@ export default function Snapshots({ goTo, onView }) {
 									<span className="grid min-w-0 flex-1 gap-1.25">
 										<strong className="truncate">{s.name}</strong>
 										<small className="text-xs text-muted">{when(s.snapshotTime)}</small>
-										<small className="text-[11px] text-muted">{s.teamCount} teams · {s.receiptCount} receipts · {s.recordCount} reimbursements · {money(s.totalAmount)} total · {money(s.reimbursedAmount)} reimbursed</small>
+										<small className="text-[11px] text-muted">{s.teamCount} teams · {s.receiptCount} receipts · {s.recordCount} reimbursements · {money(s.totalAmount)} total · {money(s.reimbursedAmount)} reimbursed · {s.cashInCount ?? 0} cash in ({money(s.cashInAmount)})</small>
 									</span>
 									<span className="flex items-center gap-2">
 										{viewing?.id === s.id
@@ -133,7 +133,7 @@ export default function Snapshots({ goTo, onView }) {
 					<button className={button.primary} onClick={create} disabled={busy || !name.trim()}>{busy ? 'Saving…' : 'Save snapshot'}</button>
 				</>}
 			>
-				<p className="mb-4 text-[13px] text-muted">Saves a copy of {organization?.orgName ?? 'this organization'}'s teams, receipts and reimbursements exactly as they are right now.</p>
+				<p className="mb-4 text-[13px] text-muted">Saves a copy of {organization?.orgName ?? 'this organization'}'s teams, receipts, reimbursements and cash in exactly as they are right now.</p>
 				<label className="grid gap-1.75 text-xs font-bold text-ink">Snapshot name
 					<input
 						className="h-10.5 w-full rounded-[7px] border border-line bg-paper px-3 text-ink outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]"

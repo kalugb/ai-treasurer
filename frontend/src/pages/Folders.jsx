@@ -1,6 +1,7 @@
 /* eslint-disable react-hooks/set-state-in-effect */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import Icon from '../components/Icon'
+import ZoomableImage from '../components/ZoomableImage'
 import { button } from '../components/button'
 import AddReceiptModal from '../components/AddReceiptModal'
 import { teamsAPI } from '../api/teams'
@@ -32,47 +33,15 @@ function ReceiptPreview({ receipt, onClose, onPrev, onNext, index, total, onSave
 	const [description, setDescription] = useState('')
 	const [saving, setSaving] = useState(false)
 	const [saveError, setSaveError] = useState(null)
-	const [zoom, setZoom] = useState({ scale: 1, tx: 0, ty: 0 })
-	const [dragging, setDragging] = useState(false)
-	const dragRef = useRef(null)
 
 	useEffect(() => {
 		setAmount(receipt?.amount == null ? '' : String(receipt.amount))
 		setLabel(receipt?.label ?? '')
 		setDescription(receipt?.description ?? '')
 		setSaveError(null)
-		setZoom({ scale: 1, tx: 0, ty: 0 })
-		dragRef.current = null
-		setDragging(false)
 		// reset the form only when switching to a different receipt, not on every field refresh
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [receipt?.id])
-
-	// wheel zooms toward the cursor; translate is adjusted so the point under the cursor stays put. clamped 1x–5x
-	const handleWheel = (event) => {
-		event.preventDefault()
-		const rect = event.currentTarget.getBoundingClientRect()
-		const cx = event.clientX - rect.left - rect.width / 2
-		const cy = event.clientY - rect.top - rect.height / 2
-		setZoom((current) => {
-			const scale = Math.min(5, Math.max(1, current.scale - event.deltaY * 0.0015))
-			if (scale <= 1) return { scale: 1, tx: 0, ty: 0 }
-			const ratio = scale / current.scale
-			return { scale, tx: cx - (cx - current.tx) * ratio, ty: cy - (cy - current.ty) * ratio }
-		})
-	}
-
-	const handlePointerDown = (event) => {
-		if (zoom.scale <= 1) return
-		event.currentTarget.setPointerCapture(event.pointerId)
-		dragRef.current = { x: event.clientX, y: event.clientY, tx: zoom.tx, ty: zoom.ty }
-		setDragging(true)
-	}
-	const handlePointerMove = (event) => {
-		if (!dragRef.current) return
-		setZoom((current) => ({ ...current, tx: dragRef.current.tx + (event.clientX - dragRef.current.x), ty: dragRef.current.ty + (event.clientY - dragRef.current.y) }))
-	}
-	const handlePointerUp = () => { dragRef.current = null; setDragging(false) }
 
 	if (!receipt) return null
 	// the snapshot thumbnail URL already carries a query string
@@ -113,13 +82,10 @@ function ReceiptPreview({ receipt, onClose, onPrev, onNext, index, total, onSave
 					<div className="flex items-center gap-3">{imageLoading && <Icon name="spinner" size={14} />}<span className="text-xs font-bold text-muted">{index + 1} / {total}</span><button className="rounded-lg px-2 py-1 text-xs font-bold text-blue focus-visible:outline-[3px] focus-visible:outline-blue-ring" type="button" onClick={onClose}>Close</button></div>
 				</div>
 				<div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden min-[760px]:grid-cols-[1.3fr_1fr]">
-					<div className="relative grid min-h-[40vh] place-items-center overflow-hidden border-b border-line bg-paper text-blue min-[760px]:min-h-0 min-[760px]:border-r min-[760px]:border-b-0" onWheel={previewSrc && !imageError ? handleWheel : undefined}>
-						{imageLoading ? <Icon name="spinner" size={32} /> : <Icon name="receipt" size={48} />}
-						{previewSrc && !imageError && <img src={previewSrc} alt="" decoding="async" draggable={false} className={`absolute inset-0 h-full w-full touch-none object-contain transition-opacity ${imageLoading ? 'opacity-40' : 'opacity-100'}`} style={{ transform: `translate(${zoom.tx}px, ${zoom.ty}px) scale(${zoom.scale})`, cursor: zoom.scale > 1 ? (dragging ? 'grabbing' : 'grab') : 'zoom-in' }} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp} onLoad={() => setLoadedSrc(previewSrc)} onError={() => setErrorSrc(previewSrc)} />}
-						{zoom.scale > 1 && <span className="absolute bottom-3 left-3 rounded-full bg-[rgb(28_35_36/70%)] px-2.5 py-1 text-[11px] font-bold text-white">{zoom.scale.toFixed(1)}×</span>}
+					<ZoomableImage key={receipt.id} src={previewSrc && !imageError ? previewSrc : null} alt="" decoding="async" className="min-h-[40vh] border-b border-line bg-paper text-blue min-[760px]:min-h-0 min-[760px]:border-r min-[760px]:border-b-0" imgClassName={`transition-opacity ${imageLoading ? 'opacity-40' : 'opacity-100'}`} fallback={imageLoading ? <Icon name="spinner" size={32} /> : <Icon name="receipt" size={48} />} onLoad={() => setLoadedSrc(previewSrc)} onError={() => setErrorSrc(previewSrc)}>
 						<button className="absolute top-1/2 left-3 grid size-10 -translate-y-1/2 place-items-center rounded-full border border-line bg-white text-blue shadow-md transition hover:bg-blue-soft disabled:cursor-not-allowed disabled:opacity-40" type="button" aria-label="Previous receipt" onClick={onPrev} disabled={index <= 0}><span className="rotate-180"><Icon name="chevron" size={18} /></span></button>
 						<button className="absolute top-1/2 right-3 grid size-10 -translate-y-1/2 place-items-center rounded-full border border-line bg-white text-blue shadow-md transition hover:bg-blue-soft disabled:cursor-not-allowed disabled:opacity-40" type="button" aria-label="Next receipt" onClick={onNext} disabled={index >= total - 1}><Icon name="chevron" size={18} /></button>
-					</div>
+					</ZoomableImage>
 					<div className="min-h-0 overflow-y-auto p-5">
 						<div className="grid grid-cols-3 gap-4 text-[13px]"><div><span className="block text-xs text-muted">Date</span><strong className="mt-1 block">{receipt.date}</strong></div><div><span className="block text-xs text-muted">Category</span><strong className="mt-1 block">{receipt.category}</strong></div><div><span className="block text-xs text-muted">Filename</span><strong className="mt-1 block truncate" title={receipt.filename}>{receipt.filename}</strong></div></div>
 						<p className={`mt-3 rounded-lg px-3 py-2 text-xs font-bold ${receipt.reimbursed ? 'bg-green-soft text-green' : receipt.reimbursement ? 'bg-brown-soft text-brown' : 'bg-paper text-muted'}`}>{receipt.reimbursed ? `Reimbursed · record “${receipt.reimbursement.name}”` : receipt.reimbursement ? `Not reimbursed yet · pending in record “${receipt.reimbursement.name}”` : 'Not reimbursed · not in any reimbursement record'}</p>

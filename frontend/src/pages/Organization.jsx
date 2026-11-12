@@ -67,13 +67,14 @@ function DeleteOrgModal({ org, ownerId, onClose, onDelete }) {
 							<button className="text-blue underline" type="button" onClick={() => { setFailed(false); setImpact(null); setAttempt((n) => n + 1) }}>Retry</button>
 						</p>
 					)}
-					{impact && (impact.teams > 0 || impact.receipts > 0 || impact.records > 0 || impact.snapshots > 0) && (
+					{impact && (impact.teams > 0 || impact.receipts > 0 || impact.records > 0 || impact.snapshots > 0 || impact.cashIns > 0) && (
 						<div className="rounded-lg border border-red-300 bg-red-50 p-4 text-[13px] leading-6 text-red-900" role="alert">
 							<strong className="block">This will also permanently delete:</strong>
 							<ul className="mt-1 list-disc pl-5">
 								{impact.teams > 0 && <li>{impact.teams} team{impact.teams === 1 ? '' : 's'}</li>}
 								{impact.receipts > 0 && <li>{impact.receipts} receipt{impact.receipts === 1 ? '' : 's'}, including uploaded files</li>}
 								{impact.records > 0 && <li>{impact.records} reimbursement record{impact.records === 1 ? '' : 's'} ({impact.reimbursedRecords} already reimbursed, totalling {money(impact.reimbursedAmount)}). They are deleted forever, not just detached.</li>}
+								{impact.cashIns > 0 && <li>{impact.cashIns} cash in record{impact.cashIns === 1 ? '' : 's'}, including proof images</li>}
 								{impact.snapshots > 0 && <li>{impact.snapshots} saved snapshot{impact.snapshots === 1 ? '' : 's'}</li>}
 							</ul>
 						</div>
