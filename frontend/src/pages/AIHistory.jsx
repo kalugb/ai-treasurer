@@ -57,8 +57,8 @@ export default function AIHistory({ goTo }) {
 			<header className="mb-9 flex items-end justify-between gap-6 max-[820px]:flex-col max-[820px]:items-start">
 				<div>
 					<p className="mb-2.5 text-[11px] font-bold tracking-widest uppercase text-muted">AI / History</p>
-					<h1 className="font-display text-[clamp(28px,3vw,42px)] leading-[1.08] tracking-tighter text-ink">AI usage history.</h1>
-					<p className="mt-3 text-[13px] leading-[1.55] text-muted">Every receipt scan and "fill all with AI" run (not the AI Agent chat). Entries are kept for 14 days. Open one to see the receipt and what the AI answered.</p>
+					<h1 className="font-display text-[clamp(28px,3vw,42px)] leading-[1.08] tracking-tighter text-ink">AI Scan Usage History.</h1>
+					<p className="mt-3 text-[13px] leading-[1.55] text-muted">Every receipt scan and "fill all with AI" run. Entries are kept for 14 days. Open one to see the receipt and what the AI answered.</p>
 				</div>
 				{orgId && <button className={button.secondary} type="button" onClick={load}><Icon name="sync" size={15} /> Refresh</button>}
 			</header>
@@ -71,7 +71,7 @@ export default function AIHistory({ goTo }) {
 					{loading ? <p className="py-10 text-center text-[13px] text-muted">Loading…</p> : items.length === 0 ? (
 						<div className="grid justify-items-center px-6 pt-10 pb-8 text-center">
 							<span className="mb-4 grid size-12 place-items-center rounded-[14px] bg-blue-soft text-blue"><Icon name="insight" size={22} /></span>
-							<h3 className="font-display text-[17px]">No AI usage yet</h3>
+							<h3 className="font-display text-[17px]">No AI scan usage yet</h3>
 							<p className="mt-2 max-w-90 text-[13px] leading-normal text-muted">Scans from the upload form, "Scan with AI" on a receipt and AI fill runs will appear here.</p>
 						</div>
 					) : (
