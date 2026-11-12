@@ -18,7 +18,9 @@ import SyncStatusPill from './components/SyncStatusPill'
 import { AgentRunProvider } from './context/AgentRunProvider'
 import AgentStatusPill from './components/AgentStatusPill'
 import { ToastProvider } from './context/ToastProvider'
+import { BulkScanProvider } from './context/BulkScanProvider'
 import ToastStack from './components/ToastStack'
+import BulkReviewModal from './components/BulkReviewModal'
 
 export default function App() {
 	const [page, setPage] = useState(() => {
@@ -87,6 +89,7 @@ export default function App() {
 
 	return (
 		<ToastProvider>
+			<BulkScanProvider>
 			<SyncStatusProvider>
 				<AgentRunProvider>
 					<div className="flex min-h-screen bg-paper" style={{ '--sidebar-width': `${sidebar}%` }}>
@@ -100,9 +103,11 @@ export default function App() {
 					</div>
 					<SyncStatusPill />
 					<AgentStatusPill />
+					<BulkReviewModal />
 					<ToastStack />
 				</AgentRunProvider>
 			</SyncStatusProvider>
+			</BulkScanProvider>
 		</ToastProvider>
 	)
 }

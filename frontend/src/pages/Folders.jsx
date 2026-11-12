@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/set-state-in-effect */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Icon from '../components/Icon'
 import ReceiptEditor from '../components/ReceiptEditor'
 import SetAmountsModal from '../components/SetAmountsModal'
@@ -12,6 +12,7 @@ import { useSelectedOrganization } from '../hooks/useSelectedOrganization'
 import { useSyncStatus } from '../context/syncStatus'
 import { useToast } from '../context/toast'
 import { useSnapshotMode } from '../context/snapshotMode'
+import { useBulkScan } from '../context/bulkScan'
 import Modal from '../components/Modal'
 
 const formatMoney = (amount) => amount == null ? '—' : `$${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -90,6 +91,8 @@ export default function Folders({ goTo }) {
 	const [refreshing, setRefreshing] = useState(false)
 	const { push } = useToast()
 	const { readOnly } = useSnapshotMode()
+	const bulk = useBulkScan()
+	const handledBulkRef = useRef(0)
 	const [addOpen, setAddOpen] = useState(false)
 	const [amountsOpen, setAmountsOpen] = useState(false)
 	const [selecting, setSelecting] = useState(false)
@@ -130,6 +133,19 @@ export default function Folders({ goTo }) {
 	}
 
 	const handleScanReceipt = (fileId) => receiptsAPI.scan(team.id, fileId)
+
+	// background "fill all with AI" run (BulkScanProvider): apply each saved receipt live, refetch once when it ends
+	useEffect(() => {
+		const update = bulk.lastUpdate
+		if (!update || update.teamId !== team?.id) return
+		setDriveReceipts((list) => list.map((r) => r.googleDriveFileId === update.receipt.googleDriveFileId ? update.receipt : r))
+	}, [bulk.lastUpdate, team?.id])
+	useEffect(() => {
+		const { teamId, at } = bulk.completed
+		if (!at || at === handledBulkRef.current || teamId !== team?.id) return
+		handledBulkRef.current = at
+		fetchReceipts(team.id).then(setDriveReceipts).catch(() => {})
+	}, [bulk.completed, team?.id])
 
 	const handleUploadReceipt = async (formData) => {
 		const created = toReceipt(await receiptsAPI.upload(team.id, formData))
@@ -283,7 +299,7 @@ export default function Folders({ goTo }) {
 				deleting={deleting}
 				readOnly={readOnly}
 			/>
-			{amountsOpen && <SetAmountsModal receipts={allReceipts} onClose={() => setAmountsOpen(false)} onSave={handleSaveReceipt} onScan={handleScanReceipt} />}
+			{amountsOpen && <SetAmountsModal receipts={allReceipts} onClose={() => setAmountsOpen(false)} onSave={handleSaveReceipt} onScan={handleScanReceipt} running={bulk.running} onFillAll={(list) => bulk.start(team.id, list)} onCancelRun={bulk.cancel} />}
 			<AddReceiptModal open={addOpen} onClose={() => setAddOpen(false)} onUpload={handleUploadReceipt} />
 			<Modal isOpen={deleteTargets.length > 0} onClose={() => { if (!deleting) setDeleteTargets([]) }} title={`Delete ${deleteTargets.length} receipt${deleteTargets.length === 1 ? '' : 's'}?`} footer={
 				<>
