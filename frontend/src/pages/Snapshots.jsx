@@ -31,6 +31,8 @@ export default function Snapshots({ goTo, onView }) {
 	const [busy, setBusy] = useState(false)
 	const [error, setError] = useState('')
 	const [deleting, setDeleting] = useState(null)
+	const [search, setSearch] = useState('')
+	const [dateOrder, setDateOrder] = useState('desc')
 
 	const load = useCallback(() => {
 		if (!orgId) return
@@ -42,6 +44,13 @@ export default function Snapshots({ goTo, onView }) {
 	useEffect(() => { load() }, [load])
 
 	const openCreate = () => { setName(''); setError(''); setCreating(true) }
+
+	const q = search.trim().toLowerCase()
+	const visible = snapshots
+		.filter((s) => !q || s.name.toLowerCase().includes(q))
+		.sort((a, b) => dateOrder === 'asc'
+			? new Date(a.snapshotTime ?? 0) - new Date(b.snapshotTime ?? 0)
+			: new Date(b.snapshotTime ?? 0) - new Date(a.snapshotTime ?? 0))
 
 	const create = async () => {
 		setBusy(true); setError('')
@@ -91,6 +100,19 @@ export default function Snapshots({ goTo, onView }) {
 						</div>
 						<span className="rounded-[20px] bg-blue-soft px-2.25 py-1.5 text-[11px] font-bold text-blue">{snapshots.length} snapshots</span>
 					</div>
+					{snapshots.length > 0 && (
+						<div className="mb-4 flex flex-wrap items-end gap-3">
+							<label className="grid gap-1.5 text-xs font-bold text-ink">Search
+								<input className="h-9 w-56 rounded-lg border border-line bg-white px-3 text-[12px] outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" type="search" placeholder="Search snapshots by name" value={search} onChange={(event) => setSearch(event.target.value)} />
+							</label>
+							<label className="grid gap-1.5 text-xs font-bold text-ink">Sort by time
+								<select className="h-9 rounded-lg border border-line bg-white px-2 text-[12px] outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" value={dateOrder} onChange={(event) => setDateOrder(event.target.value)}>
+									<option value="desc">Newest first</option>
+									<option value="asc">Oldest first</option>
+								</select>
+							</label>
+						</div>
+					)}
 
 					{loading && snapshots.length === 0 ? (
 						<p className="py-10 text-center text-[13px] text-muted">Loading…</p>
@@ -103,7 +125,7 @@ export default function Snapshots({ goTo, onView }) {
 						</div>
 					) : (
 						<div className="grid">
-							{snapshots.map((s) => (
+							{visible.map((s) => (
 								<div className="flex flex-wrap items-center gap-3 border-t border-line py-4" key={s.id}>
 									<span className="grid size-8.5 shrink-0 place-items-center rounded-lg bg-blue-soft text-blue"><Icon name="snapshot" size={16} /></span>
 									<span className="grid min-w-0 flex-1 gap-1.25">
@@ -119,6 +141,7 @@ export default function Snapshots({ goTo, onView }) {
 									</span>
 								</div>
 							))}
+							{visible.length === 0 && <p className="border-t border-line py-6 text-center text-[13px] text-muted">No snapshots match your search.</p>}
 						</div>
 					)}
 				</section>

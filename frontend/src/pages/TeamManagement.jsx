@@ -258,6 +258,8 @@ export default function TeamManagement() {
 	const [showForm, setShowForm] = useState(false)
 	const [loading, setLoading] = useState(false)
 	const [serverError, setServerError] = useState(null)
+	const [search, setSearch] = useState('')
+	const [dateOrder, setDateOrder] = useState('desc')
 	const { push } = useToast()
 	const { readOnly } = useSnapshotMode()
 
@@ -345,6 +347,14 @@ export default function TeamManagement() {
 			push(e?.response?.data?.detail || 'Failed to delete team.', 'error')
 		}
 	}
+	// legacy teams without createdAt sort to the bottom on "newest first"
+	const q = search.trim().toLowerCase()
+	const visibleTeams = teams
+		.filter((t) => !q || t.name.toLowerCase().includes(q))
+		.sort((a, b) => dateOrder === 'asc'
+			? new Date(a.createdAt ?? 0) - new Date(b.createdAt ?? 0)
+			: new Date(b.createdAt ?? 0) - new Date(a.createdAt ?? 0))
+
 	if (!organization) return <>
 		<header className="mb-9"><p className="mb-2.5 text-[11px] font-bold tracking-widest text-muted uppercase">Finance / Team management</p><h1 className="font-display text-[clamp(28px,3vw,42px)] leading-[1.08] tracking-tighter text-ink">Team management</h1><p className="mt-3 text-[13px] leading-6 text-muted">Keep budgets, ownership, and team roles in one place.</p></header>
 		<OrganizationRequiredEmptyState />
@@ -360,8 +370,19 @@ export default function TeamManagement() {
 				</div>
 				{!readOnly && <button className={button.primary} type="button" onClick={() => setShowForm(true)}><Icon name="plus" size={16} /> Add team</button>}
 			</header>
+			<div className="mb-3 flex flex-wrap items-end gap-3">
+				<label className="grid gap-1.5 text-xs font-bold text-ink">Search
+					<input className="h-9 w-56 rounded-lg border border-line bg-white px-3 text-[12px] outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" type="search" placeholder="Search teams by name" value={search} onChange={(event) => setSearch(event.target.value)} />
+				</label>
+				<label className="grid gap-1.5 text-xs font-bold text-ink">Sort by time
+					<select className="h-9 rounded-lg border border-line bg-white px-2 text-[12px] outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" value={dateOrder} onChange={(event) => setDateOrder(event.target.value)}>
+						<option value="desc">Newest first</option>
+						<option value="asc">Oldest first</option>
+					</select>
+				</label>
+			</div>
 			<section className="grid gap-3">
-				{loading ? <div className="grid min-h-32 place-items-center rounded-[14px] border border-line bg-white p-8"><p className="text-sm text-muted">Loading teams…</p></div> : teams.length ? teams.map((team) => {
+				{loading ? <div className="grid min-h-32 place-items-center rounded-[14px] border border-line bg-white p-8"><p className="text-sm text-muted">Loading teams…</p></div> : teams.length ? (visibleTeams.length ? visibleTeams.map((team) => {
 					const used = usedByTeam[team.id] ?? 0
 					const percentage = usagePercent(team, used)
 					return (
@@ -386,6 +407,8 @@ export default function TeamManagement() {
 						</article>
 					)
 				}) : (
+					<div className="grid min-h-32 place-items-center rounded-[14px] border border-dashed border-line bg-white p-8 text-center"><p className="text-sm text-muted">No teams match your search.</p></div>
+				)) : (
 					<div className="grid min-h-64 place-items-center rounded-[14px] border border-dashed border-line bg-white p-8 text-center">
 						<div>
 							<span className="mx-auto grid size-11 place-items-center rounded-xl bg-blue-soft text-blue"><Icon name="users" size={20} /></span>

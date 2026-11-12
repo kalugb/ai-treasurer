@@ -40,7 +40,13 @@ export default function CashInSection({ orgId, ownerId }) {
 
 	const reload = () => setVersion((v) => v + 1)
 	const { records, total, count } = data
-	const allSelected = records.length > 0 && selectedIds.size === records.length
+	const [search, setSearch] = useState('')
+	const [dateOrder, setDateOrder] = useState('desc')
+	const q = search.trim().toLowerCase()
+	const visible = records
+		.filter((r) => !q || r.name.toLowerCase().includes(q) || (r.source ?? '').toLowerCase().includes(q))
+		.sort((a, b) => dateOrder === 'asc' ? a.date.localeCompare(b.date) : b.date.localeCompare(a.date))
+	const allSelected = visible.length > 0 && visible.every((r) => selectedIds.has(r.id))
 
 	const toggle = (id) => setSelectedIds((prev) => {
 		const next = new Set(prev)
@@ -109,13 +115,24 @@ export default function CashInSection({ orgId, ownerId }) {
 						</div>
 					))}
 				</div>
+				<div className="mb-4 flex flex-wrap items-end gap-3">
+					<label className="grid gap-1.5 text-xs font-bold text-ink">Search
+						<input className="h-9 w-56 rounded-lg border border-line bg-white px-3 text-[12px] outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" type="search" placeholder="Search by name or source" value={search} onChange={(event) => setSearch(event.target.value)} />
+					</label>
+					<label className="grid gap-1.5 text-xs font-bold text-ink">Sort by time
+						<select className="h-9 rounded-lg border border-line bg-white px-2 text-[12px] outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" value={dateOrder} onChange={(event) => setDateOrder(event.target.value)}>
+							<option value="desc">Newest first</option>
+							<option value="asc">Oldest first</option>
+						</select>
+					</label>
+				</div>
 				<div className="overflow-x-auto">
 					<table className="w-full border-collapse text-xs whitespace-nowrap">
 						<thead>
 							<tr>
 								{selecting && (
 									<th className={`${th} w-8`}>
-										<input type="checkbox" aria-label="Select all records" checked={allSelected} onChange={() => setSelectedIds(allSelected ? new Set() : new Set(records.map((r) => r.id)))} />
+										<input type="checkbox" aria-label="Select all records" checked={allSelected} onChange={() => setSelectedIds(allSelected ? new Set() : new Set(visible.map((r) => r.id)))} />
 									</th>
 								)}
 								<th className={th}>Date</th><th className={th}>Name</th><th className={th}>Source</th><th className={th}>Proof</th><th className={th}>Amount</th>
@@ -123,7 +140,7 @@ export default function CashInSection({ orgId, ownerId }) {
 							</tr>
 						</thead>
 						<tbody>
-							{records.length ? records.map((r) => (
+							{visible.length ? visible.map((r) => (
 								<tr key={r.id} className={selecting ? 'cursor-pointer hover:bg-paper' : ''} onClick={selecting ? () => toggle(r.id) : undefined}>
 									{selecting && (
 										<td className={td}>
@@ -153,8 +170,8 @@ export default function CashInSection({ orgId, ownerId }) {
 										<div className="grid min-h-48 place-items-center p-8 text-center">
 											<div>
 												<span className="mx-auto grid size-11 place-items-center rounded-xl bg-blue-soft text-blue"><Icon name="plus" size={20} /></span>
-												<h3 className="mt-4 font-display text-[16px]">No cash in yet</h3>
-												<p className="mt-1 text-xs text-muted">Add a cash in record to start tracking money received.</p>
+												<h3 className="mt-4 font-display text-[16px]">{records.length ? 'No matching records' : 'No cash in yet'}</h3>
+												<p className="mt-1 text-xs text-muted">{records.length ? 'Try another search.' : 'Add a cash in record to start tracking money received.'}</p>
 											</div>
 										</div>
 									</td>
