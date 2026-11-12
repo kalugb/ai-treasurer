@@ -57,7 +57,8 @@ export const toReceipt = (r) => ({
 
 export const fetchReceipts = (teamId, refresh = false) => receiptsAPI.getReceipts(teamId, refresh).then((list) => (Array.isArray(list) ? list.map(toReceipt) : []))
 
-// Drive receipts come back with amount 0 until someone sets one — say so instead of showing $0.00
-export const receiptAmountText = (r) => r.source === 'google' && !r.amount
+// the server returns 0 for a Drive receipt nobody set an amount on (a real $0 Drive receipt looks the same) — say so instead of showing $0.00
+export const isUnset = (r) => r.source === 'google' && !r.amount
+export const receiptAmountText = (r) => isUnset(r)
 	? 'Amount not set'
 	: `$${(r.amount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
