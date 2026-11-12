@@ -35,6 +35,9 @@ export const receiptsAPI = {
 		request(`/api/google-drive/teams/${teamId}/receipts/${fileId}`, { method: 'PATCH', data: patch }),
 	upload: (teamId, formData) =>
 		requestWithFile(`/api/google-drive/teams/${teamId}/receipts/upload`, formData),
+	// AI-extract { receiptName, receiptAmount, description } from the stored original file (nothing is saved)
+	scan: (teamId, fileId) =>
+		request(`/api/google-drive/teams/${teamId}/receipts/${fileId}/scan`, { method: 'POST' }),
 	remove: (teamId, ids, confirmLinked = false) =>
 		request(`/api/google-drive/teams/${teamId}/receipts/delete`, { method: 'POST', data: { ids, confirmLinked } }),
 }

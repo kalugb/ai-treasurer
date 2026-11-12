@@ -7,7 +7,7 @@ import { isUnset } from '../api/receipts'
 // Steps through the receipts that had no amount when the modal opened (mount it only while open).
 // Everything is optional: Skip, or Save with a blank amount, just moves on; the receipt stays unset.
 // onSave(fileId, patch) must throw on failure.
-export default function SetAmountsModal({ receipts, onClose, onSave }) {
+export default function SetAmountsModal({ receipts, onClose, onSave, onScan }) {
 	const [ids] = useState(() => receipts.filter(isUnset).map((r) => r.id))
 	const [pos, setPos] = useState(0)
 	const queue = ids.map((id) => receipts.find((r) => r.id === id)).filter(Boolean) // a receipt removed by a sync drops out
@@ -31,7 +31,7 @@ export default function SetAmountsModal({ receipts, onClose, onSave }) {
 					<div className="flex items-center gap-3"><span className="text-xs font-bold text-muted">{current ? `${remaining} remaining` : ''}</span><button className="rounded-lg px-2 py-1 text-xs font-bold text-blue focus-visible:outline-[3px] focus-visible:outline-blue-ring" type="button" onClick={onClose}>Close</button></div>
 				</div>
 				{current ? (
-					<ReceiptEditor key={current.id} receipt={current} onSave={save} submitLabel="Save & next" actions={<button className={button.secondary} type="button" onClick={next}>Skip</button>} />
+					<ReceiptEditor key={current.id} receipt={current} onSave={save} onScan={() => onScan(current.googleDriveFileId)} submitLabel="Save & next" actions={<button className={button.secondary} type="button" onClick={next}>Skip</button>} />
 				) : (
 					<div className="grid min-h-60 place-items-center p-8 text-center"><div><span className="mx-auto grid size-11 place-items-center rounded-xl bg-blue-soft text-blue"><Icon name="check" size={20} /></span><p className="mt-4 text-[13px] text-muted">{queue.length - stillUnset} of {queue.length} set{stillUnset ? `, ${stillUnset} still without an amount` : ''}.</p><button className={`${button.primary} mt-4`} type="button" onClick={onClose}>Close</button></div></div>
 				)}

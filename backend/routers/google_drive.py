@@ -12,6 +12,7 @@ from starlette.responses import StreamingResponse
 
 from models.receipt import ReceiptDelete, ReceiptUpdate
 from routers.reimbursement import receipt_key, receipt_links
+from services.ai import receipt_scan
 from services.google.google_ops import GoogleDriveService
 from services.mongodb import mongodb_ops
 from services.supabase import supabase_ops
@@ -438,6 +439,41 @@ async def get_team_receipt_thumbnail(team_id: str, file_id: str, request: Reques
         raise HTTPException(status_code=404, detail="Receipt not found")
     return await serve_receipt_thumbnail(request, doc, file_id)
 
+
+@router.post("/teams/{team_id}/receipts/{file_id}/scan")
+async def scan_team_receipt(team_id: str, file_id: str, request: Request):
+    """AI-extract name/amount/description from a stored receipt (nothing is saved).
+    Uses the ORIGINAL file, so a PDF goes text-first (MarkItDown -> LLM) and is only
+    read visually when it has no text layer; images go to the vision model."""
+    llm = request.app.state.llm_inference
+    if llm is None:
+        raise HTTPException(status_code=503, detail="LLM inference not available")
+    dept_oid, _org_id, _folder_id = await _team_ids(request, team_id)
+    doc = await _find_receipt(request, dept_oid, file_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Receipt not found")
+
+    mime = ""
+    raw_meta = doc.get("receiptMetadata")
+    if isinstance(raw_meta, str) and raw_meta:
+        try:
+            mime = json.loads(raw_meta).get("mimeType") or ""
+        except json.JSONDecodeError:
+            pass
+    try:
+        if doc.get("createdFrom") == "local_upload":
+            data = await run_in_threadpool(supabase_ops.download_receipt, doc.get("storagePath"))
+        else:
+            data = await run_in_threadpool(get_google_drive_service_instance(request).download_files_bytes, file_id)
+    except Exception:
+        raise HTTPException(status_code=502, detail="Could not fetch the receipt file")
+    try:
+        return await receipt_scan.scan(llm, doc.get("receiptName") or "receipt", mime, data)
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"receipt scan failed: {e}")
+        raise HTTPException(status_code=502, detail="Could not scan this receipt.")
 
 async def serve_receipt_thumbnail(request: Request, doc: dict, file_id: str) -> Response:
     """Cache-first image bytes for a receipt doc (shared by the live route and the snapshot route)."""

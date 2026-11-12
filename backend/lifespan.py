@@ -80,7 +80,7 @@ async def init_embeddings_client():
 def check_services(app: FastAPI):
     print("Checking service availability...")
     print(f"MongoDB service: {app.state.mongo is not None}")
-    print(f"AI MongoDB service: {app.state.ai_mongo is not None}")
+    print(f"AI service: {app.state.ai_mongo is not None}")
     print(f"Embeddings client service: {app.state.embeddings_client is not None}")
     print(f"Redis cache service: {app.state.cache is not None}")
     print(f"Session store service: {app.state.sessions is not None}")
@@ -90,10 +90,10 @@ def check_services(app: FastAPI):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    mongo_clients, supabase_client, = await asyncio.gather(
+    mongo_clients, supabase_client, llm_inference = await asyncio.gather(
         init_mongodb(),
         init_supabase(),
-        # init_llm_inference(),
+        init_llm_inference(),
         # init_embeddings_client()
     )
     
@@ -123,7 +123,7 @@ async def lifespan(app: FastAPI):
         except Exception as e:  # listing still works, just unindexed
             print(f"Could not create the snapshots index: {e}")
     app.state.redis = redis_client 
-    app.state.llm_inference = None # llm_inference
+    app.state.llm_inference = llm_inference
     app.state.embeddings_client = None # embeddings_client
     app.state.supabase = supabase_client
     app.state.google_drive_service_connected = google_drive_service_connected

@@ -26,7 +26,7 @@ const readPreference = (key, allowed, fallback) => {
 }
 
 
-function ReceiptPreview({ receipt, onClose, onPrev, onNext, index, total, onSave, onDelete, deleting, readOnly }) {
+function ReceiptPreview({ receipt, onClose, onPrev, onNext, index, total, onSave, onScan, onDelete, deleting, readOnly }) {
 	if (!receipt) return null
 	return (
 		<div className="fixed inset-0 z-20 grid place-items-center bg-[rgb(28_35_36/38%)] p-5" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
@@ -40,6 +40,7 @@ function ReceiptPreview({ receipt, onClose, onPrev, onNext, index, total, onSave
 					receipt={receipt}
 					readOnly={readOnly}
 					onSave={(patch) => onSave(receipt.googleDriveFileId, patch)}
+					onScan={() => onScan(receipt.googleDriveFileId)}
 					actions={receipt.source === 'manual' ? <button className={`${button.danger} disabled:opacity-60`} type="button" onClick={onDelete} disabled={deleting}><Icon name="trash" size={15} /> Delete receipt</button> : null}
 				>
 					<button className="absolute top-1/2 left-3 grid size-10 -translate-y-1/2 place-items-center rounded-full border border-line bg-white text-blue shadow-md transition hover:bg-blue-soft disabled:cursor-not-allowed disabled:opacity-40" type="button" aria-label="Previous receipt" onClick={onPrev} disabled={index <= 0}><span className="rotate-180"><Icon name="chevron" size={18} /></span></button>
@@ -127,6 +128,8 @@ export default function Folders({ goTo }) {
 		setPreview((current) => current && current.googleDriveFileId === fileId ? mapped : current)
 		push('Receipt details saved.', 'success')
 	}
+
+	const handleScanReceipt = (fileId) => receiptsAPI.scan(team.id, fileId)
 
 	const handleUploadReceipt = async (formData) => {
 		const created = toReceipt(await receiptsAPI.upload(team.id, formData))
@@ -275,11 +278,12 @@ export default function Folders({ goTo }) {
 				index={previewIndex}
 				total={filteredReceipts.length}
 				onSave={handleSaveReceipt}
+				onScan={handleScanReceipt}
 				onDelete={() => setDeleteTargets([preview])}
 				deleting={deleting}
 				readOnly={readOnly}
 			/>
-			{amountsOpen && <SetAmountsModal receipts={allReceipts} onClose={() => setAmountsOpen(false)} onSave={handleSaveReceipt} />}
+			{amountsOpen && <SetAmountsModal receipts={allReceipts} onClose={() => setAmountsOpen(false)} onSave={handleSaveReceipt} onScan={handleScanReceipt} />}
 			<AddReceiptModal open={addOpen} onClose={() => setAddOpen(false)} onUpload={handleUploadReceipt} />
 			<Modal isOpen={deleteTargets.length > 0} onClose={() => { if (!deleting) setDeleteTargets([]) }} title={`Delete ${deleteTargets.length} receipt${deleteTargets.length === 1 ? '' : 's'}?`} footer={
 				<>
