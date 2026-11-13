@@ -36,12 +36,21 @@ export const receiptsAPI = {
 		request(`/api/google-drive/teams/${teamId}/receipts/${fileId}`, { method: 'PATCH', data: patch, ...(historyId ? { params: { ownerId, historyId } } : {}) }),
 	upload: (teamId, formData) =>
 		requestWithFile(`/api/google-drive/teams/${teamId}/receipts/upload`, formData),
+	// 409 {code: 'duplicate_receipt', existing} when this exact file is already a receipt in the organization
+	checkDuplicate: (teamId, file) => {
+		const formData = new FormData()
+		formData.append('file', file)
+		return requestWithFile(`/api/google-drive/teams/${teamId}/receipts/duplicate-check`, formData)
+	},
 	// AI-extract { receiptName, receiptAmount, description } from the stored original file (nothing is saved)
 	// ownerId makes the server log the scan in the AI history; trigger is receipt_edit (default) or bulk (+ runId)
 	scan: (teamId, fileId, { signal, ownerId, trigger, runId } = {}) =>
 		request(`/api/google-drive/teams/${teamId}/receipts/${fileId}/scan`, { method: 'POST', signal, params: { ownerId, trigger, runId } }),
 	remove: (teamId, ids, confirmLinked = false) =>
 		request(`/api/google-drive/teams/${teamId}/receipts/delete`, { method: 'POST', data: { ids, confirmLinked } }),
+	// status: 'dismissed' (not a duplicate) | 'confirmed' (a real duplicate) | 'clear' (forget the decision)
+	reviewDuplicate: (teamId, fileId, status) =>
+		request(`/api/google-drive/teams/${teamId}/receipts/${fileId}/duplicate-review`, { method: 'POST', data: { status } }),
 }
 
 // backend returns persisted receipts; map to the shape the UI renders (shared by Folders + ReceiptPickerModal)
@@ -58,12 +67,18 @@ export const toReceipt = (r) => ({
 	thumbnail: r.thumbnail ? `${API_BASE_URL}${r.thumbnail}` : null,
 	reimbursed: r.reimbursed ?? false, // unreimbursed unless its record is marked Reimbursed
 	reimbursement: r.reimbursement ?? null, // { id, name, status } of the record holding this receipt
+	duplicate: r.duplicate ?? null, // null, or { status: pending|confirmed|dismissed, excluded, of } when an older copy exists in the org
 })
+
+// a receipt a human confirmed as a duplicate: not a real expense (left out of totals, queues and the reimbursement picker)
+export const isExcluded = (r) => Boolean(r.duplicate?.excluded)
+// still waiting for a human decision
+export const needsDuplicateReview = (r) => r.duplicate?.status === 'pending'
 
 export const fetchReceipts = (teamId, refresh = false) => receiptsAPI.getReceipts(teamId, refresh).then((list) => (Array.isArray(list) ? list.map(toReceipt) : []))
 
 // the server returns 0 for a Drive receipt nobody set an amount on (a real $0 Drive receipt looks the same) — say so instead of showing $0.00
-export const isUnset = (r) => r.source === 'google' && !r.amount
+export const isUnset = (r) => r.source === 'google' && !r.amount && !isExcluded(r)
 export const receiptAmountText = (r) => isUnset(r)
 	? 'Amount not set'
 	: `$${(r.amount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`

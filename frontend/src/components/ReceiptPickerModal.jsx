@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import Icon from './Icon'
 import { button } from './button'
-import { fetchReceipts, receiptAmountText } from '../api/receipts'
+import { fetchReceipts, receiptAmountText, isExcluded } from '../api/receipts'
 
 const formatMoney = (amount) => `$${(amount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const pill = (active) => `min-h-8 rounded-md px-2.5 text-xs font-bold transition ${active ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`
@@ -24,7 +24,8 @@ export default function ReceiptPickerModal({ teamId, selectedIds = [], recordId 
 	}, [teamId])
 
 	const list = receipts ?? []
-	const blocked = (r) => Boolean(r.reimbursement) && r.reimbursement.id !== recordId
+	// a confirmed duplicate can't be newly picked (the server rejects it too); one already on this record may stay
+	const blocked = (r) => (Boolean(r.reimbursement) && r.reimbursement.id !== recordId) || (isExcluded(r) && !selectedIds.includes(r.id))
 	// pickable not-reimbursed receipts first, then ones already held by another (pending) record, reimbursed last
 	const rank = (r) => (r.reimbursed ? 2 : blocked(r) ? 1 : 0)
 	const visible = list
@@ -106,12 +107,12 @@ export default function ReceiptPickerModal({ teamId, selectedIds = [], recordId 
 								const isBlocked = blocked(receipt)
 								const isSelected = picked.has(receipt.id) && !isBlocked
 								return (
-									<button className={`group min-w-0 self-start text-left focus-visible:outline-[3px] focus-visible:outline-blue-ring ${isBlocked ? 'cursor-not-allowed opacity-55' : ''}`} type="button" key={receipt.id} disabled={isBlocked} aria-pressed={isSelected} aria-label={`${receipt.filename}, ${formatMoney(receipt.amount)}${receipt.reimbursed ? ', reimbursed' : ''}${isBlocked ? `, already in record ${receipt.reimbursement.name}` : ''}`} onClick={() => toggle(receipt.id)}>
+									<button className={`group min-w-0 self-start text-left focus-visible:outline-[3px] focus-visible:outline-blue-ring ${isBlocked ? 'cursor-not-allowed opacity-55' : ''}`} type="button" key={receipt.id} disabled={isBlocked} aria-pressed={isSelected} aria-label={`${receipt.filename}, ${formatMoney(receipt.amount)}${receipt.reimbursed ? ', reimbursed' : ''}${isBlocked ? (isExcluded(receipt) ? ', confirmed duplicate' : `, already in record ${receipt.reimbursement.name}`) : ''}`} onClick={() => toggle(receipt.id)}>
 										<div className={`relative grid aspect-[1.15] place-items-center overflow-hidden rounded-[14px] border bg-white text-blue shadow-sm transition ${isBlocked ? '' : 'group-hover:-translate-y-0.5 group-hover:shadow-md'} ${isSelected ? 'border-blue ring-[3px] ring-blue-ring' : isBlocked ? 'border-line' : 'border-line group-hover:border-blue'}`}>
 											<Icon name="receipt" size={34} />
 											{receipt.thumbnail && <img src={receipt.thumbnail} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" onError={(event) => { event.currentTarget.style.display = 'none' }} />}
 											{!isBlocked && <span className={`absolute top-2 right-2 grid size-6 place-items-center rounded-md border text-white ${isSelected ? 'border-blue bg-blue' : 'border-line bg-white/80'}`}>{isSelected && <Icon name="check" size={14} />}</span>}
-											{receipt.reimbursement && <span className={`absolute top-2 left-2 rounded-full px-2 py-0.5 text-[10px] font-bold ${receipt.reimbursed ? 'bg-green text-white' : 'bg-brown-soft text-brown'}`}>{receipt.reimbursed ? 'Reimbursed' : 'Pending'}</span>}
+											{receipt.reimbursement && <span className={`absolute top-2 left-2 rounded-full px-2 py-0.5 text-[10px] font-bold ${receipt.reimbursed ? 'bg-green text-white' : 'bg-brown-soft text-brown'}`}>{receipt.reimbursed ? 'Reimbursed' : 'Pending'}</span>}{isExcluded(receipt) && <span className="absolute right-2 bottom-2 rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold text-white">Duplicate (excluded)</span>}
 										</div>
 										<strong className="mt-3 block overflow-hidden text-ellipsis whitespace-nowrap text-[13px] text-ink">{receipt.filename}</strong>
 										<span className="mt-1 block truncate text-xs text-muted">{receipt.date} · {receiptAmountText(receipt)}</span>

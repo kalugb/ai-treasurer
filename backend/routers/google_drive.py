@@ -10,11 +10,14 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, Response, Upl
 from starlette.concurrency import run_in_threadpool
 from starlette.responses import StreamingResponse
 
-from models.receipt import ReceiptDelete, ReceiptUpdate
+from models.receipt import DuplicateReviewIn, ReceiptDelete, ReceiptUpdate
 from routers.reimbursement import receipt_key, receipt_links
 from services.ai import receipt_scan
 from services.ai import history as ai_history
 from services.google.google_ops import GoogleDriveService
+from pymongo.errors import DuplicateKeyError
+
+from services import duplicates
 from services.mongodb import mongodb_ops
 from services.supabase import supabase_ops
 
@@ -88,6 +91,8 @@ def _to_out(team_id: str, doc: dict) -> dict:
             "date": date,
             "source": "local_upload",
             "thumbnail": _thumbnail_url(team_id, file_id) if file_id else None,
+            "contentHash": doc.get("contentHash"),  # consumed (and removed) by _attach_duplicates
+            "duplicateReview": doc.get("duplicateReview"),
         }
     metadata = {}
     raw_meta = doc.get("receiptMetadata")
@@ -108,7 +113,22 @@ def _to_out(team_id: str, doc: dict) -> dict:
         "date": modified[:10] if isinstance(modified, str) and modified else None,
         "source": doc.get("createdFrom", "google_drive"),
         "thumbnail": _thumbnail_url(team_id, file_id) if file_id else None,
+        "contentHash": doc.get("contentHash"),
+        "duplicateReview": doc.get("duplicateReview"),
     }
+
+
+def _attach_duplicates(request: Request, org_id, outs: list[dict]) -> list[dict]:
+    """Add `duplicate` (null, or {status, excluded, of}) to receipt responses. Derived on every read like
+    reimbursement state: the oldest receipt with a given file hash in the organization is the original, later
+    copies are duplicates; only the human decision is stored. Also removes the raw hash fields from the response."""
+    docs = [{"_id": ObjectId(o["id"]), "contentHash": o.get("contentHash")} for o in outs if o.get("contentHash") and ObjectId.is_valid(o.get("id", ""))]
+    found = duplicates.annotate(_get_mongo(request), org_id, docs)
+    for o in outs:
+        o.pop("contentHash", None)
+        o.pop("duplicateReview", None)
+        o["duplicate"] = found.get(o.get("id"))
+    return outs
 
 
 async def _attach_reimbursement(request: Request, outs: list[dict]) -> list[dict]:
@@ -120,6 +140,18 @@ async def _attach_reimbursement(request: Request, outs: list[dict]) -> list[dict
         link = links.get(o.get("googleDriveFileId"))
         o["reimbursement"] = link
         o["reimbursed"] = bool(link and link["status"] == "Reimbursed")
+    return outs
+
+
+async def _attach_state(request: Request, org_id, outs: list[dict]) -> list[dict]:
+    """Derived-on-read state for receipt responses: duplicate + reimbursement (neither is cached or stored on the receipt)."""
+    await _attach_reimbursement(request, _attach_duplicates(request, org_id, outs))
+    # the original a copy points at gets its reimbursement state too, for the side-by-side comparison
+    originals = {o["duplicate"]["of"]["receiptId"] for o in outs if o.get("duplicate")}
+    links = await receipt_links(_get_mongo(request), list(originals))
+    for o in outs:
+        if o.get("duplicate"):
+            o["duplicate"]["of"]["reimbursement"] = links.get(o["duplicate"]["of"]["receiptId"])
     return outs
 
 
@@ -152,14 +184,14 @@ async def _find_receipt(request: Request, dept_oid: ObjectId, file_id: str):
 async def get_team_receipts(team_id: str, request: Request, refresh: bool = False):
     """Cache-first read: Redis -> Mongo. Never calls Google Drive.
     `refresh=true` skips the cache read and re-reads Mongo (picks up out-of-band DB edits)."""
-    dept_oid, _org_id, _folder_id = await _team_ids(request, team_id)
+    dept_oid, org_id, _folder_id = await _team_ids(request, team_id)
     cache = request.app.state.cache
     cache_key = cache.key_builder(str(dept_oid), CACHE_KEY_NAME)
 
     if not refresh:
         cached = await cache.get(cache_key)
         if cached is not None:
-            return await _attach_reimbursement(request, cached)
+            return await _attach_state(request, org_id, cached)
 
     docs = await _read_receipts(request, dept_oid)
     receipts = [_to_out(team_id, doc) for doc in docs]
@@ -167,7 +199,7 @@ async def get_team_receipts(team_id: str, request: Request, refresh: bool = Fals
         await cache.set(cache_key, receipts)  # before attaching: reimbursement state is never cached
     elif refresh:  # a refresh that empties the list should also clear any stale cache
         await cache.delete(cache_key)
-    return await _attach_reimbursement(request, receipts)
+    return await _attach_state(request, org_id, receipts)
 
 
 async def _run_sync(request: Request, team_id: str) -> dict:
@@ -197,6 +229,7 @@ async def _run_sync(request: Request, team_id: str) -> dict:
             "size": f.get("size"),
             "modifiedTime": f.get("modifiedTime"),
             "thumbnailLink": f.get("thumbnailLink"),
+            "createdTime": f.get("createdTime"),
         }
         matched, _ = await mongodb_ops.upsert_preserving(
             mongo,
@@ -205,6 +238,7 @@ async def _run_sync(request: Request, team_id: str) -> dict:
             set_fields={
                 "receiptName": f.get("name", ""),
                 "receiptMetadata": json.dumps(metadata),
+                "contentHash": f.get("md5Checksum"),  # None for Google-native files (can't be compared)
             },
             insert_defaults={
                 "orgID": org_id,
@@ -299,7 +333,31 @@ async def update_team_receipt(team_id: str, file_id: str, payload: ReceiptUpdate
 
     cache = request.app.state.cache
     await cache.delete(cache.key_builder(str(dept_oid), CACHE_KEY_NAME))
-    return (await _attach_reimbursement(request, [_to_out(team_id, doc)]))[0]
+    return (await _attach_state(request, org_id, [_to_out(team_id, doc)]))[0]
+
+
+@router.post("/teams/{team_id}/receipts/{file_id}/duplicate-review")
+async def review_duplicate(team_id: str, file_id: str, payload: DuplicateReviewIn, request: Request):
+    """Record a human decision on a receipt that is a later copy of another: `dismissed` (not a duplicate) or
+    `confirmed` (a real duplicate: left out of totals and the reimbursement picker); `clear` forgets the decision.
+    The duplicate state itself is derived, so this only stores the decision (tied to the file hash it was made on)."""
+    dept_oid, org_id, _folder_id = await _team_ids(request, team_id)
+    mongo = _get_mongo(request)
+    doc = await _find_receipt(request, dept_oid, file_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Receipt not found")
+    if payload.status != "clear" and str(doc["_id"]) not in duplicates.annotate(mongo, org_id, [doc]):
+        raise HTTPException(status_code=400, detail="This receipt is not a copy of an older receipt")
+
+    review = None if payload.status == "clear" else {
+        "status": payload.status, "hash": doc.get("contentHash"), "reviewedAt": datetime.now(timezone.utc),
+    }
+    await mongodb_ops.update(mongo, query={"_id": doc["_id"]}, collection_name=RECEIPTS_COLLECTION, update_data={"duplicateReview": review})
+    doc = await mongodb_ops.read(mongo, collection_name=RECEIPTS_COLLECTION, query={"_id": doc["_id"]})
+
+    cache = request.app.state.cache
+    await cache.delete(cache.key_builder(str(dept_oid), CACHE_KEY_NAME))
+    return (await _attach_state(request, org_id, [_to_out(team_id, doc)]))[0]
 
 
 @router.post("/teams/{team_id}/receipts/delete")
@@ -344,6 +402,35 @@ async def delete_team_receipts(team_id: str, payload: ReceiptDelete, request: Re
     return {"deleted": deleted}
 
 
+async def _reject_duplicate(request: Request, org_id, file_hash: str) -> None:
+    """409 if this exact file is already a receipt anywhere in the organization (any team, any source)."""
+    mongo = _get_mongo(request)
+    existing = await mongodb_ops.read(
+        mongo, collection_name=RECEIPTS_COLLECTION, query={"orgID": org_id, "contentHash": file_hash}
+    )
+    if existing is None:
+        return
+    team = await mongodb_ops.read(mongo, collection_name=TEAMS_COLLECTION, query={"_id": existing.get("departmentID")})
+    raise HTTPException(status_code=409, detail={
+        "code": "duplicate_receipt",
+        "message": "This file is already a receipt in this organization.",
+        "existing": {
+            "receiptId": receipt_key(existing),
+            "name": existing.get("receiptName", ""),
+            "teamName": (team or {}).get("name", ""),
+            "source": existing.get("createdFrom", "google_drive"),
+        },
+    })
+
+
+@router.post("/teams/{team_id}/receipts/duplicate-check")
+async def check_duplicate_receipt(team_id: str, request: Request, file: UploadFile = File(...)):
+    """Pre-check for the upload form: hashes the file in memory and reports a match. Stores nothing."""
+    _dept_oid, org_id, _folder_id = await _team_ids(request, team_id)
+    await _reject_duplicate(request, org_id, duplicates.content_hash(await file.read()))
+    return {"duplicate": False}
+
+
 @router.post("/teams/{team_id}/receipts/upload")
 async def upload_team_receipt(
     team_id: str,
@@ -364,9 +451,12 @@ async def upload_team_receipt(
         raise HTTPException(status_code=422, detail="Amount must be non-negative")
 
     data = await file.read()
+    file_hash = duplicates.content_hash(data)
+    await _reject_duplicate(request, org_id, file_hash)
     now = datetime.now(timezone.utc)
     # insert first to get the _id, then upload to a path keyed by it, then backfill storagePath
     doc = {
+        "contentHash": file_hash,
         "departmentID": dept_oid,
         "orgID": org_id,
         "receiptName": receiptName,
@@ -378,7 +468,11 @@ async def upload_team_receipt(
         "snapshot": None,
         "receiptMetadata": json.dumps({"mimeType": content_type, "size": len(data)}),
     }
-    receipt_id = await mongodb_ops.create(mongo, doc_to_create=doc, collection_name=RECEIPTS_COLLECTION)
+    try:
+        receipt_id = await mongodb_ops.create(mongo, doc_to_create=doc, collection_name=RECEIPTS_COLLECTION)
+    except DuplicateKeyError:  # a simultaneous upload of the same file won the race (partial unique index)
+        await _reject_duplicate(request, org_id, file_hash)
+        raise HTTPException(status_code=409, detail={"code": "duplicate_receipt"})
 
     ext = os.path.splitext(file.filename or "")[1]
     storage_path = f"{dept_oid}/{receipt_id}{ext}"
@@ -396,7 +490,7 @@ async def upload_team_receipt(
 
     cache = request.app.state.cache
     await cache.delete(cache.key_builder(str(dept_oid), CACHE_KEY_NAME))
-    return (await _attach_reimbursement(request, [_to_out(team_id, doc)]))[0]
+    return (await _attach_state(request, org_id, [_to_out(team_id, doc)]))[0]
 
 
 def _drive_version(raw_meta) -> str:

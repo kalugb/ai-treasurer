@@ -285,7 +285,7 @@ export default function TeamManagement() {
 		let cancelled = false
 		Promise.all(teams.map((team) =>
 			receiptsAPI.getReceipts(team.id)
-				.then((list) => [team.id, (Array.isArray(list) ? list : []).reduce((sum, r) => sum + (r.receiptAmount ?? 0), 0)])
+				.then((list) => [team.id, (Array.isArray(list) ? list : []).reduce((sum, r) => sum + (r.duplicate?.excluded ? 0 : r.receiptAmount ?? 0), 0)])
 				.catch(() => [team.id, 0])
 		)).then((entries) => { if (!cancelled) setUsedByTeam(Object.fromEntries(entries)) })
 		return () => { cancelled = true }

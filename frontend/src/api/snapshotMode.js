@@ -45,6 +45,7 @@ function receiptsOut({ snapshot, orgId, ownerId }, teamId) {
 			// current file, served through the owner-checked snapshot route (images are not frozen)
 			thumbnail: PREVIEWABLE(r.mimeType) ? `/api/snapshots/${snapshot.id}/teams/${teamId}/receipts/${encodeURIComponent(r.receiptId)}/thumbnail?${scope}` : null,
 			reimbursement: link, reimbursed: Boolean(link && link.status === 'Reimbursed'),
+			duplicate: r.duplicate ?? null, // judged when the snapshot was taken
 		}
 	})
 }

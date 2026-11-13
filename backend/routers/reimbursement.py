@@ -6,6 +6,7 @@ from pymongo.errors import DuplicateKeyError
 
 from models.reimbursement import ReimbursementCreate, ReimbursementDelete, ReimbursementUpdate
 from routers.teams import CASHFLOW_COLLECTION, TYPE_REIMBURSEMENT, _parse_id, _verify_org_owner, get_mongo
+from services import duplicates
 from services.mongodb import mongodb_ops
 
 router = APIRouter(prefix="/api")
@@ -74,6 +75,12 @@ async def _build_receipt_involved(mongo, team_oid: ObjectId, receipt, keep: dict
     found = await _existing_receipts(mongo, ids, team_oid)
     if any(i not in found and i not in keep for i in ids):
         raise HTTPException(status_code=400, detail="Some selected receipts do not belong to this team")
+    # a receipt a human confirmed as a duplicate is not a real expense; ids already on this record may stay
+    new_docs = [d for i, d in found.items() if i not in keep]
+    flagged = duplicates.annotate(mongo, new_docs[0].get("orgID"), new_docs) if new_docs else {}
+    excluded = [d.get("receiptName", "") for d in new_docs if flagged.get(str(d["_id"]), {}).get("excluded")]
+    if excluded:
+        raise HTTPException(status_code=400, detail=f"Confirmed duplicate receipts can't be reimbursed: {', '.join(repr(n) for n in excluded)}")
     query: dict = {"type": TYPE_REIMBURSEMENT, "receiptInvolved.receiptIds": {"$in": ids}}
     if exclude_oid is not None:
         query["_id"] = {"$ne": exclude_oid}

@@ -1,16 +1,27 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Icon from './Icon'
 import ZoomableImage from './ZoomableImage'
 import { button } from './button'
 import { pdfFirstPageToImageUrl } from '../api/pdfPreview'
 import { agentAPI } from '../api/agent'
+import { receiptsAPI } from '../api/receipts'
 
 const field = 'grid gap-1.75 text-xs font-bold text-ink'
 const input = 'h-10.5 w-full rounded-[7px] border border-line bg-paper px-3 text-ink outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]'
 
+// the server answers 409 { code: 'duplicate_receipt', existing } for a file that is already a receipt in the organization
+const duplicateOf = (error) => {
+	const detail = error?.response?.data?.detail
+	return error?.response?.status === 409 && detail?.code === 'duplicate_receipt' ? detail.existing ?? {} : null
+}
+const duplicateText = (existing) =>
+	`This file is already a receipt${existing.name ? ` ("${existing.name}"` : ''}${existing.teamName ? ` in ${existing.teamName}` : ''}${existing.name ? ')' : ''}${existing.source === 'google_drive' ? ' on Google Drive' : ''}. It can't be added again.`
+
 // scanContext = { ownerId, orgId, teamId }: lets the server log the AI scan in the AI history
 export default function AddReceiptModal({ open, onClose, onUpload, scanContext }) {
 	const [file, setFile] = useState(null)
+	const [duplicate, setDuplicate] = useState(null)
+	const pickedRef = useRef(null) // the latest picked file, so a slow duplicate check can't apply to a newer pick
 	const [receiptName, setReceiptName] = useState('')
 	const [receiptAmount, setReceiptAmount] = useState('')
 	const [description, setDescription] = useState('')
@@ -28,6 +39,8 @@ export default function AddReceiptModal({ open, onClose, onUpload, scanContext }
 
 	const reset = () => {
 		setFile(null)
+		pickedRef.current = null
+		setDuplicate(null)
 		if (previewUrl) URL.revokeObjectURL(previewUrl)
 		setPreviewUrl(null)
 		setRenderingPreview(false)
@@ -64,9 +77,18 @@ export default function AddReceiptModal({ open, onClose, onUpload, scanContext }
 		if (previewUrl) URL.revokeObjectURL(previewUrl)  // revoke the previous preview before replacing it
 		setPreviewUrl(null)
 		setFile(next)
+		pickedRef.current = next
+		setDuplicate(null)
 		setError(null)
 		setScanNote(null)
 		if (!next) { setRenderingPreview(false); return }
+		// early warning only (before the user fills the form or spends AI quota); the upload re-checks on the server
+		if (scanContext?.teamId) {
+			receiptsAPI.checkDuplicate(scanContext.teamId, next).catch((e) => {
+				const existing = duplicateOf(e)
+				if (existing && pickedRef.current === next) setDuplicate(existing)
+			})
+		}
 		if (next.type === 'application/pdf') {
 			setRenderingPreview(true)
 			try {
@@ -103,8 +125,10 @@ export default function AddReceiptModal({ open, onClose, onUpload, scanContext }
 			await onUpload(formData)
 			reset()
 			onClose()
-		} catch {
-			setError('Upload failed. Check the file type and try again.')
+		} catch (e) {
+			const existing = duplicateOf(e)
+			if (existing) setDuplicate(existing)
+			else setError('Upload failed. Check the file type and try again.')
 		} finally {
 			setSaving(false)
 		}
@@ -144,7 +168,7 @@ export default function AddReceiptModal({ open, onClose, onUpload, scanContext }
 						</label>
 
 						<div className="flex flex-wrap items-center gap-3">
-							<button className={`${button.secondary} disabled:opacity-60`} type="button" onClick={scan} disabled={!file || scanning}>
+							<button className={`${button.secondary} disabled:opacity-60`} type="button" onClick={scan} disabled={!file || scanning || Boolean(duplicate)}>
 								<Icon name={scanning ? 'spinner' : 'receipt'} size={16} />
 								{scanning ? 'Scanning…' : 'Scan with AI'}
 							</button>
@@ -178,10 +202,11 @@ export default function AddReceiptModal({ open, onClose, onUpload, scanContext }
 							<textarea className="min-h-24 flex-1 rounded-[7px] border border-line bg-paper px-3 py-2 text-[13px] font-normal text-ink outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Notes about this receipt" />
 						</label>
 
+						{duplicate && <p className="text-xs font-bold text-red-700" role="alert">{duplicateText(duplicate)}</p>}
 						{error && <p className="text-xs font-bold text-red-700">{error}</p>}
 
 						<div className="mt-auto flex gap-2">
-							<button className={`${button.primary} disabled:opacity-60`} type="submit" disabled={saving}>
+							<button className={`${button.primary} disabled:opacity-60`} type="submit" disabled={saving || Boolean(duplicate)}>
 								<Icon name={saving ? 'spinner' : 'plus'} size={16} />
 								{saving ? 'Uploading…' : 'Add receipt'}
 							</button>

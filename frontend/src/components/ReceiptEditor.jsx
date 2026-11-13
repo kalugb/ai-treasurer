@@ -7,7 +7,7 @@ import { button } from './button'
 // Shared by the receipt preview and the "set missing amounts" modal.
 // onSave(patch) must throw on failure; the error is shown under the form.
 // The form is seeded from the receipt once: callers must pass key={receipt.id} to reset it for another receipt.
-export default function ReceiptEditor({ receipt, readOnly, onSave, onScan, actions, submitLabel = 'Save details', readOnlyLabel = 'Details (snapshot, read-only)', children }) {
+export default function ReceiptEditor({ receipt, readOnly, onSave, onScan, actions, notice, submitLabel = 'Save details', readOnlyLabel = 'Details (snapshot, read-only)', children }) {
 	const [loadedSrc, setLoadedSrc] = useState(null)
 	const [errorSrc, setErrorSrc] = useState(null)
 	const [amount, setAmount] = useState(() => receipt.amount ? String(receipt.amount) : '') // blank for 0 so an unset amount doesn't look typed
@@ -78,6 +78,7 @@ export default function ReceiptEditor({ receipt, readOnly, onSave, onScan, actio
 			<div className="min-h-0 overflow-y-auto p-5">
 				<div className="grid grid-cols-3 gap-4 text-[13px]"><div><span className="block text-xs text-muted">Date</span><strong className="mt-1 block">{receipt.date}</strong></div><div><span className="block text-xs text-muted">Category</span><strong className="mt-1 block">{receipt.category}</strong></div><div><span className="block text-xs text-muted">Filename</span><strong className="mt-1 block truncate" title={receipt.filename}>{receipt.filename}</strong></div></div>
 				<p className={`mt-3 rounded-lg px-3 py-2 text-xs font-bold ${receipt.reimbursed ? 'bg-green-soft text-green' : receipt.reimbursement ? 'bg-brown-soft text-brown' : 'bg-paper text-muted'}`}>{receipt.reimbursed ? `Reimbursed · record “${receipt.reimbursement.name}”` : receipt.reimbursement ? `Not reimbursed yet · pending in record “${receipt.reimbursement.name}”` : 'Not reimbursed · not in any reimbursement record'}</p>
+				{notice}
 				<form className="mt-5 border-t border-line pt-4" onSubmit={handleSave}>
 					<p className="mb-3 text-[11px] font-bold tracking-widest text-muted uppercase">{readOnly ? readOnlyLabel : 'Edit details'}</p>
 					<fieldset disabled={readOnly} className="contents">

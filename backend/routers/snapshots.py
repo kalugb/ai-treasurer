@@ -13,6 +13,7 @@ from routers.cashin import _to_out as _cashin_out, image_response
 from routers.google_drive import _find_receipt, _to_out as _receipt_out, serve_receipt_thumbnail
 from routers.reimbursement import _to_out as _record_out
 from routers.teams import CASHFLOW_COLLECTION, NO_TRANSACTIONS, TYPE_CASH_IN, TYPE_REIMBURSEMENT, _parse_id, _verify_org_owner
+from services import duplicates
 
 router = APIRouter(prefix="/api/snapshots")
 COLLECTION = "snapshots"
@@ -135,10 +136,15 @@ def _build(user_oid: ObjectId, org_oid: ObjectId, name: str, data: dict) -> dict
     ]
     receipts_recorded: dict[str, list] = {str(t["_id"]): [] for t in data["teams"]}
     total = 0.0
+    # duplicate state is frozen with the snapshot, judged from the very receipts it read (same org, same instant)
+    team_names = {t["_id"]: t.get("name") or t.get("team_name") or "" for t in data["teams"]}
+    dupes = {rid: duplicates.describe(v, team_names) for rid, v in duplicates.verdicts(data["receipts"]).items()}
     for doc in data["receipts"]:
         team_hex = str(doc["departmentID"])
         out = _receipt_out(team_hex, doc)
-        total += out["receiptAmount"]
+        duplicate = dupes.get(str(doc["_id"]))
+        if not (duplicate and duplicate["excluded"]):  # a confirmed duplicate isn't a real expense
+            total += out["receiptAmount"]
         receipts_recorded[team_hex].append({
             "receiptId": out["googleDriveFileId"],
             "name": out["receiptName"],
@@ -148,6 +154,7 @@ def _build(user_oid: ObjectId, org_oid: ObjectId, name: str, data: dict) -> dict
             "description": out["description"],
             "source": out["source"],
             "mimeType": _mime(doc.get("receiptMetadata")),
+            "duplicate": duplicate,
         })
     records_recorded, reimbursed = [], 0.0
     for doc in data["records"]:

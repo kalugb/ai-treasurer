@@ -14,6 +14,7 @@ from services.ai.embeddings.init_embedding_client import get_embedding_client
 
 from services.ai.tools import treasury_tools
 from routers.reimbursement import ensure_indexes as ensure_reimbursement_indexes
+from services import duplicates
 
 from dotenv import load_dotenv
 import os
@@ -114,6 +115,10 @@ async def lifespan(app: FastAPI):
             ensure_reimbursement_indexes(mongodb_database_client)
         except Exception as e:  # the server-side pre-check still rejects double links; only the race window is open
             print(f"Could not create the reimbursement receipt-link index: {e}")
+        try:
+            duplicates.ensure_indexes(mongodb_database_client)
+        except Exception as e:  # the upload-time pre-insert check still rejects duplicates; only the race window is open
+            print(f"Could not create the receipt content-hash indexes: {e}")
 
     app.state.ai_mongo = mongodb_client["ai"] if mongodb_client else None
     app.state.history_mongo = mongodb_client["history"] if mongodb_client else None  # snapshots; same cluster/client as the main DB

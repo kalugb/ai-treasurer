@@ -12,6 +12,7 @@ from bson.errors import InvalidId
 from langchain_core.tools import tool
 from langgraph.runtime import get_runtime
 
+from services import duplicates
 ORG_COLLECTION = "organizations"
 TEAMS_COLLECTION = "departments"
 RECEIPTS_COLLECTION = "receipts"
@@ -33,8 +34,8 @@ class _ReadOnlyCollection:
     def __init__(self, collection):
         self._collection = collection
 
-    def find(self, query):
-        return self._collection.find(query)
+    def find(self, query, projection=None):
+        return self._collection.find(query, projection)
 
 
 class _ReadOnlyCollections:
@@ -100,10 +101,17 @@ def _scope(ctx: AgentContext) -> tuple[list[dict], str | None]:
     return teams, None
 
 
+def _duplicate_states(receipts: list[dict]) -> dict:
+    """{str(_id): duplicate info} for receipts that are copies of an older receipt in the org (see services.duplicates)."""
+    return duplicates.annotate(_mongo, receipts[0].get("orgID"), receipts) if receipts else {}
+
+
 def _team_used(dept_oid: ObjectId) -> tuple[float, int]:
-    """Sum receiptAmount over a team's receipts (no server-side total exists). Returns (used, count)."""
+    """Sum receiptAmount over a team's receipts (no server-side total exists), leaving out receipts a human
+    confirmed as duplicates. Returns (used, count)."""
     receipts = list(_mongo[RECEIPTS_COLLECTION].find({"departmentID": dept_oid}))
-    used = sum((r.get("receiptAmount") or 0.0) for r in receipts)
+    dupes = _duplicate_states(receipts)
+    used = sum((r.get("receiptAmount") or 0.0) for r in receipts if not dupes.get(str(r["_id"]), {}).get("excluded"))
     return used, len(receipts)
 
 
@@ -153,6 +161,7 @@ def get_team_receipts(team_name: str) -> str:
         return f"{team.get('name')} has no receipts yet."
 
     states = _reimbursement_states(receipts)
+    dupes = _duplicate_states(receipts)
     lines = []
     for r in receipts:
         amount = r.get("receiptAmount") or 0.0
@@ -160,8 +169,12 @@ def get_team_receipts(team_name: str) -> str:
         source = "Local upload" if r.get("createdFrom") == "local_upload" else "Google Drive"
         extra = r.get("label") or r.get("description") or ""
         extra = f" — {extra}" if extra else ""
-        lines.append(f"- {r.get('receiptName') or 'Unnamed'}: ${amount:,.2f}, {date}, {source}, {states[_receipt_key(r)]}{extra}")
-    total = sum((r.get("receiptAmount") or 0.0) for r in receipts)
+        dupe = dupes.get(str(r["_id"]))
+        note = ""
+        if dupe and dupe["status"] != "dismissed":
+            note = f", {'CONFIRMED DUPLICATE (not counted)' if dupe['excluded'] else 'possible duplicate awaiting review'} of '{dupe['of']['name']}'"
+        lines.append(f"- {r.get('receiptName') or 'Unnamed'}: ${amount:,.2f}, {date}, {source}, {states[_receipt_key(r)]}{note}{extra}")
+    total = sum((r.get("receiptAmount") or 0.0) for r in receipts if not dupes.get(str(r["_id"]), {}).get("excluded"))
     return f"Receipts for {team.get('name')} (total ${total:,.2f}):\n" + "\n".join(lines)
 
 

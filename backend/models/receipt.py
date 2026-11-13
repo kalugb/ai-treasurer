@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -22,6 +24,11 @@ class ReceiptOut(BaseModel):
     source: str = "google_drive"
     reimbursed: bool = False  # in a record whose status is Reimbursed
     reimbursement: dict | None = None  # {id, name, status} of the record holding this receipt
+    duplicate: dict | None = None  # {status: pending|confirmed|dismissed, excluded, of} when an older copy exists in the org
+
+
+class DuplicateReviewIn(BaseModel):
+    status: Literal["dismissed", "confirmed", "clear"]
 
 
 class ReceiptUpdate(BaseModel):
