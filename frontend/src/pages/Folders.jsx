@@ -6,7 +6,7 @@ import SetAmountsModal from '../components/SetAmountsModal'
 import { button } from '../components/button'
 import AddReceiptModal from '../components/AddReceiptModal'
 import { teamsAPI } from '../api/teams'
-import { receiptsAPI, fetchReceipts, toReceipt, receiptAmountText, isUnset, isExcluded } from '../api/receipts'
+import { receiptsAPI, fetchReceipts, toReceipt, receiptAmountText, isUnset, isExcluded, compareReceipts } from '../api/receipts'
 import DuplicateReview from '../components/DuplicateReview'
 import ReceiptsToolbar from '../components/ReceiptsToolbar'
 import { OrganizationRequiredEmptyState } from '../components/OrganizationContext'
@@ -61,7 +61,8 @@ export default function Folders({ goTo }) {
 	const [teamIndex, setTeamIndex] = useState(0)
 	const [preview, setPreview] = useState(null)
 	const [sourceFilter, setSourceFilter] = useState(() => readPreference('receipts:source', ['all', 'google', 'manual'], 'all'))
-	const [dateOrder, setDateOrder] = useState(() => readPreference('receipts:dateOrder', ['desc', 'asc'], 'desc'))
+	// one sort control: 'desc' | 'asc' (date) or 'amount-desc' | 'amount-asc'
+	const [dateOrder, setDateOrder] = useState(() => readPreference('receipts:dateOrder', ['desc', 'asc', 'amount-desc', 'amount-asc'], 'desc'))
 	const [reimbursedFilter, setReimbursedFilter] = useState(() => readPreference('receipts:reimbursed', ['all', 'reimbursed', 'unreimbursed'], 'all'))
 	const [search, setSearch] = useState('')
 	const [duplicateFilter, setDuplicateFilter] = useState('all') // 'all' | a duplicate status: 'pending' (needs review) | 'confirmed' | 'dismissed'
@@ -227,12 +228,7 @@ export default function Folders({ goTo }) {
 			const q = search.trim().toLowerCase()
 			return !q || receipt.filename.toLowerCase().includes(q) || (receipt.label ?? '').toLowerCase().includes(q)
 		})
-		.sort((a, b) => {
-			const aDate = a.date === '—' ? '' : a.date
-			const bDate = b.date === '—' ? '' : b.date
-			if (!aDate || !bDate) return aDate ? -1 : bDate ? 1 : 0
-			return dateOrder === 'asc' ? aDate.localeCompare(bDate) : bDate.localeCompare(aDate)
-		})
+		.sort(compareReceipts(dateOrder))
 	const previewIndex = preview ? filteredReceipts.findIndex((receipt) => receipt.id === preview.id) : -1
 	// total spent is the sum of actual receipt amounts, not the stale stored team.used; confirmed duplicates aren't real expenses
 	const used = allReceipts.reduce((sum, receipt) => sum + (isExcluded(receipt) ? 0 : receipt.amount ?? 0), 0)

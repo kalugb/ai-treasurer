@@ -82,3 +82,19 @@ export const isUnset = (r) => r.source === 'google' && !r.amount && !isExcluded(
 export const receiptAmountText = (r) => isUnset(r)
 	? 'Amount not set'
 	: `RM${(r.amount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
+// sort: 'desc' | 'asc' by date, 'amount-desc' | 'amount-asc' by amount.
+// Receipts without a date, or without an amount set, always go last; amount ties fall back to newest first.
+const dateKey = (r) => (r.date === '—' ? '' : r.date ?? '')
+const byDate = (a, b, dir) => {
+	const aDate = dateKey(a)
+	const bDate = dateKey(b)
+	if (!aDate || !bDate) return aDate ? -1 : bDate ? 1 : 0
+	return dir === 'asc' ? aDate.localeCompare(bDate) : bDate.localeCompare(aDate)
+}
+export const compareReceipts = (order) => (a, b) => {
+	if (order !== 'amount-desc' && order !== 'amount-asc') return byDate(a, b, order)
+	if (isUnset(a) !== isUnset(b)) return isUnset(a) ? 1 : -1
+	const diff = (a.amount ?? 0) - (b.amount ?? 0)
+	return (order === 'amount-asc' ? diff : -diff) || byDate(a, b, 'desc')
+}

@@ -63,9 +63,10 @@ export default function ReceiptsToolbar({
 						<option value="dismissed">Not duplicate ({duplicateCounts.dismissed})</option>
 					</select>
 				</label>
-				<label className={label}>Sort by date
+				<label className={label}>Sort by
 					<select className={control} value={filters.order} onChange={(event) => onFilter('order', event.target.value)}>
-						<option value="desc">Newest first</option><option value="asc">Oldest first</option>
+						<optgroup label="Date"><option value="desc">Newest first</option><option value="asc">Oldest first</option></optgroup>
+						<optgroup label="Amount"><option value="amount-desc">Highest amount</option><option value="amount-asc">Lowest amount</option></optgroup>
 					</select>
 				</label>
 				<button className={`h-9 px-1 text-xs font-bold text-blue ${off} max-[899px]:col-span-2 max-[899px]:justify-self-start`} type="button" onClick={onClear} disabled={!filtering}>Clear filters</button>
