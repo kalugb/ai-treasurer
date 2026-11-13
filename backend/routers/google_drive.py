@@ -7,6 +7,7 @@ import pypdfium2 as pdfium
 from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import APIRouter, File, Form, HTTPException, Request, Response, UploadFile
+from googleapiclient.errors import HttpError
 from starlette.concurrency import run_in_threadpool
 from starlette.responses import StreamingResponse
 
@@ -212,7 +213,15 @@ async def _run_sync(request: Request, team_id: str) -> dict:
 
     mongo = _get_mongo(request)
     drive = get_google_drive_service_instance(request)
-    files = await run_in_threadpool(drive.get_folder_content_by_id_with_pagination, folder_id)
+    try:
+        files = await run_in_threadpool(drive.get_folder_content_by_id_with_pagination, folder_id)
+    except HttpError as exc:
+        status = getattr(exc.resp, "status", None)
+        if status in (400, 404):
+            raise HTTPException(status_code=400, detail="Google Drive folder not found. Check this team's folder ID in Team Management.")
+        if status == 403:
+            raise HTTPException(status_code=403, detail="No access to this Google Drive folder. Share it with the connected Google account.")
+        raise
     files = [f for f in files if f.get("mimeType") != FOLDER_MIME]
 
     now = datetime.now(timezone.utc)
@@ -254,9 +263,13 @@ async def _run_sync(request: Request, team_id: str) -> dict:
         else:
             inserted += 1
 
-    # hard-delete Mongo receipts whose Drive file no longer exists (image removed from Drive)
+    # hard-delete Mongo receipts whose Drive file no longer exists (image removed from Drive).
+    # Only Drive receipts: local uploads have no googleDriveFileId and are never in the Drive listing.
     existing = await _read_receipts(request, dept_oid)
-    stale_ids = [d["googleDriveFileId"] for d in existing if d.get("googleDriveFileId") not in drive_ids]
+    stale_ids = [
+        d["googleDriveFileId"] for d in existing
+        if d.get("createdFrom") != "local_upload" and d.get("googleDriveFileId") and d["googleDriveFileId"] not in drive_ids
+    ]
     deleted = 0
     if stale_ids:
         deleted = await mongodb_ops.delete(
