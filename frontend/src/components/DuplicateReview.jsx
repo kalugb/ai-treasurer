@@ -5,7 +5,7 @@ import { button } from './button'
 import { API_BASE_URL } from '../api/client'
 
 const SOURCE = { google_drive: 'Google Drive', local_upload: 'Local upload' }
-const money = (n) => `$${(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+const money = (n) => `RM${(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const reimbursementText = (link) => !link ? 'Not in any reimbursement record' : link.status === 'Reimbursed' ? `Reimbursed · “${link.name}”` : `Pending in “${link.name}”`
 
 function Details({ rows }) {

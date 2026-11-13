@@ -8,7 +8,7 @@ import { errorDetail } from '../api/snapshots'
 import { useSelectedOrganization } from '../hooks/useSelectedOrganization'
 import { useToast } from '../context/toast'
 
-const money = (n) => `$${(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+const money = (n) => `RM${(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const when = (iso) => (iso ? new Date(iso).toLocaleString() : '')
 const FILTERS = [['all', 'All'], ['scan', 'Scans'], ['bulk_run', 'Bulk runs']]
 const pill = (active) => `min-h-8 rounded-md px-2.5 text-xs font-bold transition ${active ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`

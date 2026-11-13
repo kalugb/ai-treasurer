@@ -17,7 +17,7 @@ import { useSnapshotMode } from '../context/snapshotMode'
 import { useBulkScan } from '../context/bulkScan'
 import Modal from '../components/Modal'
 
-const formatMoney = (amount) => amount == null ? '—' : `${amount < 0 ? '-' : ''}$${Math.abs(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+const formatMoney = (amount) => amount == null ? '—' : `${amount < 0 ? '-' : ''}RM${Math.abs(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 const readPreference = (key, allowed, fallback) => {
 	try {

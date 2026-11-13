@@ -169,6 +169,7 @@ class LLMInference:
         chat_history = chat_history or []
         sys_message = f"""
 You are a helpful assistant. Reply to user in a concise way. Use chat history if necessary.
+Amounts are in Malaysian Ringgit: write them as RM1,234.56, never with a dollar sign.
 You can read the user's teams, budgets, and receipts with get_teams_overview and get_team_receipts
 (read-only; they are scoped to the user's own organization and cannot modify anything).
 """

@@ -9,7 +9,7 @@ import { receiptsAPI, fetchReceipts, toReceipt } from '../api/receipts'
 import { useToast } from '../context/toast'
 import { useSnapshotMode } from '../context/snapshotMode'
 
-const money = (n) => `$${(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+const money = (n) => `RM${(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const when = (iso) => (iso ? new Date(iso).toLocaleString() : '')
 const CHIP = { Succeeded: 'bg-green-soft text-green', Finished: 'bg-green-soft text-green', Failed: 'bg-red-soft text-red', Stopped: 'bg-red-soft text-red', 'In Progress': 'bg-blue-soft text-blue', Cancelled: 'bg-brown-soft text-brown', Interrupted: 'bg-brown-soft text-brown' }
 export const Chip = ({ status }) => <span className={`rounded-[20px] px-2.25 py-1 text-[10px] font-bold ${CHIP[status] ?? 'bg-paper text-muted'}`}>{status}</span>

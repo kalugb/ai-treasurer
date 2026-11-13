@@ -57,7 +57,7 @@ export default function Dashboard({ goTo }) {
 			<section className="mb-3.5 grid grid-cols-3 gap-3.5 max-[820px]:grid-cols-1" aria-label="Financial summary">
 				<article className="min-h-37.5 rounded-[14px] border border-blue bg-blue p-5.5 text-white max-[820px]:min-h-auto max-[560px]:p-4">
 					<span className="mb-2.5 text-[11px] font-bold tracking-widest uppercase text-white/72">Total spending</span>
-					<strong className="mb-4 block font-display text-[30px] tracking-tighter">${dashboard.total_spending.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
+					<strong className="mb-4 block font-display text-[30px] tracking-tighter">RM{dashboard.total_spending.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
 					<span className="flex items-center gap-1.25 text-xs text-white/72"><Icon name="trend" size={15} /> {Math.abs(dashboard.spending_change)}% less than last month</span>
 				</article>
 				<article className="min-h-37.5 rounded-[14px] border border-line bg-white p-5.5 max-[820px]:min-h-auto max-[560px]:p-4">
@@ -67,7 +67,7 @@ export default function Dashboard({ goTo }) {
 				</article>
 				<article className="min-h-37.5 rounded-[14px] border border-line bg-white p-5.5 max-[820px]:min-h-auto max-[560px]:p-4">
 					<span className="mb-2.5 text-[11px] font-bold tracking-W[0.1em] uppercase text-muted">Monthly budget</span>
-					<strong className="mb-4 block font-display text-[30px] tracking-tighter">${dashboard.monthly_budget.toLocaleString()}</strong>
+					<strong className="mb-4 block font-display text-[30px] tracking-tighter">RM{dashboard.monthly_budget.toLocaleString()}</strong>
 					<span className="flex items-center gap-1.25 text-xs text-muted">{dashboard.monthly_budget_used_percent}% used</span>
 					<div className="mt-4.5 h-1.25 overflow-hidden rounded-[10px] bg-line"><span className="block h-full rounded-[10px] bg-brown" style={{ width: `${dashboard.monthly_budget_used_percent}%` }} /></div>
 				</article>
@@ -88,7 +88,7 @@ export default function Dashboard({ goTo }) {
 										<td className="border-t border-line py-3.25 pr-3 pl-0 text-muted">{receipt.date}</td>
 										<td className="border-t border-line py-3.25 pr-3 pl-0 text-muted"><span className="flex items-center gap-2 font-semibold text-ink"><span className="grid size-6.25 place-items-center rounded-[7px] bg-brown-soft text-[11px] text-brown">{receipt.merchant[0]}</span>{receipt.merchant}</span></td>
 										<td className="border-t border-line py-3.25 pr-3 pl-0 text-muted">{receipt.category}</td>
-										<td className="border-t border-line py-3.25 pr-3 pl-0 text-right font-semibold text-ink">${receipt.amount.toFixed(2)}</td>
+										<td className="border-t border-line py-3.25 pr-3 pl-0 text-right font-semibold text-ink">RM{receipt.amount.toFixed(2)}</td>
 										<td className="border-t border-line py-3.25 pr-3 pl-0 text-muted"><span className="inline-flex rounded-[20px] bg-green-soft px-2 py-1.25 text-[10px] font-bold text-green">Reviewed</span></td>
 									</tr>
 								)) : (
@@ -115,7 +115,7 @@ export default function Dashboard({ goTo }) {
 						<span className="grid size-7.5 place-items-center rounded-[9px] bg-brown text-white"><Icon name="spark" size={14} /></span>
 					</div>
 					<div className="my-5 font-display text-[17px] font-semibold leading-[1.45] text-brown-dark">“Your software subscriptions are up 14% this month. I found two recurring charges you may want to review.”</div>
-					<div className="mb-5.5 flex gap-2.5 border-t border-[rgba(119,82,52,0.16)] pt-4"><span className="mt-1.25 size-2 shrink-0 rounded-full bg-brown" /><div><strong className="text-xs">Potential saving</strong><p className="mt-1 text-[13px] leading-[1.55] text-muted">Canceling unused plans could save <b className="text-brown-dark">$38 / month</b>.</p></div></div>
+					<div className="mb-5.5 flex gap-2.5 border-t border-[rgba(119,82,52,0.16)] pt-4"><span className="mt-1.25 size-2 shrink-0 rounded-full bg-brown" /><div><strong className="text-xs">Potential saving</strong><p className="mt-1 text-[13px] leading-[1.55] text-muted">Canceling unused plans could save <b className="text-brown-dark">RM38 / month</b>.</p></div></div>
 				</article>
 			</section>
 

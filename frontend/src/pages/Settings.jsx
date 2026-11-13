@@ -20,7 +20,7 @@ export default function Settings() {
 					<div className="mb-5 flex items-start justify-between gap-4.5"><div><h2 className="font-display text-[17px] tracking-[-0.03em]">AI preferences</h2><p className="mt-1.5 text-[13px] leading-[1.55] text-muted">Tune how your assistant helps</p></div></div>
 					<label className="flex items-center justify-between gap-3.5"><span><strong className="text-xs">Monthly spending summaries</strong><small className="mt-1 block text-muted">Receive a plain-English recap</small></span><input type="checkbox" className="h-5 w-9 accent-blue" defaultChecked /></label>
 					<label className="flex items-center justify-between gap-3.5"><span><strong className="text-xs">Review reminders</strong><small className="mt-1 block text-muted">Get notified when receipts need attention</small></span><input type="checkbox" className="h-5 w-9 accent-blue" defaultChecked /></label>
-					<label className="grid gap-1.75 text-xs font-bold text-ink">Default currency<select className={field} defaultValue="USD"><option>USD — US Dollar</option><option>CAD — Canadian Dollar</option><option>GBP — Pound Sterling</option></select></label>
+					<label className="grid gap-1.75 text-xs font-bold text-ink">Default currency<select className={field} defaultValue="MYR"><option>MYR — Malaysian Ringgit</option><option>USD — US Dollar</option><option>CAD — Canadian Dollar</option><option>GBP — Pound Sterling</option></select></label>
 				</article>
 			</section>
 			<Integration />

@@ -77,8 +77,8 @@ export const needsDuplicateReview = (r) => r.duplicate?.status === 'pending'
 
 export const fetchReceipts = (teamId, refresh = false) => receiptsAPI.getReceipts(teamId, refresh).then((list) => (Array.isArray(list) ? list.map(toReceipt) : []))
 
-// the server returns 0 for a Drive receipt nobody set an amount on (a real $0 Drive receipt looks the same) — say so instead of showing $0.00
+// the server returns 0 for a Drive receipt nobody set an amount on (a real RM0 Drive receipt looks the same) — say so instead of showing RM0.00
 export const isUnset = (r) => r.source === 'google' && !r.amount && !isExcluded(r)
 export const receiptAmountText = (r) => isUnset(r)
 	? 'Amount not set'
-	: `$${(r.amount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+	: `RM${(r.amount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`

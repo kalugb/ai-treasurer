@@ -7,7 +7,7 @@ import { useToast } from '../context/toast'
 const card = 'min-h-37.5 rounded-[14px] border p-5.5 max-[820px]:min-h-auto max-[560px]:p-4'
 const th = 'pb-3 pr-3 pl-0 text-left text-[10px] font-bold tracking-[0.06em] uppercase text-muted'
 const td = 'border-t border-line py-3.25 pr-3 pl-0 text-muted'
-const money = (n) => `${n < 0 ? '-' : ''}$${Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+const money = (n) => `${n < 0 ? '-' : ''}RM${Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const FIRST_PAGE = 5 // the summary shows only the latest few entries
 const MORE_PAGE = 20
 const EMPTY = { balance: 0, totalCashIn: 0, totalReimbursement: 0, cashInCount: 0, reimbursementCount: 0, history: [], total: 0, hasMore: false }

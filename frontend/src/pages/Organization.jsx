@@ -36,7 +36,7 @@ function DeleteOrgModal({ org, ownerId, onClose, onDelete }) {
 		return () => { cancelled = true }
 	}, [org.id, ownerId, attempt])
 
-	const money = (n) => `$${(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+	const money = (n) => `RM${(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 	const confirmDelete = async () => {
 		setDeleting(true)
 		try {

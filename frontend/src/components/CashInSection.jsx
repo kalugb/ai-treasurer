@@ -12,7 +12,7 @@ import { useSnapshotMode } from '../context/snapshotMode'
 const card = 'min-h-37.5 rounded-[14px] border p-5.5 max-[820px]:min-h-auto max-[560px]:p-4'
 const th = 'pb-3 pr-3 pl-0 text-left text-[10px] font-bold tracking-[0.06em] uppercase text-muted'
 const td = 'border-t border-line py-3.25 pr-3 pl-0 text-muted'
-const money = (n) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+const money = (n) => `RM${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const EMPTY = { records: [], total: 0, count: 0 }
 
 export default function CashInSection({ orgId, ownerId }) {

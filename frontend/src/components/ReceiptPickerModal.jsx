@@ -3,7 +3,7 @@ import Icon from './Icon'
 import { button } from './button'
 import { fetchReceipts, receiptAmountText, isExcluded } from '../api/receipts'
 
-const formatMoney = (amount) => `$${(amount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+const formatMoney = (amount) => `RM${(amount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const pill = (active) => `min-h-8 rounded-md px-2.5 text-xs font-bold transition ${active ? 'bg-blue text-white' : 'text-muted hover:bg-blue-soft hover:text-blue'}`
 const SOURCES = [['all', 'All'], ['google', 'Google Drive'], ['manual', 'Local upload']]
 

@@ -8,7 +8,7 @@ import { useSelectedOrganization } from '../hooks/useSelectedOrganization'
 import { useToast } from '../context/toast'
 import { useSnapshotMode } from '../context/snapshotMode'
 
-const money = (n) => `$${(n ?? 0).toFixed(2)}`
+const money = (n) => `RM${(n ?? 0).toFixed(2)}`
 const when = (iso) => (iso ? new Date(iso).toLocaleString() : '')
 const rowBtn = 'rounded-md border border-line bg-transparent px-1.75 py-1.25 text-[10px] font-bold hover:border-blue hover:bg-blue-soft text-blue'
 

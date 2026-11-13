@@ -142,8 +142,8 @@ function TeamModal({ team, teams, onClose, onSave, serverError }) {
 					Team budget set
 					<span className="text-[11px] font-normal text-muted">Optional</span>
 					<div className="relative">
-						<span className="absolute inset-y-0 left-3 grid place-items-center text-muted">$</span>
-						<input className={`${input} pl-7`} type="number" min="0" step="0.01" value={budget} onChange={(event) => setBudget(event.target.value)} placeholder="0.00" aria-invalid={Boolean(errors.budget)} />
+						<span className="absolute inset-y-0 left-3 grid place-items-center text-muted">RM</span>
+						<input className={`${input} pl-9`} type="number" min="0" step="0.01" value={budget} onChange={(event) => setBudget(event.target.value)} placeholder="0.00" aria-invalid={Boolean(errors.budget)} />
 					</div>
 					{errors.budget && <span className="font-normal text-red-600">{errors.budget}</span>}
 				</label>
@@ -202,7 +202,7 @@ function DeleteModal({ team, organization, onClose, onDelete }) {
 		return () => { cancelled = true }
 	}, [team.id, organization.id, organization.ownerId, attempt])
 
-	const money = (n) => `$${(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+	const money = (n) => `RM${(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 	const confirmDelete = async () => {
 		setDeleting(true)
 		try {
@@ -399,7 +399,7 @@ export default function TeamManagement() {
 							</div>
 							<div className="mt-5 grid grid-cols-[1.2fr_1fr] gap-6 border-t border-line pt-5 max-[700px]:grid-cols-1">
 								<div>
-									<div className="mb-2 flex items-end justify-between gap-3"><div><p className="text-[11px] font-bold tracking-[0.08em] text-muted uppercase">Budget used</p><p className="mt-1 font-display text-[18px] text-ink">${(used).toLocaleString()} <span className="font-body text-xs text-muted">/ ${(team.budget ?? 0).toLocaleString()}</span></p></div><strong className={percentage >= 90 ? 'text-red-600' : 'text-blue'}>{percentage}%</strong></div>
+									<div className="mb-2 flex items-end justify-between gap-3"><div><p className="text-[11px] font-bold tracking-[0.08em] text-muted uppercase">Budget used</p><p className="mt-1 font-display text-[18px] text-ink">RM{(used).toLocaleString()} <span className="font-body text-xs text-muted">/ RM{(team.budget ?? 0).toLocaleString()}</span></p></div><strong className={percentage >= 90 ? 'text-red-600' : 'text-blue'}>{percentage}%</strong></div>
 									<div className="h-2 overflow-hidden rounded-full bg-blue-soft"><div className={percentage >= 90 ? 'h-full rounded-full bg-red-500' : 'h-full rounded-full bg-blue'} style={{ width: `${Math.min(100, percentage)}%` }} /></div>
 								</div>
 								<div><p className="mb-2 text-[11px] font-bold tracking-[0.08em] text-muted uppercase">Team members</p><div className="flex flex-wrap gap-2">{(team.members ?? []).length ? team.members.map((member) => <span className="rounded-full bg-paper px-3 py-1.5 text-xs text-ink" key={`${member.name}-${member.role}`}>{member.name} <span className="text-muted">· {member.role}</span></span>) : <span className="text-xs text-muted">No members yet — edit to add.</span>}</div></div>
