@@ -5,7 +5,7 @@ any org/team not owned by the caller, so one user's agent can never read another
 Read-only by design — nothing here inserts, updates, or deletes.
 """
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from bson import ObjectId
 from bson.errors import InvalidId
@@ -24,6 +24,10 @@ class AgentContext:
     # owner_id is the string ownerId (pre-auth placeholder "1"); org_id scopes to the selected org.
     owner_id: str = ""
     org_id: str | None = None
+    # spreadsheets made by the Excel tools during THIS run, [{name, data, kind, rows}];
+    # the agent router uploads and records them after the run (tools never write anything)
+    files: list = field(default_factory=list)
+    skills_loaded: set = field(default_factory=set)  # load_skill answers in full only once per run
 
 
 ALLOWED_COLLECTIONS = frozenset({ORG_COLLECTION, TEAMS_COLLECTION, RECEIPTS_COLLECTION, REIMBURSEMENT_COLLECTION})

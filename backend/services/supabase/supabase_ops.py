@@ -45,6 +45,23 @@ def delete_cashin_image(path: str) -> None:
     _storage_client.storage.from_(CASHIN_BUCKET).remove([path])
 
 
+# spreadsheets made by the AI agent (private bucket, must exist in Supabase)
+EXPORTS_BUCKET = "agentExports"
+
+
+def upload_export(path: str, data: bytes, content_type: str) -> None:
+    _storage_client.storage.from_(EXPORTS_BUCKET).upload(path, data, {"content-type": content_type, "upsert": "true"})
+
+
+def download_export(path: str) -> bytes:
+    return _storage_client.storage.from_(EXPORTS_BUCKET).download(path)
+
+
+def delete_exports(paths: list[str]) -> None:
+    if paths:
+        _storage_client.storage.from_(EXPORTS_BUCKET).remove(paths)
+
+
 if __name__ == "__main__":
     # assert-based self-check: round-trip a blob through the receipts bucket
     test_path = "selftest/roundtrip.bin"

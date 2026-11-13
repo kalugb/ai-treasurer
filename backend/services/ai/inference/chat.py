@@ -18,6 +18,7 @@ from services.ai.tools.sample_tool import get_current_time, add_numbers, get_wea
 from services.ai.tools.web_search_tools import web_search
 from services.ai.tools.google_tools import search_drive_files, list_drive_folders, list_folder_contents
 from services.ai.tools.treasury_tools import get_teams_overview, get_team_receipts, AgentContext
+from services.ai.tools.excel_tools import load_skill, generate_report, generate_spreadsheet
 
 class ReceiptExtraction(BaseModel):
     receiptName: str | None = None
@@ -37,9 +38,12 @@ class LLMInference:
         self = cls()
         
         # TODO: change the mistral and nvidia cause they suck ass
-        groq_llm, nvidia_llm = await asyncio.gather(
+        groq_llm, nvidia_llm, agent_nvidia_llm = await asyncio.gather(
             load_groq_llm(),
-            load_nvidia_llm()
+            load_nvidia_llm(),
+            # chat agent fallback: reasoning off (the client doesn't know this model, so the flag goes in raw)
+            # and room for a generate_spreadsheet call, which carries the whole table in its arguments
+            load_nvidia_llm(max_tokens=4096, model_kwargs={"chat_template_kwargs": {"enable_thinking": False}}),
         )
         
         self.groq_llm, self.nvidia_llm = groq_llm, nvidia_llm  # reused by extract_receipt
@@ -47,7 +51,8 @@ class LLMInference:
         self.tools = [
             get_current_time, add_numbers, get_weather, web_search, 
             search_drive_files, list_drive_folders, list_folder_contents,
-            get_teams_overview, get_team_receipts
+            get_teams_overview, get_team_receipts,
+            load_skill, generate_report, generate_spreadsheet,
         ]
         
         self.llm_with_fallback = create_agent(
@@ -61,7 +66,10 @@ class LLMInference:
                     backoff_factor=2,
                     on_failure="error"
                 ),
-                ModelFallbackMiddleware(nvidia_llm)
+                # The NVIDIA fallback is its own client (agent_nvidia_llm): the middleware ignores .bind() kwargs, so
+                # reasoning-off + a bigger output budget must be set on the client itself. Without them NVIDIA spends
+                # its whole 1024-token default on hidden reasoning and returns an EMPTY reply (finish_reason=length).
+                ModelFallbackMiddleware(agent_nvidia_llm)
             ]
         )
         
@@ -172,6 +180,9 @@ You are a helpful assistant. Reply to user in a concise way. Use chat history if
 Amounts are in Malaysian Ringgit: write them as RM1,234.56, never with a dollar sign.
 You can read the user's teams, budgets, and receipts with get_teams_overview and get_team_receipts
 (read-only; they are scoped to the user's own organization and cannot modify anything).
+When the user asks for a spreadsheet, Excel file, download or export, first call load_skill("excel") and follow it.
+For real data call generate_report straight away (it reads the data itself; do not read it with other tools first).
+For a table you write yourself (a plan, template, checklist) call generate_spreadsheet; never write that table in the chat instead.
 """
         if memories:
             # long-term memory: similar turns from the user's past conversations (outputs trimmed to keep the prompt lean)

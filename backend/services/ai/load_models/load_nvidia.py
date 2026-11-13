@@ -5,7 +5,8 @@ import os
 
 load_dotenv()
 
-async def load_nvidia_llm():
+async def load_nvidia_llm(**overrides):
+    # overrides: extra ChatNVIDIA settings for one caller (e.g. max_tokens, model_kwargs)
     API_KEY = os.getenv("NVIDIA_NIM_API_KEY")
     MODEL_NAME = os.getenv("NVIDIA_NIM_MODEL")
     
@@ -17,6 +18,7 @@ async def load_nvidia_llm():
         api_key=API_KEY,
         temperature=1,
         top_p=0.95,
+        **overrides,
     )
     
     return llm

@@ -4,6 +4,8 @@ const USER_ID = import.meta.env.VITE_TEMP_USER_ID ?? '1' // temp pre-auth user, 
 
 // Absolute SSE URL (EventSource can't use the axios client).
 export const agentStreamUrl = (userId = USER_ID) => `${API_BASE_URL}/api/agent/stream?userId=${encodeURIComponent(userId)}`
+// owner-checked download of a spreadsheet the agent made (plain <a href>, the server sends it as an attachment)
+export const agentFileUrl = (fileId, userId = USER_ID) => `${API_BASE_URL}/api/agent/files/${encodeURIComponent(fileId)}?userId=${encodeURIComponent(userId)}`
 
 export const agentAPI = {
 	listConversations: (userId = USER_ID) =>

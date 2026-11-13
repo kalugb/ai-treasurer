@@ -5,7 +5,7 @@ import BlurText from '../components/BlurText'
 import Icon from '../components/Icon'
 import Modal from '../components/Modal'
 import { button } from '../components/button'
-import { agentAPI } from '../api/agent'
+import { agentAPI, agentFileUrl } from '../api/agent'
 import { useAgentRun } from '../context/agentRun'
 import { useSelectedOrganization } from '../hooks/useSelectedOrganization'
 
@@ -33,7 +33,23 @@ const mdComponents = {
 	td: ({ ...p }) => <td className="border border-line px-3 py-1.5" {...p} />,
 }
 
-function AssistantMessage({ text, pending }) {
+const fileSize = (bytes) => bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`
+
+// a spreadsheet the agent made in this turn; "AI-made" marks tables the AI wrote itself (not read from the database)
+function FileChip({ file }) {
+	return (
+		<a className="inline-flex max-w-full items-center gap-2.5 rounded-lg border border-line bg-white px-3 py-2 text-[12px] text-ink no-underline transition hover:border-blue hover:bg-blue-soft focus-visible:outline-[3px] focus-visible:outline-blue-ring" href={agentFileUrl(file.id)} download={file.name}>
+			<span className="grid size-8 shrink-0 place-items-center rounded-md bg-green-soft text-[10px] font-bold text-green">XLSX</span>
+			<span className="min-w-0">
+				<strong className="block truncate">{file.name}</strong>
+				<span className="text-muted">{fileSize(file.size)}{file.kind === 'ai' ? ' · AI-made, check before use' : ''}</span>
+			</span>
+			<span className="ml-1 shrink-0 font-bold text-blue">Download</span>
+		</a>
+	)
+}
+
+function AssistantMessage({ text, pending, files }) {
 	return (
 		<div className="flex gap-3 px-1 py-5">
 			<span className="grid size-8 shrink-0 place-items-center rounded-full bg-brown text-white" aria-label="AI Treasurer">
@@ -50,6 +66,9 @@ function AssistantMessage({ text, pending }) {
 						</span>
 					)
 					: <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{text}</ReactMarkdown>}
+				{!pending && (files || []).length > 0 && (
+					<div className="mt-3 flex flex-wrap gap-2">{files.map((file) => <FileChip key={file.id} file={file} />)}</div>
+				)}
 			</div>
 		</div>
 	)
@@ -137,7 +156,7 @@ export default function Agent() {
 		const flat = []
 		for (const t of turns || []) {
 			flat.push({ role: 'user', text: t.input, attachments: t.attachments || [] })
-			if (t.output != null) flat.push({ role: 'assistant', text: t.output })
+			if (t.output != null) flat.push({ role: 'assistant', text: t.output, files: t.files || [] })
 		}
 		setMessages(flat)
 		setLastMemoryId((turns || []).at(-1)?.id ?? null)
@@ -311,7 +330,7 @@ export default function Agent() {
 						{messages.map((m, i) => (
 							m.role === 'user'
 								? <UserMessage key={i} text={m.text} attachments={m.attachments} />
-								: <AssistantMessage key={i} text={m.text} />
+								: <AssistantMessage key={i} text={m.text} files={m.files} />
 						))}
 						{pending && (
 							<>

@@ -121,6 +121,12 @@ async def lifespan(app: FastAPI):
             print(f"Could not create the receipt content-hash indexes: {e}")
 
     app.state.ai_mongo = mongodb_client["ai"] if mongodb_client else None
+    if app.state.ai_mongo is not None:
+        try:
+            from routers.agent import sweep_expired_exports
+            sweep_expired_exports(app.state.ai_mongo)  # agent spreadsheets older than 30 days (file + record)
+        except Exception as e:  # expired files just linger until the next start
+            print(f"Could not sweep expired agent exports: {e}")
     app.state.history_mongo = mongodb_client["history"] if mongodb_client else None  # snapshots; same cluster/client as the main DB
     if app.state.history_mongo is not None:
         try:

@@ -30,6 +30,13 @@ class ToolUsage(BaseModel):
     toolUsed: int
 
 
+class ExportFile(BaseModel):
+    id: str
+    name: str
+    size: int
+    kind: str  # "report" (real data from the database) | "ai" (a table the AI wrote)
+
+
 class MemoryOut(BaseModel):
     id: str
     conversationId: str
@@ -37,6 +44,7 @@ class MemoryOut(BaseModel):
     output: str | None = None
     tools: list[ToolUsage] = []
     attachments: list[Attachment] = []  # filename/kind for UI chips (text carried too)
+    files: list[ExportFile] = []  # spreadsheets the agent made in this turn (download via /api/agent/files/{id})
     status: str  # "Succeeded" | "Failed" | "In Progress"
     time: str | None = None
 
