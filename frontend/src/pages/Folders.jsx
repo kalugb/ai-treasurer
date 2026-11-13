@@ -17,7 +17,7 @@ import { useSnapshotMode } from '../context/snapshotMode'
 import { useBulkScan } from '../context/bulkScan'
 import Modal from '../components/Modal'
 
-const formatMoney = (amount) => amount == null ? '—' : `$${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+const formatMoney = (amount) => amount == null ? '—' : `${amount < 0 ? '-' : ''}$${Math.abs(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 const readPreference = (key, allowed, fallback) => {
 	try {
@@ -236,7 +236,9 @@ export default function Folders({ goTo }) {
 	const previewIndex = preview ? filteredReceipts.findIndex((receipt) => receipt.id === preview.id) : -1
 	// total spent is the sum of actual receipt amounts, not the stale stored team.used; confirmed duplicates aren't real expenses
 	const used = allReceipts.reduce((sum, receipt) => sum + (isExcluded(receipt) ? 0 : receipt.amount ?? 0), 0)
-	const remaining = team ? Math.max(0, (team.budget ?? 0) - used) : 0
+	// negative when spending is over the budget, so the summary shows how far over it is
+	const remaining = team ? (team.budget ?? 0) - used : 0
+	const overBudget = team && remaining < 0
 	const remainingPercent = team?.budget ? (remaining / team.budget) * 100 : 0
 	const alert = team && remainingPercent < 10
 
@@ -276,7 +278,7 @@ export default function Folders({ goTo }) {
 				<>
 					<section className={alert ? 'mb-6 rounded-[14px] border border-red-200 bg-red-50 p-5 text-red-900' : 'mb-6 rounded-[14px] border border-line bg-white p-5'}>
 						<div className="flex items-end justify-between gap-5 max-[560px]:flex-col max-[560px]:items-start"><div><p className="text-[11px] font-bold tracking-widest uppercase opacity-70">{team.name} · budget summary</p><p className="mt-2 font-display text-[24px] tracking-[-0.04em]">{formatMoney(used)} <span className="font-body text-sm font-normal opacity-70">spent</span></p></div><div className="text-left min-[561px]:text-right"><p className="text-xs opacity-70">Remaining budget</p><p className="mt-1 font-display text-[20px]">{formatMoney(remaining)}</p></div></div>
-						{alert && <p className="mt-4 flex items-center gap-2 text-xs font-bold"><Icon name="insight" size={15} /> Less than 10% of this team’s budget remains.</p>}
+						{alert && <p className="mt-4 flex items-center gap-2 text-xs font-bold"><Icon name="insight" size={15} /> {overBudget ? `Over budget by ${formatMoney(-remaining)}: spending is above this team’s ${formatMoney(team.budget ?? 0)} budget.` : 'Less than 10% of this team’s budget remains.'}</p>}
 					</section>
 					<section>
 						<ReceiptsToolbar
