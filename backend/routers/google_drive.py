@@ -247,7 +247,6 @@ async def _run_sync(request: Request, team_id: str) -> dict:
                 "receiptAmount": 0.0,
                 "description": None,
                 "label": None,
-                "snapshot": None,
             },
         )
         if matched:
@@ -465,7 +464,6 @@ async def upload_team_receipt(
         "createdAt": now,
         "createdFrom": "local_upload",
         "label": None,
-        "snapshot": None,
         "receiptMetadata": json.dumps({"mimeType": content_type, "size": len(data)}),
     }
     try:
