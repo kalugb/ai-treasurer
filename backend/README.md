@@ -1,9 +1,7 @@
-# AI Treasurer mock API
+# AI Treasurer backend
 
-Run from `backend/`:
+FastAPI service for AI Treasurer. Setup, environment variables and run commands are in the [root README](../README.md).
 
 ```bash
 uv run uvicorn main:app --reload
 ```
-
-It serves in-memory mock data at `http://localhost:8000/api` for the dashboard and teams. Restart the server to reset edits; replace `mock_data.py` with a database layer when the real backend is ready.
