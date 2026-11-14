@@ -16,6 +16,8 @@ token.json
 
 skills-lock.json
 
+.playwright-mcp/
+
 # frontend default ignores
 # Logs
 logs
