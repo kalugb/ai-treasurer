@@ -89,6 +89,33 @@ def check_services(app: FastAPI):
     print(f"Supabase service: {app.state.supabase is not None}")
     print(f"Google Drive service: {app.state.google_drive_service_connected and bool(app.state.google_drive_service_instance)}")
 
+def _best_effort(label: str, step):
+    """Run one startup step; a failure is logged, never stops the app."""
+    try:
+        step()
+    except Exception as e:
+        print(f"Could not {label}: {e}")
+
+def prepare_databases(main_db, ai_db, history_db):
+    """Create indexes and sweep expired data at startup. Every step is best effort; a missing DB is skipped."""
+    from routers.agent import sweep_expired_exports
+    from services.ai.history import ensure_indexes as ensure_ai_history_indexes
+
+    if main_db is not None:
+        # the server-side pre-check still rejects double links; only the race window is open
+        _best_effort("create the reimbursement receipt-link index", lambda: ensure_reimbursement_indexes(main_db))
+        # the upload-time pre-insert check still rejects duplicates; only the race window is open
+        _best_effort("create the receipt content-hash indexes", lambda: duplicates.ensure_indexes(main_db))
+    if ai_db is not None:
+        # agent spreadsheets older than 30 days (file + record); on failure they linger until the next start
+        _best_effort("sweep expired agent exports", lambda: sweep_expired_exports(ai_db))
+    if history_db is not None:
+        # listing still works without it, just unindexed
+        _best_effort("create the snapshots index", lambda: history_db["snapshots"].create_index(
+            [("orgId", 1), ("userId", 1), ("snapshotTime", -1)], name="org_user_time"))
+        # incl. the 14-day TTL on startedAt
+        _best_effort("create the AI history indexes", lambda: ensure_ai_history_indexes(history_db))
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     mongo_clients, supabase_client,  = await asyncio.gather(
@@ -110,34 +137,9 @@ async def lifespan(app: FastAPI):
 
     treasury_tools.set_mongo(mongodb_database_client)
 
-    if mongodb_database_client is not None:
-        try:
-            ensure_reimbursement_indexes(mongodb_database_client)
-        except Exception as e:  # the server-side pre-check still rejects double links; only the race window is open
-            print(f"Could not create the reimbursement receipt-link index: {e}")
-        try:
-            duplicates.ensure_indexes(mongodb_database_client)
-        except Exception as e:  # the upload-time pre-insert check still rejects duplicates; only the race window is open
-            print(f"Could not create the receipt content-hash indexes: {e}")
-
     app.state.ai_mongo = mongodb_client["ai"] if mongodb_client else None
-    if app.state.ai_mongo is not None:
-        try:
-            from routers.agent import sweep_expired_exports
-            sweep_expired_exports(app.state.ai_mongo)  # agent spreadsheets older than 30 days (file + record)
-        except Exception as e:  # expired files just linger until the next start
-            print(f"Could not sweep expired agent exports: {e}")
     app.state.history_mongo = mongodb_client["history"] if mongodb_client else None  # snapshots; same cluster/client as the main DB
-    if app.state.history_mongo is not None:
-        try:
-            app.state.history_mongo["snapshots"].create_index([("orgId", 1), ("userId", 1), ("snapshotTime", -1)], name="org_user_time")
-        except Exception as e:  # listing still works, just unindexed
-            print(f"Could not create the snapshots index: {e}")
-        try:
-            from services.ai.history import ensure_indexes as ensure_ai_history_indexes
-            ensure_ai_history_indexes(app.state.history_mongo)  # incl. the 14-day TTL on startedAt
-        except Exception as e:
-            print(f"Could not create the AI history indexes: {e}")
+    prepare_databases(mongodb_database_client, app.state.ai_mongo, app.state.history_mongo)
     app.state.redis = redis_client 
     app.state.llm_inference = None # llm_inference
     app.state.embeddings_client = None # embeddings_client
