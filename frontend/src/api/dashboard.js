@@ -8,7 +8,7 @@ const testPostReq = (payload) => {
 }
 
 export const dashboardAPI = {
-    getDashboard: () => request('/api/dashboard'),
+    getOverview: (orgId, ownerId) => request('/api/dashboard', { method: 'GET', params: { orgId, ownerId } }),
     testAxios: () => request('/api/test-axios'),
     
     testPost: (payload) => testPostReq(payload),

@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import Icon from '../components/Icon'
 import { button } from '../components/button'
-import { dashboardAPI } from '../api/dashboard'
 
 export default function MockPage({ type }) {
 	const receipts = []
@@ -11,13 +10,6 @@ export default function MockPage({ type }) {
 	const [items, setItems] = useState(page.items)
 	const [selectedItem, setSelectedItem] = useState(null)
 	const isManagedPage = ['insights', 'receipts'].includes(type)
-
-	useEffect(() => {
-		if (type !== 'receipts') return
-		dashboardAPI.getDashboard().then(({ recent_receipts }) => {
-			setItems(recent_receipts.map(({ date, merchant, category, amount }) => [merchant, `${date} · ${category} · RM${amount.toFixed(2)}`, 'Reviewed']))
-		})
-	}, [type])
 
 	const addItem = () => {
 		const label = type === 'receipts' ? 'New merchant receipt' : 'New insight'
