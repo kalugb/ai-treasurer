@@ -21,7 +21,7 @@ export default function Icon({ name, size = 18 }) {
 		chevron: <path d="m9 18 6-6-6-6" />,
 		resize: <><path d="M4 12h16M7 9l-3 3 3 3M17 9l3 3-3 3" /><path d="M10 8v8M14 8v8" /></>,
 		edit: <><path d="M11 4H4a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7" /><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L11 15l-4 1 1-4L10.5 2.5Z" /></>,
-		spinner: <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" fill="none" strokeDasharray="31.4 31.4" strokeLinecap="round" className="animate-spin" />,
+		spinner: <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" fill="none" strokeDasharray="31.4 31.4" strokeLinecap="round" className="animate-spin origin-center [transform-box:fill-box]" />, // rotate around the circle's own centre: an SVG child otherwise spins around the viewBox corner and swings out of view
 		snapshot: <><circle cx="12" cy="12" r="3.5" /><path d="M3 12h5.5M15.5 12H21" /></>,
 		sync: <><path d="M20 11a8 8 0 0 0-14.8-4M4 13a8 8 0 0 0 14.8 4" /><path d="M20 4v7h-7M4 20v-7h7" /></>,
 	}
