@@ -61,9 +61,9 @@ Create `backend/.env` (never commit it):
 
 | Variable | Purpose |
 |---|---|
-| `MONGODB_URI`, `MONGODB_USERNAME`, `MONGODB_PASSWORD` | MongoDB connection |
+| `MONGODB_URI` | MongoDB connection string (include credentials in it) |
 | `MONGODB_DATABASE_NAME` | Main database name (required) |
-| `REDIS_URL` | Default `redis://localhost:6379/0` |
+| `REDIS_URL` | Defaults to `redis://redis:6379/0` (the Docker service). For local dev set `redis://localhost:6379/0` |
 | `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `SUPABASE_DATABASE_PASSWORD` | Supabase; the secret (service-role) key is used server-side for storage |
 | `GROQ_API_KEY`, `GROQ_MODEL` | Primary LLM |
 | `NVIDIA_NIM_API_KEY`, `NVIDIA_NIM_MODEL` | Fallback and vision LLM |
@@ -91,7 +91,7 @@ bun run backend    # FastAPI on http://localhost:8000 (from repo root)
 bun run frontend   # Vite on http://localhost:5173
 ```
 
-LLM init may be switched off in `backend/lifespan.py` for local work; AI features then answer 503 or fail the run.
+The LLM and the embeddings client may be switched off in `backend/lifespan.py` for local work (they are off in the repo right now). AI features then answer 503 or fail the run, and agent memory recall returns nothing.
 
 ### Docker
 
