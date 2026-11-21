@@ -1,5 +1,6 @@
 import asyncio
 import json
+from contextlib import aclosing
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
@@ -35,8 +36,8 @@ _running: dict[str, asyncio.Task] = {}
 def get_ai_mongo(request: Request):
     return request.app.state.ai_mongo
 
-def get_redis(request: Request):
-    return request.app.state.redis
+def get_events(request: Request):
+    return request.app.state.events
 
 def get_llm(request: Request):
     return request.app.state.llm_inference
@@ -81,11 +82,11 @@ def _to_memory_out(doc: dict) -> dict:
     }
 
 
-async def _publish(redis, user_oid: ObjectId, payload: dict):
-    if redis is None:
+async def _publish(events, user_oid: ObjectId, payload: dict):
+    if events is None:
         return
     try:
-        await redis.publish(_channel(user_oid), json.dumps(payload))
+        await events.publish(_channel(user_oid), payload)
     except Exception as e:
         print(f"agent publish failed: {e}")
 
@@ -177,7 +178,7 @@ async def _run_agent(app, user_oid: ObjectId, conversation_oid: ObjectId, memory
     # Tracked asyncio.Task (see _running): /stop can cancel it to truly kill the in-flight LLM call.
     # Decoupled from any client connection, so navigating away never kills the run.
     ai_mongo = app.state.ai_mongo
-    redis = app.state.redis
+    events = app.state.events
     llm = app.state.llm_inference
     collection = COLLECTION_NAME
 
@@ -205,7 +206,7 @@ async def _run_agent(app, user_oid: ObjectId, conversation_oid: ObjectId, memory
             model_input += f"\n\n[Attached file: {att.get('filename', 'file')} ({att.get('kind', 'file')})]\n{att.get('text', '')}"
 
         async def on_delta(text):
-            await _publish(redis, user_oid, {
+            await _publish(events, user_oid, {
                 "event": "delta",
                 "conversationId": str(conversation_oid),
                 "memoryId": str(memory_id),
@@ -234,7 +235,7 @@ async def _run_agent(app, user_oid: ObjectId, conversation_oid: ObjectId, memory
         )
         if not matched:
             return  # stopped/overtaken; leave the existing (Failed) status and don't publish done
-        await _publish(redis, user_oid, {
+        await _publish(events, user_oid, {
             "event": "done",
             "conversationId": str(conversation_oid),
             "memoryId": str(memory_id),
@@ -253,7 +254,7 @@ async def _run_agent(app, user_oid: ObjectId, conversation_oid: ObjectId, memory
             query={"_id": memory_id},
             update_data={"status": STATUS_FAILED, "error": "Stopped by user"},
         )
-        await _publish(redis, user_oid, {
+        await _publish(events, user_oid, {
             "event": "error",
             "conversationId": str(conversation_oid),
             "memoryId": str(memory_id),
@@ -268,7 +269,7 @@ async def _run_agent(app, user_oid: ObjectId, conversation_oid: ObjectId, memory
             query={"_id": memory_id},
             update_data={"status": STATUS_FAILED, "error": str(e)},
         )
-        await _publish(redis, user_oid, {
+        await _publish(events, user_oid, {
             "event": "error",
             "conversationId": str(conversation_oid),
             "memoryId": str(memory_id),
@@ -425,7 +426,7 @@ async def send_message(req: SendMessageRequest, request: Request, ai_mongo=Depen
     }
     memory_id = await mongodb_ops.create(ai_mongo, doc_to_create=doc, collection_name=COLLECTION_NAME)
 
-    await _publish(request.app.state.redis, user_oid, {
+    await _publish(request.app.state.events, user_oid, {
         "event": "running",
         "conversationId": str(conversation_oid),
         "memoryId": str(memory_id),
@@ -458,7 +459,7 @@ async def regenerate(req: RegenerateRequest, request: Request, ai_mongo=Depends(
         update_data={"status": STATUS_IN_PROGRESS, "output": None, "tools": [], "error": None,
                      "time": datetime.now(timezone.utc)},
     )
-    await _publish(request.app.state.redis, user_oid, {
+    await _publish(request.app.state.events, user_oid, {
         "event": "running",
         "conversationId": str(conversation_oid),
         "memoryId": str(memory_id),
@@ -494,7 +495,7 @@ async def stop(req: StopRequest, request: Request, ai_mongo=Depends(get_ai_mongo
         update_data={"status": STATUS_FAILED, "error": "Stopped by user"},
     )
     if matched:
-        await _publish(request.app.state.redis, user_oid, {
+        await _publish(request.app.state.events, user_oid, {
             "event": "error",
             "conversationId": str(conversation_oid),
             "memoryId": str(memory_id),
@@ -507,7 +508,7 @@ async def stop(req: StopRequest, request: Request, ai_mongo=Depends(get_ai_mongo
 
 
 @router.get("/stream")
-async def stream(userId: str = "1", request: Request = None, ai_mongo=Depends(get_ai_mongo), redis=Depends(get_redis)):
+async def stream(userId: str = "1", request: Request = None, ai_mongo=Depends(get_ai_mongo), events=Depends(get_events)):
     user_oid = _user_oid(userId)
 
     async def event_generator():
@@ -521,26 +522,17 @@ async def stream(userId: str = "1", request: Request = None, ai_mongo=Depends(ge
             in_progress = [{"conversationId": str(d.get("conversationId", "")), "memoryId": str(d["_id"])} for d in (docs or [])]
         yield f"event: snapshot\ndata: {json.dumps({'inProgress': in_progress})}\n\n"
 
-        if redis is None:
+        if events is None:
             return
-        pubsub = redis.pubsub()
-        await pubsub.subscribe(_channel(user_oid))
-        try:
-            while True:
+        async with aclosing(events.subscribe(_channel(user_oid))) as messages:
+            async for data in messages:
                 if request is not None and await request.is_disconnected():
                     break
-                msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=15.0)
-                if msg is None:
+                if data is None:
                     yield ": keep-alive\n\n"  # comment frame keeps the connection open through proxies
                     continue
-                data = msg.get("data")
-                if isinstance(data, bytes):
-                    data = data.decode("utf-8")
                 payload = json.loads(data)
                 event = payload.get("event", "message")
                 yield f"event: {event}\ndata: {json.dumps(payload)}\n\n"
-        finally:
-            await pubsub.unsubscribe(_channel(user_oid))
-            await pubsub.close()
 
     return StreamingResponse(event_generator(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
