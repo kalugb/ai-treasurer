@@ -27,6 +27,9 @@ class RedisLink:
 
     def __init__(self, url: str | None = None, cooldown: float = COOLDOWN_SECONDS):
         url = url or os.getenv("REDIS_URL", DEFAULT_REDIS_URL)
+        # "localhost" resolves to ::1 first on Windows, and Docker publishes Redis on IPv4 only, so the
+        # IPv6 attempt hangs until the connect timeout and Redis is wrongly reported as down.
+        url = url.replace("://localhost:", "://127.0.0.1:").replace("@localhost:", "@127.0.0.1:")
         self.client = redis.from_url(url, decode_responses=True, socket_connect_timeout=CONNECT_TIMEOUT)
         # raw-bytes client: the decoded one would corrupt binary (thumbnail) data
         self.bytes_client = redis.from_url(url, decode_responses=False, socket_connect_timeout=CONNECT_TIMEOUT)
