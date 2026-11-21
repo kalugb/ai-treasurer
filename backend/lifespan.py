@@ -81,7 +81,7 @@ async def init_embeddings_client():
 def check_services(app: FastAPI):
     print("Checking service availability...")
     print(f"MongoDB service: {app.state.mongo is not None}")
-    print(f"AI service: {app.state.ai_mongo is not None}")
+    print(f"AI database service: {app.state.ai_mongo is not None}")
     print(f"Embeddings client service: {app.state.embeddings_client is not None}")
     print(f"Redis cache service: {app.state.cache is not None}")
     print(f"Session store service: {app.state.sessions is not None}")
