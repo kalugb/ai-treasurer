@@ -2,7 +2,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 import asyncio
     
-from services.redis.redis_client import get_redis_client
+from services.redis.redis_client import RedisLink
+from services.redis.events import EventBus
 from services.redis.session import SessionStore
 from services.redis.cache import CacheStore
 
@@ -83,7 +84,7 @@ def check_services(app: FastAPI):
     print(f"MongoDB service: {app.state.mongo is not None}")
     print(f"AI database service: {app.state.ai_mongo is not None}")
     print(f"Embeddings client service: {app.state.embeddings_client is not None}")
-    print(f"Redis cache service: {app.state.cache is not None}")
+    print(f"Redis service: {app.state.redis_link.up} (cache and agent events fall back to memory when False)")
     print(f"Session store service: {app.state.sessions is not None}")
     print(f"LLM Inference service: {app.state.llm_inference is not None}")
     print(f"Supabase service: {app.state.supabase is not None}")
@@ -127,12 +128,15 @@ async def lifespan(app: FastAPI):
     
     # do this trick to unpack the clients tuple into individual variables
     mongodb_client, mongodb_database_client = mongo_clients
-    redis_client = await get_redis_client()
-    bytes_redis_client = await get_redis_client(decode_responses=False)  # raw-bytes cache (thumbnails)
+    # Redis is optional: if it is unreachable the cache and agent events use in-process fallbacks
+    redis_link = RedisLink()
+    redis_up = await redis_link.ensure()
+    print("Redis connected." if redis_up else "Redis unavailable, using the in-memory fallback (single worker only).")
     google_drive_service_connected, google_drive_service_instance = await temp_check_google_integration()
     
-    app.state.sessions = SessionStore(redis_client)
-    app.state.cache = CacheStore(redis_client, bytes_redis_client=bytes_redis_client)
+    app.state.sessions = SessionStore(redis_link.client)  # not used by any route yet; needs Redis if it ever is
+    app.state.cache = CacheStore(redis_link)
+    app.state.events = EventBus(redis_link)
     app.state.mongo = mongodb_database_client
 
     treasury_tools.set_mongo(mongodb_database_client)
@@ -140,7 +144,7 @@ async def lifespan(app: FastAPI):
     app.state.ai_mongo = mongodb_client["ai"] if mongodb_client else None
     app.state.history_mongo = mongodb_client["history"] if mongodb_client else None  # snapshots; same cluster/client as the main DB
     prepare_databases(mongodb_database_client, app.state.ai_mongo, app.state.history_mongo)
-    app.state.redis = redis_client 
+    app.state.redis_link = redis_link
     app.state.llm_inference = None # llm_inference
     app.state.embeddings_client = None # embeddings_client
     app.state.supabase = supabase_client
@@ -155,5 +159,4 @@ async def lifespan(app: FastAPI):
     if mongodb_client:
         mongodb_client.close()
         
-    await redis_client.close()
-    await bytes_redis_client.close()
+    await redis_link.close()

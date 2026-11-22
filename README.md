@@ -44,7 +44,7 @@ flowchart LR
 ### Prerequisites
 
 - [bun](https://bun.sh) and [uv](https://docs.astral.sh/uv/)
-- MongoDB (local or Atlas), Redis, a Supabase project
+- MongoDB (local or Atlas), a Supabase project, and optionally Redis (the app runs without it)
 - Optional: Google Cloud OAuth client for Drive, Groq / NVIDIA / Gemini API keys
 
 ### 1. Install
@@ -63,7 +63,7 @@ Create `backend/.env` (never commit it):
 |---|---|
 | `MONGODB_URI` | MongoDB connection string (include credentials in it) |
 | `MONGODB_DATABASE_NAME` | Main database name (required) |
-| `REDIS_URL` | Defaults to `redis://redis:6379/0` (the Docker service). For local dev set `redis://localhost:6379/0` |
+| `REDIS_URL` | Optional. Defaults to `redis://redis:6379/0` (the Docker service). For local dev set `redis://localhost:6379/0`. If Redis is unreachable the app still starts (see Known limits) |
 | `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `SUPABASE_DATABASE_PASSWORD` | Supabase; the secret (service-role) key is used server-side for storage |
 | `GROQ_API_KEY`, `GROQ_MODEL` | Primary LLM |
 | `NVIDIA_NIM_API_KEY`, `NVIDIA_NIM_MODEL` | Fallback and vision LLM |
@@ -99,7 +99,7 @@ The LLM and the embeddings client may be switched off in `backend/lifespan.py` f
 docker-compose up --build
 ```
 
-Serves the built frontend through nginx on `http://localhost:8080` (proxying `/api/` to the backend) plus the backend on 8000 and Redis. Needs `backend/.env.docker` and `frontend/.env`.
+Serves the built frontend through nginx on `http://localhost:8080` (proxying `/api/` to the backend) plus the backend on 8000 and Redis (the backend starts even if Redis is not up). Needs `backend/.env.docker` and `frontend/.env`.
 
 ## Checks
 
@@ -133,6 +133,7 @@ frontend/src/
 - Totals are not split by period: a team budget has no month.
 - Drive duplicate detection needs Drive's MD5 checksum, so Google-native files (Docs, Sheets) are never checked.
 - The Overview reads the whole organization on each visit (no server cache).
+- **Redis is optional.** Without it the cache and the AI agent's live status use the backend's own memory: the cache is lost on restart, thumbnails are capped at 64 MB, and it only works with a single backend worker. The app reconnects to Redis by itself (checked about every 30 seconds).
 
 ## Notes for contributors
 
