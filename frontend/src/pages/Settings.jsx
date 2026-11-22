@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { button } from '../components/button'
 import { usersAPI } from '../api/users'
+import { dispatchUserChange } from '../hooks/useCurrentUser'
 import { useToast } from '../context/toast'
 import Integration from './Integration'
 
@@ -41,6 +42,7 @@ export default function Settings() {
 		try {
 			const saved = await usersAPI.updateMe({ displayName: profile.displayName, email: profile.email.trim() })
 			setUser(saved)
+			dispatchUserChange(saved)
 			setProfile({ displayName: saved.displayName ?? '', email: saved.email ?? '' })
 			push('Profile saved')
 		} catch (e) {
@@ -57,6 +59,7 @@ export default function Settings() {
 		try {
 			const saved = await usersAPI.updateMe({ settings: { [key]: value } })
 			setUser(saved)
+			dispatchUserChange(saved)
 		} catch (e) {
 			setUser((u) => ({ ...u, settings: previous }))
 			push(errorText(e, 'Could not save that preference.'), 'error')

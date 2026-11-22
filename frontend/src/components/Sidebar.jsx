@@ -2,11 +2,14 @@ import { useState } from 'react'
 import Icon from './Icon'
 import { navGroups } from '../api/mockData'
 import { useSelectedOrganization } from '../hooks/useSelectedOrganization'
+import { useCurrentUser, userInitials } from '../hooks/useCurrentUser'
 
 const navFocus = 'focus-visible:outline-[3px] focus-visible:outline-blue-ring focus-visible:outline-offset-2'
 
 export default function Sidebar({ page, setPage }) {
 	const organization = useSelectedOrganization()
+	const user = useCurrentUser()
+	const userName = user?.displayName || user?.email || (user ? 'Set your name in Settings' : '')
 	const [pinned, setPinned] = useState({}) // groups opened by click
 	const [hovered, setHovered] = useState(null)
 	const [muted, setMuted] = useState(null) // group just closed by click; ignore hover until the pointer leaves
@@ -68,10 +71,10 @@ export default function Sidebar({ page, setPage }) {
 						</div>
 					</div>
 					<div className="flex min-w-0 items-center gap-2.5 px-2 max-[560px]:justify-center max-[560px]:px-0">
-						<div className="grid size-8 shrink-0 place-items-center rounded-full bg-brown-soft text-[11px] font-bold text-brown">AM</div>
+						<div className="grid size-8 shrink-0 place-items-center rounded-full bg-brown-soft text-[11px] font-bold text-brown" aria-hidden="true">{user ? userInitials(user) : ''}</div>
 						<div className="overflow-hidden whitespace-nowrap max-[560px]:hidden">
-							<strong className="block overflow-hidden text-xs text-ellipsis">Alex Morgan</strong>
-							<small className="mt-0.75 block overflow-hidden text-[11px] text-ellipsis text-muted">Personal workspace</small>
+							<strong className="block overflow-hidden text-xs text-ellipsis" title={userName}>{userName}</strong>
+							<small className="mt-0.75 block overflow-hidden text-[11px] text-ellipsis text-muted" title={user?.displayName && user?.email ? user.email : undefined}>{user?.displayName && user?.email ? user.email : 'Personal workspace'}</small>
 						</div>
 						<button className="ml-auto text-muted max-[560px]:hidden" aria-label="Open user menu">•••</button>
 					</div>
