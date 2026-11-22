@@ -84,7 +84,7 @@ def check_services(app: FastAPI):
     print(f"MongoDB service: {app.state.mongo is not None}")
     print(f"AI database service: {app.state.ai_mongo is not None}")
     print(f"Embeddings client service: {app.state.embeddings_client is not None}")
-    print(f"Redis service: {app.state.redis_link.up} (cache and agent events fall back to memory when False)")
+    print(f"Redis service: {app.state.redis_link.up}")
     print(f"Session store service: {app.state.sessions is not None}")
     print(f"LLM Inference service: {app.state.llm_inference is not None}")
     print(f"Supabase service: {app.state.supabase is not None}")
