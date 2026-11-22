@@ -27,6 +27,8 @@ export default function App() {
 	const [page, setPage] = useState(() => {
 		try {
 			const saved = sessionStorage.getItem('page') || 'dashboard'
+			// no organization picked yet (first sign-in) -> choose one before anything else
+			if (!sessionStorage.getItem('selectedOrganization')) return 'organization'
 			return saved === 'integration' ? 'settings' : saved // Integration page merged into Settings
 		} catch { return 'dashboard' }
 	})

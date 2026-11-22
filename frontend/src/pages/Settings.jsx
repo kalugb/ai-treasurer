@@ -11,7 +11,7 @@ const CURRENCIES = [['MYR', 'Malaysian Ringgit'], ['USD', 'US Dollar'], ['CAD', 
 const errorText = (e, fallback) => {
 	const detail = e?.response?.data?.detail
 	if (typeof detail === 'string') return detail
-	if (Array.isArray(detail)) return 'Please check the highlighted values (email must look like name@example.com).'
+	if (Array.isArray(detail)) return 'Please check the values you entered.'
 	return fallback
 }
 
@@ -40,7 +40,7 @@ export default function Settings() {
 		setSavingProfile(true)
 		setProfileError('')
 		try {
-			const saved = await usersAPI.updateMe({ displayName: profile.displayName, email: profile.email.trim() })
+			const saved = await usersAPI.updateMe({ displayName: profile.displayName })
 			setUser(saved)
 			dispatchUserChange(saved)
 			setProfile({ displayName: saved.displayName ?? '', email: saved.email ?? '' })
@@ -77,7 +77,8 @@ export default function Settings() {
 				<form onSubmit={saveProfile} className="grid content-start gap-4.5 rounded-[14px] border border-line bg-white p-5.5 max-[560px]:p-4">
 					<div className="mb-5 flex items-start justify-between gap-4.5"><div><h2 className="font-display text-[17px] tracking-[-0.03em]">Profile</h2><p className="mt-1.5 text-[13px] leading-[1.55] text-muted">Your personal details</p></div></div>
 					<label className="grid gap-1.75 text-xs font-bold text-ink">Display name<input className={field} value={profile.displayName} maxLength={80} disabled={!user} onChange={(e) => setProfile((p) => ({ ...p, displayName: e.target.value }))} /></label>
-					<label className="grid gap-1.75 text-xs font-bold text-ink">Email address<input className={field} value={profile.email} maxLength={254} type="email" disabled={!user} aria-invalid={Boolean(profileError)} onChange={(e) => setProfile((p) => ({ ...p, email: e.target.value }))} /></label>
+					<label className="grid gap-1.75 text-xs font-bold text-ink">Username<input className={`${field} text-muted`} value={user?.username ?? ''} readOnly disabled /></label>
+					<label className="grid gap-1.75 text-xs font-bold text-ink">Email address<input className={`${field} text-muted`} value={profile.email} type="email" readOnly disabled /><small className="font-normal text-muted">Your username and email belong to your sign-in, so they can't be changed here yet.</small></label>
 					{profileError && <p className="text-xs text-red" role="alert">{profileError}</p>}
 					<button type="submit" className={button.primary} disabled={!user || savingProfile}>{savingProfile ? 'Saving…' : 'Save changes'}</button>
 				</form>

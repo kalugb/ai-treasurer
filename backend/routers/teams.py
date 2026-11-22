@@ -11,6 +11,7 @@ from services.mongodb import mongodb_ops
 from services.redis.cache import CacheStore
 from services.supabase import supabase_ops
 from models.team import CreateTeamRequest, UpdateTeamRequest
+from services.users import current_owner_id
 
 router = APIRouter(prefix="/api")
 COLLECTION_NAME = "departments"
@@ -50,9 +51,9 @@ def _to_out(doc: dict) -> dict:
     }
 
 async def _verify_org_owner(mongo, org_id: ObjectId, owner_id: str | None):
-    # if ownerId provided, ensure organization belongs to that owner
+    # fail closed: the owner comes from the session (services.users.current_owner_id), never from the client
     if not owner_id:
-        return
+        raise HTTPException(status_code=403, detail="Not authorized for this organization")
     org = await mongodb_ops.read(mongo, collection_name=ORG_COLLECTION, query={"_id": org_id})
     if org is None:
         raise HTTPException(status_code=404, detail="Organization not found")
@@ -61,7 +62,7 @@ async def _verify_org_owner(mongo, org_id: ObjectId, owner_id: str | None):
         raise HTTPException(status_code=403, detail="Not authorized for this organization")
 
 @router.get("/teams")
-async def get_teams(orgId: str | None = None, ownerId: str | None = None, mongo=Depends(get_mongo), cache: CacheStore = Depends(get_cache_redis)):
+async def get_teams(orgId: str | None = None, ownerId: str = Depends(current_owner_id), mongo=Depends(get_mongo), cache: CacheStore = Depends(get_cache_redis)):
     if mongo is None:
         raise HTTPException(status_code=503, detail="Database not available")
     if not orgId:
@@ -81,13 +82,11 @@ async def get_teams(orgId: str | None = None, ownerId: str | None = None, mongo=
     return result
 
 @router.post("/teams", status_code=201)
-async def create_team(payload: CreateTeamRequest, ownerId: str | None = None, mongo=Depends(get_mongo), cache: CacheStore = Depends(get_cache_redis)):
-    # ownerId may come from query param ?ownerId= or from payload ownerId alias
+async def create_team(payload: CreateTeamRequest, ownerId: str = Depends(current_owner_id), mongo=Depends(get_mongo), cache: CacheStore = Depends(get_cache_redis)):
     if mongo is None:
         raise HTTPException(status_code=503, detail="Database not available")
     org_oid = _parse_id(payload.org_id, "orgId")
-    owner = payload.org_owner_id or ownerId
-    await _verify_org_owner(mongo, org_oid, owner)
+    await _verify_org_owner(mongo, org_oid, ownerId)  # the payload's owner id is ignored
     name = payload.team_name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Team name cannot be empty")
@@ -123,7 +122,7 @@ async def create_team(payload: CreateTeamRequest, ownerId: str | None = None, mo
     return _to_out(doc)
 
 @router.put("/teams/{team_id}")
-async def update_team(team_id: str, payload: UpdateTeamRequest, orgId: str | None = None, ownerId: str | None = None, mongo=Depends(get_mongo), cache: CacheStore = Depends(get_cache_redis)):
+async def update_team(team_id: str, payload: UpdateTeamRequest, orgId: str | None = None, ownerId: str = Depends(current_owner_id), mongo=Depends(get_mongo), cache: CacheStore = Depends(get_cache_redis)):
     if mongo is None:
         raise HTTPException(status_code=503, detail="Database not available")
     team_oid = _parse_id(team_id, "team id")
@@ -137,7 +136,7 @@ async def update_team(team_id: str, payload: UpdateTeamRequest, orgId: str | Non
     if orgId and str(_parse_id(orgId, "orgId")) != team_org_str and orgId != team_org_str:
         raise HTTPException(status_code=403, detail="Team does not belong to this organization")
     # verify owner
-    await _verify_org_owner(mongo, team_org_id if isinstance(team_org_id, ObjectId) else _parse_id(team_org_str, "orgId"), ownerId or existing.get("ownerId"))
+    await _verify_org_owner(mongo, team_org_id if isinstance(team_org_id, ObjectId) else _parse_id(team_org_str, "orgId"), ownerId)
     update_data: dict = {}
     if payload.team_name is not None:
         new_name = payload.team_name.strip()
@@ -193,7 +192,7 @@ async def _delete_impact(mongo, team_oid: ObjectId) -> dict:
 
 
 @router.get("/teams/{team_id}/delete-impact")
-async def team_delete_impact(team_id: str, orgId: str | None = None, ownerId: str | None = None, mongo=Depends(get_mongo)):
+async def team_delete_impact(team_id: str, orgId: str | None = None, ownerId: str = Depends(current_owner_id), mongo=Depends(get_mongo)):
     """What deleting this team would permanently destroy (shown in the confirmation dialog)."""
     team_oid, _ = await _team_for_delete(mongo, team_id, orgId, ownerId)
     impact = await _delete_impact(mongo, team_oid)
@@ -237,7 +236,7 @@ def _delete_team_data_compensating(mongo, team_oid: ObjectId) -> None:
 
 
 @router.delete("/teams/{team_id}", status_code=204)
-async def delete_team(team_id: str, orgId: str | None = None, ownerId: str | None = None, confirmRecords: bool = False, mongo=Depends(get_mongo), cache: CacheStore = Depends(get_cache_redis)):
+async def delete_team(team_id: str, orgId: str | None = None, ownerId: str = Depends(current_owner_id), confirmRecords: bool = False, mongo=Depends(get_mongo), cache: CacheStore = Depends(get_cache_redis)):
     team_oid, team_org_str = await _team_for_delete(mongo, team_id, orgId, ownerId)
     impact = await _delete_impact(mongo, team_oid)
     if impact["records"] and not confirmRecords:

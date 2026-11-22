@@ -1,12 +1,19 @@
 services:
   backend:
     build: ./backend
+    # not published on the network: the browser reaches it only through nginx (same origin, so the session cookies stay first-party)
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     env_file:
       - ./backend/.env.docker
     environment:
       - REDIS_URL=redis://redis:6379/0
+      # the address the browser shows; auth callbacks and the CSRF origin check are built from it
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:8080}
+      # true when served over HTTPS (EC2); browsers drop Secure cookies on plain http (except localhost)
+      - COOKIE_SECURE=${COOKIE_SECURE:-false}
+      # the first account takes over the pre-auth data; set false on a new deployment
+      - CLAIM_LEGACY_USER=${CLAIM_LEGACY_USER:-true}
 
   frontend:
     build: ./frontend
@@ -14,8 +21,6 @@ services:
       - "8080:80"
     depends_on:
       - backend
-    env_file:
-      - ./frontend/.env
 
   redis:
     image: redis:7-alpine

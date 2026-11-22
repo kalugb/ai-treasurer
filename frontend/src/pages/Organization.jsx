@@ -2,21 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import Icon from '../components/Icon'
 import { button } from '../components/button'
 import { organizationAPI } from '../api/organization'
-
-const TEMP_USER_ID = import.meta.env.VITE_TEMP_USER_ID ?? '1' // temp pre-auth user, set in frontend/.env
-
-// eslint-disable-next-line no-unused-vars
-const getPublicIP = async () => {
-	try {
-		const response = await fetch('https://api.ipify.org?format=json')
-		if (!response.ok) throw new Error(`${response.status} ${response.statusText}`)
-		const data = await response.json()
-		return data.ip
-	} catch (error) {
-		console.error('Error fetching public IP:', error)
-		return '1'
-	}
-}
+import { useAuth } from '../context/auth'
 
 function DeleteOrgModal({ org, ownerId, onClose, onDelete }) {
 	const field = 'grid gap-2 text-xs font-bold text-ink'
@@ -94,6 +80,7 @@ function DeleteOrgModal({ org, ownerId, onClose, onDelete }) {
 }
 
 export default function Organization({ selectedId = null, onSelect }) {
+	const userKey = useAuth().user.userKey
 	const [organizations, setOrganizations] = useState([])
 	const [name, setName] = useState('')
 	const [editingId, setEditingId] = useState(null)
@@ -116,8 +103,7 @@ export default function Organization({ selectedId = null, onSelect }) {
 		hasFetched.current = true
 		const fetchOrganizations = async () => {
 			try {
-				// const ownerId = await getPublicIP()
-				const ownerId = TEMP_USER_ID
+				const ownerId = userKey
 				ownerIdRef.current = ownerId
 				const res = await organizationAPI.getOrganization(ownerId)
 				const items = Array.isArray(res)
@@ -139,7 +125,7 @@ export default function Organization({ selectedId = null, onSelect }) {
 			}
 		}
 		fetchOrganizations()
-	}, [])
+	}, [userKey])
 
 	const formatCreatedAt = (value) => {
 		if (!value) return null
@@ -161,8 +147,7 @@ export default function Organization({ selectedId = null, onSelect }) {
 		}
 		setSaving(true)
 		try {
-			// const ownerId = ownerIdRef.current ?? await getPublicIP()
-			const ownerId = ownerIdRef.current ?? TEMP_USER_ID
+			const ownerId = ownerIdRef.current ?? userKey
 			ownerIdRef.current = ownerId
 			if (editingId === null) {
 				const created = await organizationAPI.createOrganization({ orgName: value, ownerId })
@@ -246,7 +231,7 @@ export default function Organization({ selectedId = null, onSelect }) {
 				</div>
 			</section>
 			{showModal && <div className="fixed inset-0 z-20 grid place-items-center bg-[rgb(28_35_36/38%)] p-5" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && closeModal()}><div className="max-h-full w-[min(100%,480px)] overflow-y-auto rounded-[14px] border border-line bg-white p-6 shadow-[0_20px_50px_rgb(28_35_36/18%)]" role="dialog" aria-modal="true" aria-labelledby="organization-modal-title"><div className="mb-6 flex items-start justify-between gap-4"><div><h2 id="organization-modal-title" className="font-display text-[20px] tracking-[-0.03em]">{editingId === null ? 'Add organization' : 'Edit organization'}</h2><p className="mt-1.5 text-[13px] leading-6 text-muted">Give this organization a clear, recognizable name.</p></div><button className="rounded-lg px-2 py-1 text-xs font-bold text-blue focus-visible:outline-[3px] focus-visible:outline-blue-ring" type="button" onClick={closeModal}>Close</button></div><form className="grid gap-5" onSubmit={save}><label className="grid gap-2 text-xs font-bold text-ink">Organization name<input className="h-10 w-full rounded-lg border border-line bg-paper px-3 text-[13px] text-ink outline-none focus:border-blue focus:shadow-[0_0_0_3px_var(--color-blue-ring)]" value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Acme Inc." autoFocus disabled={saving} /></label><div className="flex gap-2 border-t border-line pt-5"><button className={button.primary} type="submit" disabled={saving}>{saving ? 'Saving…' : editingId === null ? 'Create organization' : 'Save changes'}</button><button className={button.secondary} type="button" onClick={closeModal} disabled={saving}>Cancel</button></div></form></div></div>}
-			{deletingOrg && <DeleteOrgModal org={deletingOrg} ownerId={TEMP_USER_ID} onClose={() => setDeletingOrg(null)} onDelete={(org) => remove(org.id)} />}
+			{deletingOrg && <DeleteOrgModal org={deletingOrg} ownerId={userKey} onClose={() => setDeletingOrg(null)} onDelete={(org) => remove(org.id)} />}
 		</>
 	)
 }

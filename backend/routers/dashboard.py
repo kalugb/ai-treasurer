@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from services.users import current_owner_id
 
-from models.dashboard import TestPostRequest
 from routers.cashin import build_cashflow
 from routers.google_drive import _to_out
 from routers.reimbursement import receipt_key, receipt_links
@@ -86,7 +86,7 @@ def build_overview(teams: list[dict], receipts: list[dict], dupes: dict, links: 
 
 
 @router.get("/dashboard")
-async def get_dashboard(orgId: str, ownerId: str = Query(min_length=1), mongo=Depends(get_mongo)):
+async def get_dashboard(orgId: str, ownerId: str = Depends(current_owner_id), mongo=Depends(get_mongo)):
     if mongo is None:
         raise HTTPException(status_code=503, detail="Database not available")
     org_oid = _parse_id(orgId, "orgId")
@@ -102,45 +102,3 @@ async def get_dashboard(orgId: str, ownerId: str = Query(min_length=1), mongo=De
     receipts = [{**_to_out(str(d.get("departmentID", "")), d), "id": str(d["_id"]), "key": receipt_key(d), "teamId": str(d.get("departmentID", ""))} for d in docs]
     cash = build_cashflow([r for r in records if r.get("type") == TYPE_CASH_IN], [r for r in records if r.get("type") == TYPE_REIMBURSEMENT], CASH_HISTORY, 0)
     return build_overview(teams, receipts, dupes, links, cash)
-
-
-@router.get("/test-axios")
-def test_axios():
-    return {"message": "Axios test successful!"}
-
-@router.post("/test-post")
-def test_post(request: TestPostRequest):
-    mock_data: dict = {
-        "id": 1,
-        "name": "Mock Data",
-        "description": "This is a mock data response.",
-        "date": "2025-03-19",
-    }
-    
-    return {
-        "message": f"Received data: {request.model_dump()}.",
-        "mock_data": mock_data
-    }
-
-
-if __name__ == "__main__":
-    from bson import ObjectId
-    a, b = ObjectId(), ObjectId()
-    teams = [{"_id": a, "name": "Games", "budget": 100}, {"_id": b, "name": "Dance", "budget": 200}]
-    r = lambda i, team, amount, source="google_drive", date="2026-11-01": {"id": i, "key": f"k{i}", "teamId": str(team), "receiptAmount": amount, "source": source, "date": date, "receiptName": i}
-    receipts = [r("1", a, 90), r("2", a, 30), r("3", a, 50), r("4", b, 0), r("5", b, 20, "local_upload", "2026-11-05")]
-    dupes = {"3": {"status": "confirmed", "excluded": True}, "2": {"status": "pending", "excluded": False}}
-    links = {"k1": {"status": "Reimbursed"}, "k5": {"status": "Not reimbursed"}}
-    cash = {"balance": -10.0, "totalCashIn": 5.0, "totalReimbursement": 15.0, "history": []}
-    o = build_overview(teams, receipts, dupes, links, cash)
-    games, dance = o["teams"]
-    assert games["name"] == "Games" and games["spent"] == 120 and games["remaining"] == -20, games  # confirmed dup left out, pending counted
-    assert dance["spent"] == 20 and dance["receiptCount"] == 2
-    assert o["totals"] == {"budget": 300, "spent": 140, "remaining": 160, "receiptCount": 5}, o["totals"]
-    assert o["attention"] == {"missingAmount": 1, "duplicateReview": 1, "notReimbursed": 3}, o["attention"]
-    assert o["recentReceipts"][0]["id"] == "k5"
-    assert o["notes"][0] == "Games is over budget by RM20.00.", o["notes"]
-    assert any("Cash balance is negative: -RM10.00" in n for n in o["notes"]) and len(o["notes"]) == 4
-    empty = build_overview([], [], {}, {}, {"balance": 0, "totalCashIn": 0, "totalReimbursement": 0, "history": []})
-    assert empty["notes"] == ["Everything is in order."] and empty["totals"]["remaining"] == 0
-    print("ok")

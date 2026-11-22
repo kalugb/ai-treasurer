@@ -3,7 +3,6 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pymongo import ReturnDocument
-from pymongo.errors import DuplicateKeyError
 from starlette.concurrency import run_in_threadpool
 
 from models.user import UserUpdate
@@ -21,29 +20,19 @@ async def get_me(user: dict = Depends(users.get_current_user)):
 @router.patch("/me")
 async def update_me(payload: UserUpdate, request: Request, user: dict = Depends(users.get_current_user)):
     data = payload.model_dump(exclude_unset=True)
-    set_fields, unset_fields = {}, {}
+    set_fields = {}
     if data.get("displayName") is not None:
-        set_fields["displayName"] = data["displayName"].strip()
-    if "email" in data and data["email"] is not None:
-        email = data["email"].strip().lower()
-        if email:
-            set_fields["email"] = email
-        else:
-            unset_fields["email"] = ""
+        set_fields["displayName"] = data["displayName"].strip() or user.get("username") or ""
     for key, value in (data.get("settings") or {}).items():
         if value is not None:
             set_fields[f"settings.{key}"] = value
-    if not set_fields and not unset_fields:
+    if not set_fields:
         raise HTTPException(status_code=400, detail="Nothing to update")
 
-    update = {"$set": {**set_fields, "updatedAt": datetime.now(timezone.utc)}}
-    if unset_fields:
-        update["$unset"] = unset_fields
     col = request.app.state.mongo[users.USER_COLLECTION]
-    try:
-        doc = await run_in_threadpool(col.find_one_and_update, {"_id": user["_id"]}, update, return_document=ReturnDocument.AFTER)
-    except DuplicateKeyError:
-        raise HTTPException(status_code=409, detail="That email is already used by another account.")
+    doc = await run_in_threadpool(
+        col.find_one_and_update, {"_id": user["_id"]}, {"$set": {**set_fields, "updatedAt": datetime.now(timezone.utc)}},
+        return_document=ReturnDocument.AFTER)
     return users.public(doc)
 
 

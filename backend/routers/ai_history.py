@@ -3,7 +3,8 @@ scan documents are written by the scan routes themselves. ownerId is mandatory a
 from datetime import datetime, timezone
 
 from bson import ObjectId
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from services.users import current_owner_id
 from starlette.concurrency import run_in_threadpool
 
 from models.ai_history import RunCreate, RunFinish
@@ -81,7 +82,7 @@ def _team_names(request: Request, team_ids: set) -> dict:
 
 
 @router.post("/runs", status_code=201)
-async def create_run(payload: RunCreate, request: Request, ownerId: str = Query(min_length=1)):
+async def create_run(payload: RunCreate, request: Request, ownerId: str = Depends(current_owner_id)):
     org_oid, user = await authorize(request, payload.orgId, ownerId)
     team_oid = _parse_id(payload.teamId, "teamId")
     team = await run_in_threadpool(request.app.state.mongo[TEAMS].find_one, {"_id": team_oid, "orgId": {"$in": [org_oid, str(org_oid)]}}, {"_id": 1})
@@ -94,7 +95,7 @@ async def create_run(payload: RunCreate, request: Request, ownerId: str = Query(
 
 
 @router.post("/runs/{run_id}/finish")
-async def finish_run(run_id: str, payload: RunFinish, request: Request, ownerId: str = Query(min_length=1)):
+async def finish_run(run_id: str, payload: RunFinish, request: Request, ownerId: str = Depends(current_owner_id)):
     org_oid, user = await authorize(request, payload.orgId, ownerId)
     result = await run_in_threadpool(
         _col(request).update_one,
@@ -109,7 +110,7 @@ async def finish_run(run_id: str, payload: RunFinish, request: Request, ownerId:
 @router.get("")
 async def list_history(
     request: Request,
-    orgId: str = Query(min_length=1), ownerId: str = Query(min_length=1),
+    orgId: str = Query(min_length=1), ownerId: str = Depends(current_owner_id),
     kind: str = Query("all", pattern="^(all|scan|bulk_run)$"),
     limit: int = Query(20, ge=1, le=50), offset: int = Query(0, ge=0),
 ):
@@ -132,7 +133,7 @@ async def list_history(
 
 
 @router.get("/{item_id}")
-async def get_history(item_id: str, request: Request, orgId: str = Query(min_length=1), ownerId: str = Query(min_length=1)):
+async def get_history(item_id: str, request: Request, orgId: str = Query(min_length=1), ownerId: str = Depends(current_owner_id)):
     org_oid, user = await authorize(request, orgId, ownerId)
     col = _col(request)
     oid = _parse_id(item_id, "history id")

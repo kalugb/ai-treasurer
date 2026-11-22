@@ -2,6 +2,7 @@ from datetime import datetime, time, timezone
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
+from services.users import current_owner_id
 from pymongo.errors import DuplicateKeyError
 
 from models.reimbursement import ReimbursementCreate, ReimbursementDelete, ReimbursementUpdate
@@ -156,7 +157,7 @@ def _require_db(mongo):
 
 
 @router.get("/reimbursements")
-async def list_reimbursements(orgId: str, ownerId: str | None = None, mongo=Depends(get_mongo)):
+async def list_reimbursements(orgId: str, ownerId: str = Depends(current_owner_id), mongo=Depends(get_mongo)):
     _require_db(mongo)
     org_oid = _parse_id(orgId, "orgId")
     await _verify_org_owner(mongo, org_oid, ownerId)
@@ -169,7 +170,7 @@ async def list_reimbursements(orgId: str, ownerId: str | None = None, mongo=Depe
 
 
 @router.post("/reimbursements", status_code=201)
-async def create_reimbursement(payload: ReimbursementCreate, ownerId: str | None = None, mongo=Depends(get_mongo)):
+async def create_reimbursement(payload: ReimbursementCreate, ownerId: str = Depends(current_owner_id), mongo=Depends(get_mongo)):
     _require_db(mongo)
     org_oid = _parse_id(payload.orgId, "orgId")
     await _verify_org_owner(mongo, org_oid, ownerId)
@@ -204,7 +205,7 @@ async def create_reimbursement(payload: ReimbursementCreate, ownerId: str | None
 
 
 @router.patch("/reimbursements/{record_id}")
-async def update_reimbursement(record_id: str, payload: ReimbursementUpdate, ownerId: str | None = None, mongo=Depends(get_mongo)):
+async def update_reimbursement(record_id: str, payload: ReimbursementUpdate, ownerId: str = Depends(current_owner_id), mongo=Depends(get_mongo)):
     _require_db(mongo)
     record_oid = _parse_id(record_id, "reimbursement id")
     existing = await mongodb_ops.read(mongo, collection_name=COLLECTION_NAME, query={"_id": record_oid, "type": TYPE_REIMBURSEMENT})
@@ -276,7 +277,7 @@ async def update_reimbursement(record_id: str, payload: ReimbursementUpdate, own
 
 
 @router.post("/reimbursements/delete")
-async def delete_reimbursements(payload: ReimbursementDelete, ownerId: str | None = None, mongo=Depends(get_mongo)):
+async def delete_reimbursements(payload: ReimbursementDelete, ownerId: str = Depends(current_owner_id), mongo=Depends(get_mongo)):
     _require_db(mongo)
     org_oid = _parse_id(payload.orgId, "orgId")
     await _verify_org_owner(mongo, org_oid, ownerId)

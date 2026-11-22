@@ -14,7 +14,5 @@ class UserSettingsUpdate(BaseModel):
 
 class UserUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    displayName: str | None = Field(None, max_length=80)
-    # "" clears the email
-    email: str | None = Field(None, max_length=254, pattern=r"^(|[^@\s]+@[^@\s]+\.[^@\s]+)$")
+    displayName: str | None = Field(None, max_length=80)  # email and username belong to the login and can't change here
     settings: UserSettingsUpdate | None = None

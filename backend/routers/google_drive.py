@@ -6,13 +6,15 @@ from datetime import datetime, timezone
 import pypdfium2 as pdfium
 from bson import ObjectId
 from bson.errors import InvalidId
-from fastapi import APIRouter, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
 from googleapiclient.errors import HttpError
 from starlette.concurrency import run_in_threadpool
 from starlette.responses import StreamingResponse
 
 from models.receipt import DuplicateReviewIn, ReceiptDelete, ReceiptUpdate
 from routers.reimbursement import receipt_key, receipt_links
+from routers.teams import _verify_org_owner
+from services.users import current_owner_id, get_current_user
 from services.ai import receipt_scan
 from services.ai import history as ai_history
 from services.google.drive_tokens import run_for_org
@@ -22,7 +24,8 @@ from services import duplicates
 from services.mongodb import mongodb_ops
 from services.supabase import supabase_ops
 
-router = APIRouter(prefix="/api/google-drive")
+# signed in first, then (in _team_ids) the team must belong to an org this user owns
+router = APIRouter(prefix="/api/google-drive", dependencies=[Depends(get_current_user)])
 TEAMS_COLLECTION = "departments"
 RECEIPTS_COLLECTION = "receipts"
 CACHE_KEY_NAME = "receipts"
@@ -55,6 +58,12 @@ async def _team_ids(request: Request, team_id: str):
         raise HTTPException(status_code=404, detail="Team not found")
 
     org_id = team.get("orgId") or team.get("orgID")
+    # every route here goes through this lookup, so this is the one place that ties a team to the signed-in owner
+    user = request.state.user  # set by get_current_user, a dependency of this whole router
+    try:
+        await _verify_org_owner(mongo, org_id if isinstance(org_id, ObjectId) else ObjectId(str(org_id)), user["userKey"])
+    except (HTTPException, InvalidId):
+        raise HTTPException(status_code=404, detail="Team not found")  # same answer as a missing team
     folder_id = team.get("googleDriveFolderId") or team.get("google_drive_folder_id")
     return team_oid, org_id, folder_id
 
@@ -288,6 +297,8 @@ async def sync_team_receipts_stream(team_id: str, request: Request):
     """SSE variant: runs the sync and streams `started` then `done`/`error`.
     POST only (it writes), so opening the URL in a browser can't trigger a sync.
     The whole job runs inside this request; closing the connection stops it."""
+    await _team_ids(request, team_id)  # sign-in and ownership are checked before the stream opens (a 401 can't be an SSE frame)
+
     async def event_source():
         yield _sse("started", {"teamId": team_id})
         try:
@@ -306,7 +317,7 @@ async def sync_team_receipts_stream(team_id: str, request: Request):
 
 
 @router.patch("/teams/{team_id}/receipts/{file_id}")
-async def update_team_receipt(team_id: str, file_id: str, payload: ReceiptUpdate, request: Request, historyId: str | None = None, ownerId: str | None = None):
+async def update_team_receipt(team_id: str, file_id: str, payload: ReceiptUpdate, request: Request, historyId: str | None = None, ownerId: str = Depends(current_owner_id)):
     """Persist user-editable fields (amount, description, label) on a receipt.
     historyId + ownerId (sent by the bulk AI run) record in the AI history that the AI saved these fields."""
     dept_oid, org_id, _folder_id = await _team_ids(request, team_id)
@@ -540,7 +551,7 @@ async def get_team_receipt_thumbnail(team_id: str, file_id: str, request: Reques
 
 
 @router.post("/teams/{team_id}/receipts/{file_id}/scan")
-async def scan_team_receipt(team_id: str, file_id: str, request: Request, ownerId: str | None = None, trigger: str = "receipt_edit", runId: str | None = None):
+async def scan_team_receipt(team_id: str, file_id: str, request: Request, ownerId: str = Depends(current_owner_id), trigger: str = "receipt_edit", runId: str | None = None):
     """AI-extract name/amount/description from a stored receipt (nothing is saved on the receipt).
     Uses the ORIGINAL file, so a PDF goes text-first (MarkItDown -> LLM) and is only
     read visually when it has no text layer; images go to the vision model.

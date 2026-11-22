@@ -18,6 +18,7 @@ from routers.teams import (
 )
 
 from models.organization import CreateOrganizationRequest, UpdateOrganizationRequest
+from services.users import current_owner_id
 
 router = APIRouter(prefix="/api")
 COLLECTION_NAME = "organizations"
@@ -47,7 +48,7 @@ def _parse_id(org_id: str) -> ObjectId:
         raise HTTPException(status_code=400, detail="Invalid organization id")
 
 @router.get("/organizations")
-async def get_organization(ownerId: str, mongo=Depends(get_mongo), cache: CacheStore = Depends(get_cache_redis)):
+async def get_organization(ownerId: str = Depends(current_owner_id), mongo=Depends(get_mongo), cache: CacheStore = Depends(get_cache_redis)):
     if mongo is None:
         raise HTTPException(status_code=503, detail="Database not available")
     cache_key = cache.key_builder(ownerId, CACHE_KEY_NAME)
@@ -72,24 +73,24 @@ async def get_organization(ownerId: str, mongo=Depends(get_mongo), cache: CacheS
     return result
 
 @router.post("/organizations", status_code=201)
-async def create_organization(payload: CreateOrganizationRequest, mongo=Depends(get_mongo), cache: CacheStore = Depends(get_cache_redis)):
+async def create_organization(payload: CreateOrganizationRequest, ownerId: str = Depends(current_owner_id), mongo=Depends(get_mongo), cache: CacheStore = Depends(get_cache_redis)):
     if mongo is None:
         raise HTTPException(status_code=503, detail="Database not available")
     org_name = payload.org_name.strip()
     if not org_name:
         raise HTTPException(status_code=400, detail="Organization name cannot be empty")
     # duplicate check (exact match) — mongo uses camelCase
-    existing = await mongodb_ops.read(mongo, collection_name=COLLECTION_NAME, query={"ownerId": payload.owner_id, "orgName": org_name}, read_many=True)
+    existing = await mongodb_ops.read(mongo, collection_name=COLLECTION_NAME, query={"ownerId": ownerId, "orgName": org_name}, read_many=True)
     if existing:
         raise HTTPException(status_code=409, detail="Organization name already exists")
-    doc = {"orgName": org_name, "ownerId": payload.owner_id, "createdAt": datetime.now(timezone.utc)}
+    doc = {"orgName": org_name, "ownerId": ownerId, "createdAt": datetime.now(timezone.utc)}
     inserted_id = await mongodb_ops.create(mongo, doc_to_create=doc, collection_name=COLLECTION_NAME)
     doc["_id"] = inserted_id
-    await cache.delete(cache.key_builder(payload.owner_id, CACHE_KEY_NAME))
+    await cache.delete(cache.key_builder(ownerId, CACHE_KEY_NAME))
     return _to_out(doc)
 
 @router.put("/organizations/{org_id}")
-async def update_organization(org_id: str, payload: UpdateOrganizationRequest, mongo=Depends(get_mongo), cache: CacheStore = Depends(get_cache_redis)):
+async def update_organization(org_id: str, payload: UpdateOrganizationRequest, ownerId: str = Depends(current_owner_id), mongo=Depends(get_mongo), cache: CacheStore = Depends(get_cache_redis)):
     if mongo is None:
         raise HTTPException(status_code=503, detail="Database not available")
     oid = _parse_id(org_id)
@@ -99,6 +100,7 @@ async def update_organization(org_id: str, payload: UpdateOrganizationRequest, m
     existing = await mongodb_ops.read(mongo, collection_name=COLLECTION_NAME, query={"_id": oid})
     if existing is None:
         raise HTTPException(status_code=404, detail="Organization not found")
+    await _verify_org_owner(mongo, oid, ownerId)
     owner_id_val = existing.get("ownerId", existing.get("owner_id", existing.get("ownerID")))
     # duplicate check within same owner — camelCase
     dup = await mongodb_ops.read(mongo, collection_name=COLLECTION_NAME, query={"ownerId": owner_id_val, "orgName": org_name, "_id": {"$ne": oid}})
@@ -146,7 +148,7 @@ async def _org_cashins(mongo, oid: ObjectId, org_id: str) -> list[dict]:
 
 
 @router.get("/organizations/{org_id}/delete-impact")
-async def organization_delete_impact(org_id: str, request: Request, ownerId: str | None = None, mongo=Depends(get_mongo)):
+async def organization_delete_impact(org_id: str, request: Request, ownerId: str = Depends(current_owner_id), mongo=Depends(get_mongo)):
     """What deleting this organization would permanently destroy (shown in the confirmation dialog)."""
     if mongo is None:
         raise HTTPException(status_code=503, detail="Database not available")
@@ -170,13 +172,14 @@ async def organization_delete_impact(org_id: str, request: Request, ownerId: str
 
 
 @router.delete("/organizations/{org_id}", status_code=204)
-async def delete_organization(org_id: str, request: Request, mongo=Depends(get_mongo), cache: CacheStore = Depends(get_cache_redis)):
+async def delete_organization(org_id: str, request: Request, ownerId: str = Depends(current_owner_id), mongo=Depends(get_mongo), cache: CacheStore = Depends(get_cache_redis)):
     if mongo is None:
         raise HTTPException(status_code=503, detail="Database not available")
     oid = _parse_id(org_id)
     existing = await mongodb_ops.read(mongo, collection_name=COLLECTION_NAME, query={"_id": oid})
     if existing is None:
         raise HTTPException(status_code=404, detail="Organization not found")
+    await _verify_org_owner(mongo, oid, ownerId)
     owner_id_val = existing.get("ownerId", existing.get("owner_id", existing.get("ownerID")))
     team_oids, receipts, _ = await _cascade_scopes(mongo, oid, org_id)
     cashins = await _org_cashins(mongo, oid, org_id)

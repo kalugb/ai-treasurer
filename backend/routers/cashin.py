@@ -6,6 +6,7 @@ from datetime import datetime, time, timezone
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
+from services.users import current_owner_id
 from starlette.concurrency import run_in_threadpool
 
 from models.cashin import CashInDelete
@@ -128,7 +129,7 @@ def build_cashflow(cashins: list[dict], reimbursements: list[dict], limit: int, 
 
 
 @router.get("/cashins")
-async def list_cashins(orgId: str, ownerId: str = Query(min_length=1), mongo=Depends(get_mongo)):
+async def list_cashins(orgId: str, ownerId: str = Depends(current_owner_id), mongo=Depends(get_mongo)):
     _require_db(mongo)
     org_oid = _parse_id(orgId, "orgId")
     await _verify_org_owner(mongo, org_oid, ownerId)
@@ -141,7 +142,7 @@ async def list_cashins(orgId: str, ownerId: str = Query(min_length=1), mongo=Dep
 @router.get("/cashflow")
 async def get_cashflow(
     orgId: str,
-    ownerId: str = Query(min_length=1),
+    ownerId: str = Depends(current_owner_id),
     limit: int = Query(5, ge=1, le=HISTORY_MAX),
     offset: int = Query(0, ge=0),
     mongo=Depends(get_mongo),
@@ -164,7 +165,7 @@ async def create_cashin(
     amount: float = Form(..., ge=0, le=1e12),
     source: str = Form(..., min_length=1, max_length=200),
     file: UploadFile | None = File(None),
-    ownerId: str = Query(min_length=1),
+    ownerId: str = Depends(current_owner_id),
     mongo=Depends(get_mongo),
 ):
     _require_db(mongo)
@@ -204,7 +205,7 @@ async def update_cashin(
     source: str | None = Form(None, min_length=1, max_length=200),
     removeImage: bool = Form(False),
     file: UploadFile | None = File(None),
-    ownerId: str = Query(min_length=1),
+    ownerId: str = Depends(current_owner_id),
     mongo=Depends(get_mongo),
 ):
     _require_db(mongo)
@@ -251,7 +252,7 @@ async def update_cashin(
 
 
 @router.post("/cashins/delete")
-async def delete_cashins(payload: CashInDelete, ownerId: str = Query(min_length=1), mongo=Depends(get_mongo)):
+async def delete_cashins(payload: CashInDelete, ownerId: str = Depends(current_owner_id), mongo=Depends(get_mongo)):
     _require_db(mongo)
     org_oid = _parse_id(payload.orgId, "orgId")
     await _verify_org_owner(mongo, org_oid, ownerId)
@@ -266,7 +267,7 @@ async def delete_cashins(payload: CashInDelete, ownerId: str = Query(min_length=
 
 
 @router.get("/cashins/{record_id}/image")
-async def get_cashin_image(record_id: str, ownerId: str = Query(min_length=1), mongo=Depends(get_mongo)):
+async def get_cashin_image(record_id: str, ownerId: str = Depends(current_owner_id), mongo=Depends(get_mongo)):
     """The proof image. Private: served here after the owner check, never through a public bucket URL."""
     _require_db(mongo)
     doc = await mongodb_ops.read(mongo, collection_name=COLLECTION_NAME, query={"_id": _parse_id(record_id, "cash in id"), "type": TYPE})
