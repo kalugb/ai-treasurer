@@ -1,17 +1,31 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Icon from '../components/Icon'
 import { button } from '../components/button'
 import { useGoogleIntegration } from '../hooks/useGoogleIntegration'
-import { googleAPI } from '../api/googleConnect'
+import { usersAPI } from '../api/users'
 import Modal from '../components/Modal'
 import { useToast } from '../context/toast'
 
 export default function IntegrationSection() {
-	const { connected, setConnected, loading, setLoading } = useGoogleIntegration();
+	const { connected, accountEmail, loading, setLoading, refresh } = useGoogleIntegration();
 	const [showDisconnectModal, setShowDisconnectModal] = useState(false);
 	const { push } = useToast();
+	const handledReturn = useRef(false);
 
 	const showToast = (message, type = 'success') => push(message, type);
+
+	// back from Google's consent page: /?googleDrive=connected|error
+	useEffect(() => {
+		if (handledReturn.current) return
+		handledReturn.current = true
+		const params = new URLSearchParams(window.location.search)
+		const result = params.get('googleDrive')
+		if (!result) return
+		params.delete('googleDrive')
+		const query = params.toString()
+		window.history.replaceState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`)
+		push(result === 'connected' ? 'Google Drive connected' : 'Could not connect Google Drive. Please try again.', result === 'connected' ? 'success' : 'error')
+	}, [push]);
 
 	const handleGoogleIntegration = async () => {
 		if (connected) {
@@ -19,13 +33,11 @@ export default function IntegrationSection() {
 		} else {
 			try {
 				setLoading(true);
-				await googleAPI.connectGoogleIntegration();
-				setConnected(true);
-				showToast('Google connected successfully');
+				const { authUrl } = await usersAPI.connectDrive();
+				window.location.assign(authUrl); // Google redirects back here when done
 			} catch (error) {
 				console.error('Error connecting Google integration:', error);
-				showToast('Failed to connect Google', 'error');
-			} finally {
+				showToast(error?.response?.data?.detail || 'Failed to connect Google', 'error');
 				setLoading(false);
 			}
 		}
@@ -34,14 +46,14 @@ export default function IntegrationSection() {
 	const confirmDisconnect = async () => {
 		try {
 			setLoading(true);
-			await googleAPI.disconnectGoogleIntegration();
-			setConnected(false);
+			await usersAPI.disconnectDrive();
+			await refresh();
 			showToast('Google disconnected successfully');
 		} catch (error) {
 			console.error('Error disconnecting Google integration:', error);
 			showToast('Failed to disconnect Google', 'error');
-		} finally {
 			setLoading(false);
+		} finally {
 			setShowDisconnectModal(false);
 		}
 	};
@@ -54,7 +66,7 @@ export default function IntegrationSection() {
 					<div className="grid size-12 shrink-0 place-items-center rounded-xl bg-blue-soft font-display text-2xl font-extrabold text-[#4285f4]">G</div>
 					<div className="flex-1">
 						<div className="flex items-center gap-2.5"><h2 className="font-display text-[17px] tracking-[-0.03em]">Google</h2><span className={`rounded-[20px] px-2 py-1.25 text-[10px] font-bold ${connected ? 'bg-green-soft text-green' : 'bg-paper text-muted'}`}>{connected ? 'Connected' : 'Available'}</span></div>
-						<p className="mb-4.5 mt-2 max-w-112.5 text-[13px] leading-[1.55] text-muted">Connect Google Drive to import receipt files and keep your records organized.</p>
+						<p className="mb-4.5 mt-2 max-w-112.5 text-[13px] leading-[1.55] text-muted">{connected && accountEmail ? <>Connected as <strong className="text-ink">{accountEmail}</strong>. Your organizations' teams sync receipts from this Drive.</> : 'Connect Google Drive to import receipt files and keep your records organized.'}</p>
 						<button className={loading ? 'inline-flex min-h-10.5 items-center justify-center gap-2 rounded-lg border border-transparent px-3.75 text-[13px] font-bold transition-[transform,background-color,border-color] duration-200 ease-out bg-line hover:bg-line/80 cursor-not-allowed' : connected ? button.secondary : button.primary} onClick={handleGoogleIntegration} disabled={loading}>
 							<Icon name={loading ? 'spinner' : connected ? 'plug' : 'plus'} size={16} />
 							{loading ? 'Loading...' : connected ? 'Disconnect' : 'Connect Google'}

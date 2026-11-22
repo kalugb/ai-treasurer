@@ -13,9 +13,10 @@ from services.ai.inference.chat import LLMInference
 
 from services.ai.embeddings.init_embedding_client import get_embedding_client
 
-from services.ai.tools import treasury_tools
+from services.ai.tools import treasury_tools, google_tools
 from routers.reimbursement import ensure_indexes as ensure_reimbursement_indexes
-from services import duplicates
+from services import duplicates, users
+from services.google import drive_tokens
 
 from dotenv import load_dotenv
 import os
@@ -55,18 +56,6 @@ async def init_llm_inference():
         
         return None
     
-async def temp_check_google_integration() -> bool:
-    from services.google.google_connect import google_drive_service_exists, get_drive_service
-    from services.google.google_ops import GoogleDriveService
-    
-    if google_drive_service_exists():
-        drive_service = get_drive_service()
-        drive_service_instance = GoogleDriveService(drive_service)
-        
-        return True, drive_service_instance
-    else:
-        return False, None
-    
 async def init_embeddings_client():
     try:
         embedding_client = get_embedding_client()
@@ -88,7 +77,11 @@ def check_services(app: FastAPI):
     print(f"Session store service: {app.state.sessions is not None}")
     print(f"LLM Inference service: {app.state.llm_inference is not None}")
     print(f"Supabase service: {app.state.supabase is not None}")
-    print(f"Google Drive service: {app.state.google_drive_service_connected and bool(app.state.google_drive_service_instance)}")
+    try:
+        drive_users = drive_tokens.connected_count(app.state.mongo) if app.state.mongo is not None else 0
+    except Exception:
+        drive_users = "unknown"
+    print(f"Google Drive: users connected: {drive_users}")
 
 def _best_effort(label: str, step):
     """Run one startup step; a failure is logged, never stops the app."""
@@ -103,6 +96,10 @@ def prepare_databases(main_db, ai_db, history_db):
     from services.ai.history import ensure_indexes as ensure_ai_history_indexes
 
     if main_db is not None:
+        # unique userKey/email; without them a duplicate user/email is possible
+        _best_effort("create the user indexes", lambda: users.ensure_indexes(main_db))
+        # one-time move of the old shared google_creds/token.json into user "1" (encrypted)
+        _best_effort("import google_creds/token.json", lambda: drive_tokens.import_legacy_token(main_db))
         # the server-side pre-check still rejects double links; only the race window is open
         _best_effort("create the reimbursement receipt-link index", lambda: ensure_reimbursement_indexes(main_db))
         # the upload-time pre-insert check still rejects duplicates; only the race window is open
@@ -132,7 +129,6 @@ async def lifespan(app: FastAPI):
     redis_link = RedisLink()
     redis_up = await redis_link.ensure()
     print("Redis connected." if redis_up else "Redis unavailable, using the in-memory fallback (single worker only).")
-    google_drive_service_connected, google_drive_service_instance = await temp_check_google_integration()
     
     app.state.sessions = SessionStore(redis_link.client)  # not used by any route yet; needs Redis if it ever is
     app.state.cache = CacheStore(redis_link)
@@ -140,6 +136,7 @@ async def lifespan(app: FastAPI):
     app.state.mongo = mongodb_database_client
 
     treasury_tools.set_mongo(mongodb_database_client)
+    google_tools.set_mongo(mongodb_database_client)
 
     app.state.ai_mongo = mongodb_client["ai"] if mongodb_client else None
     app.state.history_mongo = mongodb_client["history"] if mongodb_client else None  # snapshots; same cluster/client as the main DB
@@ -148,8 +145,6 @@ async def lifespan(app: FastAPI):
     app.state.llm_inference = None # llm_inference
     app.state.embeddings_client = None # embeddings_client
     app.state.supabase = supabase_client
-    app.state.google_drive_service_connected = google_drive_service_connected
-    app.state.google_drive_service_instance = google_drive_service_instance
     
     check_services(app)
     

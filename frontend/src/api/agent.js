@@ -1,6 +1,5 @@
 import { request, requestWithFile, API_BASE_URL } from './client'
-
-const USER_ID = import.meta.env.VITE_TEMP_USER_ID ?? '1' // temp pre-auth user, set in frontend/.env
+import { CURRENT_USER_ID as USER_ID } from './currentUser'
 
 // Absolute SSE URL (EventSource can't use the axios client).
 export const agentStreamUrl = (userId = USER_ID) => `${API_BASE_URL}/api/agent/stream?userId=${encodeURIComponent(userId)}`

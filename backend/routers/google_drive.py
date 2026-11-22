@@ -15,7 +15,7 @@ from models.receipt import DuplicateReviewIn, ReceiptDelete, ReceiptUpdate
 from routers.reimbursement import receipt_key, receipt_links
 from services.ai import receipt_scan
 from services.ai import history as ai_history
-from services.google.google_ops import GoogleDriveService
+from services.google.drive_tokens import run_for_org
 from pymongo.errors import DuplicateKeyError
 
 from services import duplicates
@@ -33,17 +33,6 @@ UPLOAD_DOC_TYPES = {
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "application/vnd.ms-excel",
 }
-
-
-def get_google_drive_service_instance(request: Request):
-    instance = getattr(request.app.state, "google_drive_service_instance", None)
-    if instance:
-        return instance
-    # connect endpoint stores the raw service; wrap it so routes work without a restart
-    raw = getattr(request.app.state, "google_drive_service", None)
-    if raw:
-        return GoogleDriveService(raw)
-    raise HTTPException(status_code=503, detail="Google Drive service is not connected")
 
 
 def _get_mongo(request: Request):
@@ -212,9 +201,9 @@ async def _run_sync(request: Request, team_id: str) -> dict:
         raise HTTPException(status_code=400, detail="Team has no Google Drive folder configured")
 
     mongo = _get_mongo(request)
-    drive = get_google_drive_service_instance(request)
     try:
-        files = await run_in_threadpool(drive.get_folder_content_by_id_with_pagination, folder_id)
+        # the org owner's Drive connection (409 if they haven't connected)
+        files = await run_for_org(request, org_id, lambda drive: drive.get_folder_content_by_id_with_pagination(folder_id))
     except HttpError as exc:
         status = getattr(exc.resp, "status", None)
         if status in (400, 404):
@@ -576,7 +565,9 @@ async def scan_team_receipt(team_id: str, file_id: str, request: Request, ownerI
         if doc.get("createdFrom") == "local_upload":
             data = await run_in_threadpool(supabase_ops.download_receipt, doc.get("storagePath"))
         else:
-            data = await run_in_threadpool(get_google_drive_service_instance(request).download_files_bytes, file_id)
+            data = await run_for_org(request, org_id, lambda drive: drive.download_files_bytes(file_id))
+    except HTTPException:
+        raise
     except Exception:
         raise HTTPException(status_code=502, detail="Could not fetch the receipt file")
     name = doc.get("receiptName") or "receipt"
@@ -621,8 +612,9 @@ async def serve_receipt_thumbnail(request: Request, doc: dict, file_id: str) -> 
             if is_local:
                 image = await run_in_threadpool(_local_image_bytes, doc.get("storagePath"), is_pdf)
             else:
-                drive = get_google_drive_service_instance(request)
-                image = await run_in_threadpool(_drive_image_bytes, drive, file_id, is_pdf)
+                image = await run_for_org(request, doc.get("orgID"), _drive_image_bytes, file_id, is_pdf)
+        except HTTPException:
+            raise
         except Exception:
             raise HTTPException(status_code=502, detail="Could not fetch the receipt file")
         await cache.set_bytes(cache_key, image, custom_ttl=THUMBNAIL_CACHE_SECONDS)

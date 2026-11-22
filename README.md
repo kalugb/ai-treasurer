@@ -65,6 +65,8 @@ Create `backend/.env` (never commit it):
 | `MONGODB_DATABASE_NAME` | Main database name (required) |
 | `REDIS_URL` | Optional. Defaults to `redis://redis:6379/0` (the Docker service). For local dev set `redis://localhost:6379/0`. If Redis is unreachable the app still starts (see Known limits) |
 | `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `SUPABASE_DATABASE_PASSWORD` | Supabase; the secret (service-role) key is used server-side for storage |
+| `TOKEN_ENCRYPTION_KEY` | Needed for Google Drive. Fernet key that encrypts stored Google tokens (see One-time setup) |
+| `GOOGLE_OAUTH_REDIRECT_URI`, `FRONTEND_URL` | Optional. Default `http://localhost:8000/api/connect/google/callback` and `http://localhost:5173`; change both when deploying |
 | `GROQ_API_KEY`, `GROQ_MODEL` | Primary LLM |
 | `NVIDIA_NIM_API_KEY`, `NVIDIA_NIM_MODEL` | Fallback and vision LLM |
 | `GEMINI_API_KEY`, `GEMINI_EMBEDDINGS_MODEL` | Embeddings for agent memory |
@@ -75,12 +77,12 @@ Create `frontend/.env`:
 | Variable | Purpose |
 |---|---|
 | `VITE_API_URL` | Backend URL; defaults to `http://localhost:8000`. Use `/api` for the Docker/nginx build |
-| `VITE_TEMP_USER_ID` | Placeholder owner id until login exists |
+| `VITE_TEMP_USER_ID` | Placeholder user id until login exists (default `1`) |
 
 ### 3. One-time external setup
 
 - **Supabase Storage**: create three **private** buckets: `receipts`, `cashInImage`, `agentExports`. The code never creates them; uploads fail with 502 until they exist.
-- **Google Drive** (optional): put the OAuth client file at `backend/google_creds/credentials.json`, then connect from Settings. The token is saved as `backend/google_creds/token.json`. Both are gitignored.
+- **Google Drive** (optional): create a **Web application** OAuth client in Google Cloud, register the redirect URI `http://localhost:8000/api/connect/google/callback` (plus `http://localhost:8080/...` for Docker, and your domain's when deployed), and save its JSON as `backend/google_creds/credentials.json` (gitignored). Set `TOKEN_ENCRYPTION_KEY` (generate with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`; keep it safe, losing it means everyone reconnects). Then each user connects their own Drive from Settings; tokens are stored encrypted in MongoDB. A team's receipts sync with its organization owner's Drive. If the Google consent screen is in Testing mode, add yourself as a test user (tokens then expire after 7 days).
 - **MongoDB**: indexes are created on backend start. For agent memory recall on Atlas, create the vector index `long-term-memory` on `ai.memories` (`textEmbedding`, 3072 dims, cosine; filter fields `userId`, `orgId`). A replica set (Atlas always is one) gives true all-or-nothing team deletes and snapshots; a standalone server uses a slower fallback.
 - **Groq**: accept the chosen model's terms in the Groq console, or calls fail and everything runs on NVIDIA.
 

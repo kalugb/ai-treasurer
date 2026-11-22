@@ -108,13 +108,14 @@ class GoogleDriveService:
 
 if __name__ == "__main__":
     import asyncio
-    from services.google.google_connect import get_drive_service
+    from services.google import drive_tokens
+    from services.mongodb.mongodb_connect import connect_to_mongodb
     
     id = None
     
     async def main():
-        drive_service = get_drive_service()
-        drive_service_instance = GoogleDriveService(drive_service)
+        # dev check: uses user "1"'s stored Drive connection
+        drive_service_instance = drive_tokens.service_for_user(connect_to_mongodb()[1], "1")
         
         async def print_file_metadata(folder_id):
             # Example usage: Get metadata by folder ID
