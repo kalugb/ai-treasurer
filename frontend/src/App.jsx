@@ -26,6 +26,8 @@ import BulkReviewModal from './components/BulkReviewModal'
 export default function App() {
 	const [page, setPage] = useState(() => {
 		try {
+			// back from Google's consent page -> Settings, where the connection result is shown
+			if (new URLSearchParams(window.location.search).has('googleDrive')) return 'settings'
 			const saved = sessionStorage.getItem('page') || 'dashboard'
 			// no organization picked yet (first sign-in) -> choose one before anything else
 			if (!sessionStorage.getItem('selectedOrganization')) return 'organization'
