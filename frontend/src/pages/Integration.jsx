@@ -79,7 +79,7 @@ export default function IntegrationSection() {
 				onClose={() => setShowDisconnectModal(false)}
 				title="Disconnect Google?"
 			>
-				<p className="text-muted">Are you sure you want to disconnect Google Drive? You'll need to reconnect to import receipts again.</p>
+				<p className="text-muted">Are you sure you want to disconnect Google Drive? <br /><br /> <b><u>Note:</u></b> <br /> <b>Receipts and it's info</b> synced from Google Drive will be <b className="text-red-600">removed.</b> <br /> You will need to <b>re-input the receipt and its info again</b> if you choose to reconnect back.</p>
 				<div className="mt-6 flex items-center justify-end gap-3" slot="footer">
 					<button className={button.quiet} onClick={() => setShowDisconnectModal(false)}>Cancel</button>
 					<button className="inline-flex min-h-10.5 items-center justify-center gap-2 rounded-lg border border-transparent px-3.75 text-[13px] font-bold transition-[transform,background-color,border-color] duration-200 ease-out hover:-translate-y-0.25 focus-visible:outline-[3px] focus-visible:outline-blue-ring focus-visible:outline-offset-2 bg-red-soft text-red hover:bg-red-soft/80" onClick={confirmDisconnect} disabled={loading}>
