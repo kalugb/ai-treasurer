@@ -103,7 +103,15 @@ export default function Login() {
 		return REDIRECT_ERRORS[code] ?? ''
 	})
 	const [busy, setBusy] = useState(false)
+	const [dir, setDir] = useState(0) // 0 = first render (no animation), then which way the content slides in: 1 = from the right, -1 = from the left
 	const signingIn = mode === 'signin'
+	const enterClass = dir ? 'animate-fade-slide' : ''
+	const enter = { '--enter-x': `${dir * 12}px` }
+	const switchMode = (next) => {
+		setDir(next === 'signup' ? 1 : -1)
+		setMode(next)
+		setError('')
+	}
 	const set = (key) => (event) => setForm((f) => ({ ...f, [key]: event.target.value }))
 
 	const submit = async (event) => {
@@ -130,38 +138,40 @@ export default function Login() {
 						AI Treasurer
 					</div>
 
-					<h1 className="font-display text-[22px] font-extrabold text-ink">{signingIn ? 'Sign in to your account' : 'Create your account'}</h1>
-					<p className="mt-1.5 text-[13px] text-muted">{signingIn ? 'Welcome back. Pick up where you left off.' : 'Start tracking every team budget in minutes.'}</p>
+					<h1 key={`title-${mode}`} className={`${enterClass} font-display text-[22px] font-extrabold text-ink`} style={enter}>{signingIn ? 'Sign in to your account' : 'Create your account'}</h1>
+					<p key={`sub-${mode}`} className={`${enterClass} mt-1.5 text-[13px] text-muted`} style={enter}>{signingIn ? 'Welcome back. Pick up where you left off.' : 'Start tracking every team budget in minutes.'}</p>
 
 					<div className="mt-6 mb-5 flex gap-1 rounded-lg bg-paper p-1" role="tablist" aria-label="Account">
-						<button type="button" role="tab" aria-selected={signingIn} className={`${tab} ${signingIn ? 'bg-white text-ink shadow-sm' : 'text-muted hover:text-ink'}`} onClick={() => { setMode('signin'); setError('') }}>Sign in</button>
-						<button type="button" role="tab" aria-selected={!signingIn} className={`${tab} ${!signingIn ? 'bg-white text-ink shadow-sm' : 'text-muted hover:text-ink'}`} onClick={() => { setMode('signup'); setError('') }}>Create account</button>
+						<button type="button" role="tab" aria-selected={signingIn} className={`${tab} ${signingIn ? 'bg-white text-ink shadow-sm' : 'text-muted hover:text-ink'}`} onClick={() => switchMode('signin')}>Sign in</button>
+						<button type="button" role="tab" aria-selected={!signingIn} className={`${tab} ${!signingIn ? 'bg-white text-ink shadow-sm' : 'text-muted hover:text-ink'}`} onClick={() => switchMode('signup')}>Create account</button>
 					</div>
 
 					<form onSubmit={submit} className="grid gap-4" noValidate>
-						{signingIn ? (
-							<label className={label}>Username or email
-								<input className={field} value={form.identifier} onChange={set('identifier')} autoComplete="username" autoFocus required maxLength={254} />
+						<div key={mode} className={`${enterClass} grid gap-4`} style={enter}>
+							{signingIn ? (
+								<label className={label}>Username or email
+									<input className={field} value={form.identifier} onChange={set('identifier')} autoComplete="username" autoFocus required maxLength={254} />
+								</label>
+							) : (
+								<>
+									<label className={label}>Username
+										<input className={field} value={form.username} onChange={set('username')} autoComplete="username" autoFocus required minLength={3} maxLength={30} pattern="[A-Za-z0-9_.]+" />
+										<small className="font-normal text-muted">3-30 letters, numbers, dots or underscores. This is also your display name for now.</small>
+									</label>
+									<label className={label}>Email
+										<input className={field} type="email" value={form.email} onChange={set('email')} autoComplete="email" required maxLength={254} />
+									</label>
+								</>
+							)}
+							<label className={label}>Password
+								<input className={field} type="password" value={form.password} onChange={set('password')} autoComplete={signingIn ? 'current-password' : 'new-password'} required minLength={signingIn ? undefined : 8} maxLength={72} />
+								{!signingIn && <small className="font-normal text-muted">At least 8 characters.</small>}
 							</label>
-						) : (
-							<>
-								<label className={label}>Username
-									<input className={field} value={form.username} onChange={set('username')} autoComplete="username" autoFocus required minLength={3} maxLength={30} pattern="[A-Za-z0-9_.]+" />
-									<small className="font-normal text-muted">3-30 letters, numbers, dots or underscores. This is also your display name for now.</small>
-								</label>
-								<label className={label}>Email
-									<input className={field} type="email" value={form.email} onChange={set('email')} autoComplete="email" required maxLength={254} />
-								</label>
-							</>
-						)}
-						<label className={label}>Password
-							<input className={field} type="password" value={form.password} onChange={set('password')} autoComplete={signingIn ? 'current-password' : 'new-password'} required minLength={signingIn ? undefined : 8} maxLength={72} />
-							{!signingIn && <small className="font-normal text-muted">At least 8 characters.</small>}
-						</label>
-						<label className="flex items-start gap-2.5 text-[13px] text-ink">
-							<input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-blue" checked={remember} onChange={toggleRemember} />
-							<span>Remember me<small className="block text-xs text-muted">Stay signed in after you close the browser (up to 60 days). Leave it off on a shared computer.</small></span>
-						</label>
+							<label className="flex items-start gap-2.5 text-[13px] text-ink">
+								<input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-blue" checked={remember} onChange={toggleRemember} />
+								<span>Remember me<small className="block text-xs text-muted">Stay signed in after you close the browser (up to 60 days). Leave it off on a shared computer.</small></span>
+							</label>
+						</div>
 						<p className="min-h-4 text-xs text-red" role="alert" aria-live="polite">{error}</p>
 						<button type="submit" className={`${button.primary} w-full`} disabled={busy}>
 							{busy && <Icon name="spinner" size={16} />}

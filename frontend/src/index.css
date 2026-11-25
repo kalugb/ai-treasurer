@@ -72,6 +72,13 @@
 	to { transform: rotate(360deg); }
 }
 
+@keyframes fade-slide-in {
+	from {
+		opacity: 0;
+		transform: translateX(var(--enter-x, 0));
+	}
+}
+
 @keyframes slide-in {
 	from {
 		opacity: 0;
@@ -89,4 +96,14 @@
 
 @utility animate-slide-in {
 	animation: slide-in 0.3s var(--ease-out) forwards;
+}
+
+@utility animate-fade-slide {
+	animation: fade-slide-in 0.25s var(--ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.animate-fade-slide {
+		animation: none;
+	}
 }
