@@ -24,6 +24,10 @@ CREDENTIALS_FILE = Path(__file__).parent.parent.parent / "google_creds" / "crede
 LEGACY_TOKEN_FILE = Path(__file__).parent.parent.parent / "google_creds" / "token.json"  # only read by the one-time import
 STATE_TTL = 600
 
+AUTH_URI = "https://accounts.google.com/o/oauth2/auth"
+TOKEN_URI = "https://oauth2.googleapis.com/token"
+AUTH_PROVIDER_CERTS = "https://www.googleapis.com/oauth2/v1/certs"
+
 
 def redirect_uri() -> str:
     return os.getenv("GOOGLE_OAUTH_REDIRECT_URI", "http://localhost:8000/api/connect/google/callback")
@@ -34,6 +38,18 @@ def frontend_url() -> str:
 
 
 def _flow(**kwargs) -> Flow:
+    client_id, client_secret = os.getenv("GOOGLE_CLIENT_ID"), os.getenv("GOOGLE_CLIENT_SECRET")
+    if client_id and client_secret:  # hosts without the gitignored file (Railway): the client comes from env
+        config = {"web": {
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "project_id": os.getenv("GOOGLE_PROJECT_ID", ""),
+            "auth_uri": AUTH_URI,
+            "token_uri": TOKEN_URI,
+            "auth_provider_x509_cert_url": AUTH_PROVIDER_CERTS,
+            "redirect_uris": [redirect_uri()],
+        }}
+        return Flow.from_client_config(config, scopes=SCOPES, redirect_uri=redirect_uri(), **kwargs)
     if not CREDENTIALS_FILE.exists():
         raise RuntimeError("google_creds/credentials.json is missing")
     return Flow.from_client_secrets_file(str(CREDENTIALS_FILE), scopes=SCOPES, redirect_uri=redirect_uri(), **kwargs)
