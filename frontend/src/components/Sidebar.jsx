@@ -2,14 +2,22 @@ import { useState } from 'react'
 import Icon from './Icon'
 import { navGroups } from '../api/mockData'
 import { useSelectedOrganization } from '../hooks/useSelectedOrganization'
+import { useCurrentUser, userInitials } from '../hooks/useCurrentUser'
+import { useAuth } from '../context/auth'
+import Modal from './Modal'
+import { button } from './button'
 
 const navFocus = 'focus-visible:outline-[3px] focus-visible:outline-blue-ring focus-visible:outline-offset-2'
 
 export default function Sidebar({ page, setPage }) {
 	const organization = useSelectedOrganization()
+	const user = useCurrentUser()
+	const { logout } = useAuth()
+	const userName = user?.displayName || user?.email || (user ? 'Set your name in Settings' : '')
 	const [pinned, setPinned] = useState({}) // groups opened by click
 	const [hovered, setHovered] = useState(null)
 	const [muted, setMuted] = useState(null) // group just closed by click; ignore hover until the pointer leaves
+	const [confirmLogout, setConfirmLogout] = useState(false)
 	return (
 		<div className="sticky top-0 h-svh w-(--sidebar-width) max-w-[50%] min-w-55 shrink-0 max-[560px]:w-14.5 max-[560px]:min-w-14.5">
 			<aside className="flex h-full w-full flex-col overflow-hidden border-r border-line bg-sidebar pt-7 pr-3.5 pb-4.5 pl-3.5 transition-[width] duration-150 ease-out max-[560px]:px-2">
@@ -67,16 +75,27 @@ export default function Sidebar({ page, setPage }) {
 							<span className="truncate text-[13px] font-bold text-ink" title={organization?.orgName ?? organization?.name ?? ""}>{organization?.orgName ?? organization?.name ?? "No organization"}</span>
 						</div>
 					</div>
-					<div className="flex min-w-0 items-center gap-2.5 px-2 max-[560px]:justify-center max-[560px]:px-0">
-						<div className="grid size-8 shrink-0 place-items-center rounded-full bg-brown-soft text-[11px] font-bold text-brown">AM</div>
+					<div className="flex min-w-0 items-center gap-2.5 px-2 max-[560px]:flex-col max-[560px]:justify-center max-[560px]:px-0">
+						<div className="grid size-8 shrink-0 place-items-center rounded-full bg-brown-soft text-[11px] font-bold text-brown" aria-hidden="true">{user ? userInitials(user) : ''}</div>
 						<div className="overflow-hidden whitespace-nowrap max-[560px]:hidden">
-							<strong className="block overflow-hidden text-xs text-ellipsis">Alex Morgan</strong>
-							<small className="mt-0.75 block overflow-hidden text-[11px] text-ellipsis text-muted">Personal workspace</small>
+							<strong className="block overflow-hidden text-xs text-ellipsis" title={userName}>{userName}</strong>
+							<small className="mt-0.75 block overflow-hidden text-[11px] text-ellipsis text-muted" title={user?.displayName && user?.email ? user.email : undefined}>{user?.displayName && user?.email ? user.email : 'Personal workspace'}</small>
 						</div>
-						<button className="ml-auto text-muted max-[560px]:hidden" aria-label="Open user menu">•••</button>
+						<button className="ml-auto grid size-8 shrink-0 place-items-center rounded-lg text-muted transition-colors hover:bg-blue-soft hover:text-blue focus-visible:outline-[3px] focus-visible:outline-blue-ring max-[560px]:ml-0" aria-label="Sign out" title="Sign out" onClick={() => setConfirmLogout(true)}><Icon name="logout" size={16} /></button>
 					</div>
 				</div>
 			</aside>
+			<Modal
+				isOpen={confirmLogout}
+				onClose={() => setConfirmLogout(false)}
+				title="Sign out?"
+				footer={<>
+					<button className={button.secondary} type="button" onClick={() => setConfirmLogout(false)}>Cancel</button>
+					<button className={button.danger} type="button" onClick={logout}><Icon name="logout" size={16} /> Sign out</button>
+				</>}
+			>
+				<p className="text-[13px] leading-[1.55] text-muted">You will need to sign in again to get back to your treasurer workspace.</p>
+			</Modal>
 			<button
 				className="absolute top-1/2 -right-2.25 z-2 grid w-4.5 -translate-y-1/2 cursor-col-resize place-items-center border-0 bg-transparent p-0 focus:outline-none focus-visible:[&>span]:outline-[3px] focus-visible:[&>span]:outline-blue-ring focus-visible:[&>span]:outline-offset-2 max-[560px]:hidden"
 				aria-label="Drag to resize navigation"

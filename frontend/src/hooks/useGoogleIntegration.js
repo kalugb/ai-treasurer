@@ -1,31 +1,31 @@
-import { useState, useEffect } from 'react'
-import { googleAPI } from '../api/googleConnect'
+import { useState, useEffect, useCallback } from 'react'
+import { usersAPI } from '../api/users'
 
+// The current user's Google Drive connection (zero or one per user).
 export function useGoogleIntegration() {
-    const [connected, setConnected] = useState(false)
+    const [status, setStatus] = useState({ connected: false, accountEmail: null })
     const [loading, setLoading] = useState(true)
 
-    useEffect(() => {
-        let cancelled = false;
-
-        const checkIntegration = async () => {
-            try {
-                const isIntegrated = await googleAPI.checkGoogleIntegration();
-                if (!cancelled) setConnected(isIntegrated.google_drive_service_exists);
-            } catch (error) {
-                console.error('Error checking Google integration:', error);
-                if (!cancelled) setConnected(false);
-            } finally {
-                if (!cancelled) setLoading(false);
-            }
+    const refresh = useCallback(async () => {
+        try {
+            const next = await usersAPI.driveStatus()
+            setStatus(next)
+        } catch (error) {
+            console.error('Error checking Google integration:', error)
+            setStatus({ connected: false, accountEmail: null })
+        } finally {
+            setLoading(false)
         }
+    }, [])
 
-        checkIntegration();
+    useEffect(() => {
+        let cancelled = false
+        usersAPI.driveStatus()
+            .then((next) => { if (!cancelled) setStatus(next) })
+            .catch((error) => console.error('Error checking Google integration:', error))
+            .finally(() => { if (!cancelled) setLoading(false) })
+        return () => { cancelled = true }
+    }, [])
 
-        return () => {
-            cancelled = true;
-        };
-    }, []);
-
-    return { connected, setConnected, loading, setLoading };
+    return { connected: status.connected, accountEmail: status.accountEmail, loading, setLoading, refresh }
 }

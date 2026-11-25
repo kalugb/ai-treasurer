@@ -1,44 +1,28 @@
+"""Google OAuth callback. Start the flow with POST /api/users/me/google-drive/connect."""
+from urllib.parse import urlencode
+
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse
-from services.google.google_connect import get_drive_service, remove_existing_drive_token
+from fastapi.responses import RedirectResponse
+from starlette.concurrency import run_in_threadpool
+
+from services.google import drive_tokens, google_connect
 
 router = APIRouter(prefix="/api/connect")
 
-@router.get("/google-drive-service-exists")
-def check_google_drive_service_exists(request: Request):
-    return {
-        "google_drive_service_exists": request.app.state.google_drive_service_connected
-    }
-    
-@router.post("/google-drive-service-connect")
-def connect_google_drive_service(request: Request):
-    remove_existing_drive_token()  # Remove existing token.json if it exists
-    
+
+def _back(result: str) -> RedirectResponse:
+    return RedirectResponse(f"{google_connect.frontend_url()}/?{urlencode({'googleDrive': result})}", status_code=302)
+
+
+@router.get("/google/callback")
+async def google_callback(request: Request, code: str | None = None, state: str | None = None, error: str | None = None):
+    # the user comes from the encrypted, time-limited state (not from a query param), so it can't be swapped
+    if error or not code or not state or request.app.state.mongo is None:
+        return _back("error")
     try:
-        request.app.state.google_drive_service = get_drive_service()
-        
-        if request.app.state.google_drive_service is None:
-            raise Exception("Failed to connect to Google Drive service.")
-
-        request.app.state.google_drive_service_connected = True
-        return {
-            "message": "Google Drive service connected successfully.",
-            "status": "success"
-        }
+        user_key, creds_json, email = await run_in_threadpool(google_connect.finish_authorization, code, state)
+        await run_in_threadpool(drive_tokens.save_connection, request.app.state.mongo, user_key, creds_json, email)
     except Exception as e:
-        request.app.state.google_drive_service_connected = False
-        request.app.state.google_drive_service = None
-        return JSONResponse(status_code=500, content=f"Failed to connect to Google Drive service: {str(e)}")
-        
-@router.delete("/google-drive-service-disconnect")
-def disconnect_google_drive_service(request: Request):
-    remove_existing_drive_token()  # Remove existing token.json if it exists
-    
-    request.app.state.google_drive_service_connected = False
-    request.app.state.google_drive_service = None
-    return {
-        "message": "Google Drive service disconnected successfully.",
-        "status": "success"
-    }
-    
-
+        print(f"Google connect failed: {type(e).__name__}")  # never echo Google's error text or token data
+        return _back("error")
+    return _back("connected")

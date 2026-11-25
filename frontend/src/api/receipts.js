@@ -1,4 +1,4 @@
-import { request, requestWithFile, API_BASE_URL } from './client'
+import { request, requestWithFile, API_BASE_URL, refreshSession } from './client'
 
 // Drive sync lists + reconciles the whole folder; allow generous time for large folders.
 export const SYNC_TIMEOUT_MS = 120000
@@ -7,7 +7,12 @@ export const SYNC_TIMEOUT_MS = 120000
 // EventSource only does GET, hence fetch. Calls onEvent(name, data) per frame; resolves when the stream ends.
 // Not routed through client.js: the snapshot read-only gate for this lives in SyncStatusContext.startSync.
 export async function streamSync(teamId, { signal, onEvent }) {
-	const response = await fetch(`${API_BASE_URL}/api/google-drive/teams/${teamId}/receipts/sync/stream`, { method: 'POST', signal, headers: { Accept: 'text/event-stream' } })
+	const open = () => fetch(`${API_BASE_URL}/api/google-drive/teams/${teamId}/receipts/sync/stream`, { method: 'POST', signal, credentials: 'include', headers: { Accept: 'text/event-stream' } })
+	let response = await open()
+	if (response.status === 401) { // expired access cookie: renew the session and try once more
+		await refreshSession()
+		response = await open()
+	}
 	if (!response.ok || !response.body) throw new Error(`Sync request failed (${response.status})`)
 	const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
 	let buffer = ''

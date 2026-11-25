@@ -11,6 +11,7 @@ from fastapi.responses import Response, StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
 from services.mongodb import mongodb_ops
+from services.users import current_owner_id, get_current_user
 from services.supabase import supabase_ops
 from services.ai import attachments as attachments_svc
 from services.ai import excel
@@ -287,7 +288,7 @@ def _spawn_run(app, user_oid, conversation_oid, memory_id, user_input, owner_id,
 
 
 @router.delete("/conversations/{conversation_id}")
-async def delete_conversation(conversation_id: str, userId: str = "1", ai_mongo=Depends(get_ai_mongo)):
+async def delete_conversation(conversation_id: str, userId: str = Depends(current_owner_id), ai_mongo=Depends(get_ai_mongo)):
     if ai_mongo is None:
         raise HTTPException(status_code=503, detail="AI database not available")
     conversation_oid = _parse_oid(conversation_id, "conversationId")
@@ -308,7 +309,7 @@ async def delete_conversation(conversation_id: str, userId: str = "1", ai_mongo=
 
 
 @router.get("/files/{file_id}")
-async def download_file(file_id: str, userId: str = "1", ai_mongo=Depends(get_ai_mongo)):
+async def download_file(file_id: str, userId: str = Depends(current_owner_id), ai_mongo=Depends(get_ai_mongo)):
     """Download a spreadsheet the agent made. Only its owner can; anyone else gets the same 404 as a missing file."""
     if ai_mongo is None:
         raise HTTPException(status_code=503, detail="AI database not available")
@@ -332,7 +333,7 @@ async def download_file(file_id: str, userId: str = "1", ai_mongo=Depends(get_ai
 
 
 @router.get("/conversations")
-async def list_conversations(userId: str = "1", ai_mongo=Depends(get_ai_mongo)):
+async def list_conversations(userId: str = Depends(current_owner_id), ai_mongo=Depends(get_ai_mongo)):
     if ai_mongo is None:
         raise HTTPException(status_code=503, detail="AI database not available")
     user_oid = _user_oid(userId)
@@ -361,7 +362,7 @@ async def list_conversations(userId: str = "1", ai_mongo=Depends(get_ai_mongo)):
 
 
 @router.get("/conversations/{conversation_id}/messages")
-async def get_messages(conversation_id: str, userId: str = "1", ai_mongo=Depends(get_ai_mongo)):
+async def get_messages(conversation_id: str, userId: str = Depends(current_owner_id), ai_mongo=Depends(get_ai_mongo)):
     if ai_mongo is None:
         raise HTTPException(status_code=503, detail="AI database not available")
     conversation_oid = _parse_oid(conversation_id, "conversationId")
@@ -375,7 +376,7 @@ async def get_messages(conversation_id: str, userId: str = "1", ai_mongo=Depends
 
 
 @router.post("/attachments")
-async def upload_attachment(request: Request, file: UploadFile = File(...)):
+async def upload_attachment(request: Request, file: UploadFile = File(...), _user: dict = Depends(get_current_user)):
     """Convert one uploaded file (Excel/PDF via MarkItDown, image via the shared Groq/NVIDIA models) to text.
     Transient: the bytes are discarded after conversion; only the text is returned."""
     data = await file.read()
@@ -383,7 +384,7 @@ async def upload_attachment(request: Request, file: UploadFile = File(...)):
 
 
 @router.post("/receipts/scan")
-async def scan_receipt(request: Request, file: UploadFile = File(...), ownerId: str | None = None, orgId: str | None = None, teamId: str | None = None):
+async def scan_receipt(request: Request, file: UploadFile = File(...), ownerId: str = Depends(current_owner_id), orgId: str | None = None, teamId: str | None = None):
     """AI-extract receipt name/amount/description from an uploaded file (nothing is stored except the AI history entry,
     which is skipped when ownerId/orgId are missing). The file itself is never kept: this is the upload form's scan."""
     llm = request.app.state.llm_inference
@@ -407,10 +408,10 @@ async def scan_receipt(request: Request, file: UploadFile = File(...), ownerId: 
 
 
 @router.post("/messages", status_code=202)
-async def send_message(req: SendMessageRequest, request: Request, ai_mongo=Depends(get_ai_mongo)):
+async def send_message(req: SendMessageRequest, request: Request, userId: str = Depends(current_owner_id), ai_mongo=Depends(get_ai_mongo)):
     if ai_mongo is None:
         raise HTTPException(status_code=503, detail="AI database not available")
-    user_oid = _user_oid(req.userId)
+    user_oid = _user_oid(userId)
     conversation_oid = _parse_oid(req.conversationId, "conversationId") if req.conversationId else ObjectId()
 
     doc = {
@@ -433,16 +434,16 @@ async def send_message(req: SendMessageRequest, request: Request, ai_mongo=Depen
         "status": STATUS_IN_PROGRESS,
     })
 
-    _spawn_run(request.app, user_oid, conversation_oid, memory_id, req.input, req.userId, req.orgId, [a.model_dump() for a in req.attachments])
+    _spawn_run(request.app, user_oid, conversation_oid, memory_id, req.input, userId, req.orgId, [a.model_dump() for a in req.attachments])
 
     return {"conversationId": str(conversation_oid), "memoryId": str(memory_id), "status": STATUS_IN_PROGRESS}
 
 
 @router.post("/regenerate", status_code=202)
-async def regenerate(req: RegenerateRequest, request: Request, ai_mongo=Depends(get_ai_mongo)):
+async def regenerate(req: RegenerateRequest, request: Request, userId: str = Depends(current_owner_id), ai_mongo=Depends(get_ai_mongo)):
     if ai_mongo is None:
         raise HTTPException(status_code=503, detail="AI database not available")
-    user_oid = _user_oid(req.userId)
+    user_oid = _user_oid(userId)
     memory_id = _parse_oid(req.memoryId, "memoryId")
 
     doc = await mongodb_ops.read(ai_mongo, collection_name=COLLECTION_NAME, query={"_id": memory_id, "userId": user_oid})
@@ -465,17 +466,17 @@ async def regenerate(req: RegenerateRequest, request: Request, ai_mongo=Depends(
         "memoryId": str(memory_id),
         "status": STATUS_IN_PROGRESS,
     })
-    _spawn_run(request.app, user_oid, conversation_oid, memory_id, doc.get("input", ""), req.userId, doc.get("orgId"), doc.get("attachments"))
+    _spawn_run(request.app, user_oid, conversation_oid, memory_id, doc.get("input", ""), userId, doc.get("orgId"), doc.get("attachments"))
 
     return {"conversationId": str(conversation_oid), "memoryId": str(memory_id), "status": STATUS_IN_PROGRESS}
 
 
 @router.post("/stop", status_code=202)
-async def stop(req: StopRequest, request: Request, ai_mongo=Depends(get_ai_mongo)):
+async def stop(req: StopRequest, request: Request, userId: str = Depends(current_owner_id), ai_mongo=Depends(get_ai_mongo)):
     # User stopped the response: cancel the in-flight task (truly kills the LLM call) and mark Failed.
     if ai_mongo is None:
         raise HTTPException(status_code=503, detail="AI database not available")
-    user_oid = _user_oid(req.userId)
+    user_oid = _user_oid(userId)
     memory_id = _parse_oid(req.memoryId, "memoryId")
 
     doc = await mongodb_ops.read(ai_mongo, collection_name=COLLECTION_NAME, query={"_id": memory_id, "userId": user_oid})
@@ -508,7 +509,7 @@ async def stop(req: StopRequest, request: Request, ai_mongo=Depends(get_ai_mongo
 
 
 @router.get("/stream")
-async def stream(userId: str = "1", request: Request = None, ai_mongo=Depends(get_ai_mongo), events=Depends(get_events)):
+async def stream(userId: str = Depends(current_owner_id), request: Request = None, ai_mongo=Depends(get_ai_mongo), events=Depends(get_events)):
     user_oid = _user_oid(userId)
 
     async def event_generator():

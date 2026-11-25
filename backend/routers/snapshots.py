@@ -2,7 +2,8 @@ import json
 from datetime import datetime, timezone
 
 from bson import ObjectId
-from fastapi import APIRouter, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from services.users import current_owner_id
 from pymongo import DESCENDING
 from pymongo.errors import DocumentTooLarge, OperationFailure
 from pymongo.read_concern import ReadConcern
@@ -226,7 +227,7 @@ def _detail_key(request: Request, snapshot_id: ObjectId, org_oid: ObjectId, user
 
 
 @router.post("", status_code=201)
-async def create_snapshot(payload: SnapshotCreate, request: Request, ownerId: str = Query(min_length=1)):
+async def create_snapshot(payload: SnapshotCreate, request: Request, ownerId: str = Depends(current_owner_id)):
     org_oid, user_oid = await _authorize(request, payload.orgId, ownerId)
     history = _history(request)
     mongo = request.app.state.mongo
@@ -257,7 +258,7 @@ async def create_snapshot(payload: SnapshotCreate, request: Request, ownerId: st
 
 
 @router.get("")
-async def list_snapshots(request: Request, orgId: str, ownerId: str = Query(min_length=1)):
+async def list_snapshots(request: Request, orgId: str, ownerId: str = Depends(current_owner_id)):
     org_oid, user_oid = await _authorize(request, orgId, ownerId)
     history = _history(request)
     key = _list_key(request, org_oid, user_oid)
@@ -271,7 +272,7 @@ async def list_snapshots(request: Request, orgId: str, ownerId: str = Query(min_
 
 
 @router.get("/{snapshot_id}")
-async def get_snapshot(snapshot_id: str, request: Request, orgId: str, ownerId: str = Query(min_length=1)):
+async def get_snapshot(snapshot_id: str, request: Request, orgId: str, ownerId: str = Depends(current_owner_id)):
     org_oid, user_oid = await _authorize(request, orgId, ownerId)
     history = _history(request)
     scope = _scope(snapshot_id, org_oid, user_oid)
@@ -289,7 +290,7 @@ async def get_snapshot(snapshot_id: str, request: Request, orgId: str, ownerId: 
 
 
 @router.delete("/{snapshot_id}", status_code=204)
-async def delete_snapshot(snapshot_id: str, request: Request, orgId: str, ownerId: str = Query(min_length=1)):
+async def delete_snapshot(snapshot_id: str, request: Request, orgId: str, ownerId: str = Depends(current_owner_id)):
     org_oid, user_oid = await _authorize(request, orgId, ownerId)
     history = _history(request)
     scope = _scope(snapshot_id, org_oid, user_oid)
@@ -300,7 +301,7 @@ async def delete_snapshot(snapshot_id: str, request: Request, orgId: str, ownerI
 
 
 @router.get("/{snapshot_id}/teams/{team_id}/receipts/{receipt_id}/thumbnail")
-async def get_snapshot_receipt_thumbnail(snapshot_id: str, team_id: str, receipt_id: str, request: Request, orgId: str, ownerId: str = Query(min_length=1)):
+async def get_snapshot_receipt_thumbnail(snapshot_id: str, team_id: str, receipt_id: str, request: Request, orgId: str, ownerId: str = Depends(current_owner_id)):
     """The receipt's CURRENT file (cache first, then Drive/Supabase) - images are not frozen in the snapshot.
     Only receipts that are listed in this snapshot (under this team) can be fetched."""
     org_oid, user_oid = await _authorize(request, orgId, ownerId)
@@ -318,7 +319,7 @@ async def get_snapshot_receipt_thumbnail(snapshot_id: str, team_id: str, receipt
 
 
 @router.get("/{snapshot_id}/cashin/{cash_in_id}/image")
-async def get_snapshot_cashin_image(snapshot_id: str, cash_in_id: str, request: Request, orgId: str, ownerId: str = Query(min_length=1)):
+async def get_snapshot_cashin_image(snapshot_id: str, cash_in_id: str, request: Request, orgId: str, ownerId: str = Depends(current_owner_id)):
     """The proof image of a cash in record listed in this snapshot (the file as stored now: images are not frozen)."""
     org_oid, user_oid = await _authorize(request, orgId, ownerId)
     history = _history(request)

@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { agentStreamUrl } from '../api/agent'
+import { refreshSession } from '../api/client'
 import { AgentRunContext } from './agentRun'
-
-const USER_ID = import.meta.env.VITE_TEMP_USER_ID ?? '1' // temp pre-auth user, set in frontend/.env
 
 // Global AI-agent run status. One SSE connection (mounted once in App) carries status
 // for every conversation of the user, so runs survive in-app navigation with no refresh.
@@ -49,37 +48,49 @@ export function AgentRunProvider({ children }) {
 	useEffect(() => {
 		if (typeof EventSource === 'undefined') return
 
-		const source = new EventSource(agentStreamUrl(USER_ID))
-		sourceRef.current = source
+		let stopped = false
+		let retry = null
+		const connect = () => {
+			const source = new EventSource(agentStreamUrl(), { withCredentials: true })
+			sourceRef.current = source
 
-		source.addEventListener('snapshot', (event) => {
-			try {
-				const { inProgress } = JSON.parse(event.data)
-				setRuns((prev) => {
-					const next = { ...prev }
-					for (const r of inProgress || []) {
-						next[r.conversationId] = { status: 'In Progress', memoryId: r.memoryId, output: null, completedAt: 0 }
-					}
-					return next
-				})
-			} catch { /* ignore malformed snapshot */ }
-		})
+			source.addEventListener('snapshot', (event) => {
+				try {
+					const { inProgress } = JSON.parse(event.data)
+					setRuns((prev) => {
+						const next = { ...prev }
+						for (const r of inProgress || []) {
+							next[r.conversationId] = { status: 'In Progress', memoryId: r.memoryId, output: null, completedAt: 0 }
+						}
+						return next
+					})
+				} catch { /* ignore malformed snapshot */ }
+			})
 
-		const onStatus = (event) => {
-			try { applyEvent(JSON.parse(event.data)) } catch { /* ignore */ }
+			const onStatus = (event) => {
+				try { applyEvent(JSON.parse(event.data)) } catch { /* ignore */ }
+			}
+			source.addEventListener('running', onStatus)
+			source.addEventListener('delta', (event) => {
+				try { applyDelta(JSON.parse(event.data)) } catch { /* ignore */ }
+			})
+			source.addEventListener('done', onStatus)
+			source.addEventListener('error', (event) => {
+				// Only our server-sent error payloads carry data; transport errors have none (EventSource auto-reconnects).
+				if (event?.data) { onStatus(event); return }
+				// A refused connection (the access cookie expired) is closed for good by the browser:
+				// renew the session, then open a new stream.
+				if (source.readyState === EventSource.CLOSED && !stopped) {
+					retry = setTimeout(() => { refreshSession().then(() => { if (!stopped) connect() }).catch(() => {}) }, 2000)
+				}
+			})
 		}
-		source.addEventListener('running', onStatus)
-		source.addEventListener('delta', (event) => {
-			try { applyDelta(JSON.parse(event.data)) } catch { /* ignore */ }
-		})
-		source.addEventListener('done', onStatus)
-		source.addEventListener('error', (event) => {
-			// Only our server-sent error payloads carry data; transport errors have none (EventSource auto-reconnects).
-			if (event?.data) onStatus(event)
-		})
+		connect()
 
 		return () => {
-			source.close()
+			stopped = true
+			clearTimeout(retry)
+			sourceRef.current?.close()
 			sourceRef.current = null
 		}
 	}, [applyEvent, applyDelta])

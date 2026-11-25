@@ -1,62 +1,87 @@
-import os.path
+"""Google OAuth (web redirect flow) for per-user Drive connections.
 
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
+connect:  authorization_url(user_key) -> Google consent URL. The `state` is a Fernet token holding the user key and
+          the PKCE code verifier, valid STATE_TTL seconds, so the callback needs no server-side session.
+callback: finish_authorization(code, state) -> (user_key, creds_json, account_email).
+Needs a "Web application" OAuth client in google_creds/credentials.json with GOOGLE_OAUTH_REDIRECT_URI registered.
+"""
+import json
+import os
+import secrets
 from pathlib import Path
 
+from dotenv import load_dotenv
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import Flow
+from googleapiclient.discovery import build
+
+from services import crypto
+
+load_dotenv()
+
 SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
-
 CREDENTIALS_FILE = Path(__file__).parent.parent.parent / "google_creds" / "credentials.json"
-TOKEN_FILE = Path(__file__).parent.parent.parent / "google_creds" / "token.json"
+LEGACY_TOKEN_FILE = Path(__file__).parent.parent.parent / "google_creds" / "token.json"  # only read by the one-time import
+STATE_TTL = 600
 
-def google_drive_service_exists() -> bool:
-    """Check if the Google Drive service is already initialized."""
-    return TOKEN_FILE.exists()
-
-def remove_existing_drive_token() -> None:
-    """Remove the existing token.json file if it exists."""
-    if TOKEN_FILE.exists():
-        TOKEN_FILE.unlink()
-        print("Existing token.json file removed.")
-    else:
-        print("No existing token.json file found to remove.")
+AUTH_URI = "https://accounts.google.com/o/oauth2/auth"
+TOKEN_URI = "https://oauth2.googleapis.com/token"
+AUTH_PROVIDER_CERTS = "https://www.googleapis.com/oauth2/v1/certs"
 
 
-def get_drive_service():
-    """Authenticate and return an authorized Google Drive API service object."""
-    creds = None
-
-    # token.json stores the user's access/refresh token after the first run,
-    # so they don't have to log in again every time.
-    if os.path.exists(TOKEN_FILE):
-        creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
-
-    # If there are no valid credentials, prompt the user to log in.
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                CREDENTIALS_FILE, SCOPES
-            )
-            creds = flow.run_local_server(port=0)
-
-        # Save the credentials for the next run.
-        with open(TOKEN_FILE, "w") as token:
-            token.write(creds.to_json())
-
-    service = build("drive", "v3", credentials=creds)
-    
-    return service
+def redirect_uri() -> str:
+    return os.getenv("GOOGLE_OAUTH_REDIRECT_URI", "http://localhost:8000/api/connect/google/callback")
 
 
-def get_drive_service_with_token():
-    pass
+def frontend_url() -> str:
+    return os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip("/")
 
-if __name__ == "__main__":
-    remove_existing_drive_token() 
-    service = get_drive_service()
-    print("Google Drive service initialized successfully.")
+
+def _flow(**kwargs) -> Flow:
+    client_id, client_secret = os.getenv("GOOGLE_CLIENT_ID"), os.getenv("GOOGLE_CLIENT_SECRET")
+    if client_id and client_secret:  # hosts without the gitignored file (Railway): the client comes from env
+        config = {"web": {
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "project_id": os.getenv("GOOGLE_PROJECT_ID", ""),
+            "auth_uri": AUTH_URI,
+            "token_uri": TOKEN_URI,
+            "auth_provider_x509_cert_url": AUTH_PROVIDER_CERTS,
+            "redirect_uris": [redirect_uri()],
+        }}
+        return Flow.from_client_config(config, scopes=SCOPES, redirect_uri=redirect_uri(), **kwargs)
+    if not CREDENTIALS_FILE.exists():
+        raise RuntimeError("google_creds/credentials.json is missing")
+    return Flow.from_client_secrets_file(str(CREDENTIALS_FILE), scopes=SCOPES, redirect_uri=redirect_uri(), **kwargs)
+
+
+def authorization_url(user_key: str) -> str:
+    verifier = secrets.token_urlsafe(64)  # PKCE; must survive the round trip, so it rides in the encrypted state
+    state = crypto.encrypt(json.dumps({"u": user_key, "v": verifier}))
+    url, _ = _flow(code_verifier=verifier).authorization_url(
+        access_type="offline",
+        prompt="consent",  # always return a refresh token, also on a reconnect
+        state=state,
+    )
+    return url
+
+
+def account_email(creds: Credentials) -> str | None:
+    """Blocking. The Google account behind the token (best effort)."""
+    try:
+        about = build("drive", "v3", credentials=creds, cache_discovery=False).about().get(fields="user(emailAddress)").execute()
+        return about.get("user", {}).get("emailAddress")
+    except Exception as e:
+        print(f"Could not read the Google account email: {type(e).__name__}")
+        return None
+
+
+def finish_authorization(code: str, state: str) -> tuple[str, str, str | None]:
+    """Blocking. Raises InvalidToken for a forged/expired state, or an oauthlib error for a bad code."""
+    data = json.loads(crypto.decrypt(state, ttl=STATE_TTL))
+    flow = _flow(code_verifier=data["v"], state=state)
+    flow.fetch_token(code=code)
+    creds = flow.credentials
+    if not creds.refresh_token:
+        raise ValueError("Google returned no refresh token")
+    return data["u"], creds.to_json(), account_email(creds)

@@ -24,6 +24,7 @@ export default function Icon({ name, size = 18 }) {
 		spinner: <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" fill="none" strokeDasharray="31.4 31.4" strokeLinecap="round" className="animate-spin origin-center [transform-box:fill-box]" />, // rotate around the circle's own centre: an SVG child otherwise spins around the viewBox corner and swings out of view
 		snapshot: <><circle cx="12" cy="12" r="3.5" /><path d="M3 12h5.5M15.5 12H21" /></>,
 		sync: <><path d="M20 11a8 8 0 0 0-14.8-4M4 13a8 8 0 0 0 14.8 4" /><path d="M20 4v7h-7M4 20v-7h7" /></>,
+		logout: <><path d="M9 21H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h4" /><path d="m16 17 5-5-5-5M21 12H9" /></>,
 	}
 	return (
 		<svg

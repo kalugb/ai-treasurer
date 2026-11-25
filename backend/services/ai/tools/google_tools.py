@@ -1,59 +1,47 @@
 """
 LangChain-compatible Google Drive tools (search + list, My Drive + Shared Drives).
 
-Reuses the same OAuth flow as your working credentials.json/token.json script,
-so no MCP server is involved -- this calls the Drive API v3 directly.
-
-Usage:
-    from services.ai.tools.gdrive_tools import search_drive_files, list_drive_folders, list_folder_contents
-
-    self.tools = [get_current_time, add_numbers, get_weather, web_search,
-                  search_drive_files, list_drive_folders, list_folder_contents]
+Each call uses the Drive connection of the user running the chat (AgentContext.owner_id),
+from the encrypted token in treasurer.users. No token file is read.
 """
 
-import os.path
-from pathlib import Path
 from typing import Optional
 
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
-from googleapiclient.discovery import build
+from google.auth.exceptions import RefreshError
 from googleapiclient.errors import HttpError
 from langchain_core.tools import tool
+from langgraph.runtime import get_runtime
 
-# Read-only is enough for search/list. Add drive.file only if you later add
-# tools that create/modify files.
-SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
+from services import crypto
+from services.google import drive_tokens
+from services.ai.tools.treasury_tools import AgentContext
 
-CREDENTIALS_FILE = Path(__file__).parent.parent.parent / "google_creds" / "credentials.json"
-TOKEN_FILE = Path(__file__).parent.parent.parent / "google_creds" / "token.json"
+_mongo = None  # main DB handle, set once at startup
 
-_service = None  # cached Drive API client, built lazily on first tool call
+
+def set_mongo(db):
+    global _mongo
+    _mongo = db
+
+
+class _NoDrive(Exception):
+    pass
 
 
 def _get_drive_service():
-    """Authenticate (using cached token if present) and return a Drive v3 service."""
-    global _service
-    if _service is not None:
-        return _service
-
-    creds = None
-    if os.path.exists(TOKEN_FILE):
-        creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
-
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_FILE, SCOPES)
-            creds = flow.run_local_server(port=0)
-
-        with open(TOKEN_FILE, "w") as token:
-            token.write(creds.to_json())
-
-    _service = build("drive", "v3", credentials=creds)
-    return _service
+    """The chatting user's Drive v3 service. Raises _NoDrive with a message the model can repeat."""
+    owner_id = get_runtime(AgentContext).context.owner_id
+    if _mongo is None or not owner_id:
+        raise _NoDrive("Google Drive isn't available right now.")
+    try:
+        return drive_tokens.service_for_user(_mongo, owner_id).service
+    except drive_tokens.DriveNotConnected:
+        raise _NoDrive("Google Drive isn't connected for your account. Connect it in Settings.")
+    except (RefreshError, crypto.InvalidToken):
+        drive_tokens.mark_disconnected(_mongo, owner_id)
+        raise _NoDrive("Your Google Drive access expired. Reconnect Google Drive in Settings.")
+    except RuntimeError:
+        raise _NoDrive("Google Drive isn't configured on the server.")
 
 
 def _shared_drive_kwargs(extra_corpora: bool = True) -> dict:
@@ -97,7 +85,10 @@ def search_drive_files(
     Returns:
         A formatted list of matches with name, id, type, and last modified time.
     """
-    service = _get_drive_service()
+    try:
+        service = _get_drive_service()
+    except _NoDrive as e:
+        return str(e)
     safe_value = _escape_query_value(name_contains)
 
     query_parts = [f"name contains '{safe_value}'", "trashed = false"]
@@ -148,7 +139,10 @@ def list_drive_folders(max_results: int = 50) -> str:
     Returns:
         A formatted list of folder names and ids.
     """
-    service = _get_drive_service()
+    try:
+        service = _get_drive_service()
+    except _NoDrive as e:
+        return str(e)
     query = "mimeType = 'application/vnd.google-apps.folder' and trashed = false"
 
     try:
@@ -191,7 +185,10 @@ def list_folder_contents(folder_id: str, max_results: int = 50) -> str:
     Returns:
         A formatted list of the folder's immediate contents.
     """
-    service = _get_drive_service()
+    try:
+        service = _get_drive_service()
+    except _NoDrive as e:
+        return str(e)
     query = f"'{folder_id}' in parents and trashed = false"
 
     try:
@@ -238,7 +235,10 @@ def find_folder_by_path(path_parts: list[str], drive_id: Optional[str] = None) -
     Returns:
         The resolved folder ID, or an explanation if it couldn't be found.
     """
-    service = _get_drive_service()
+    try:
+        service = _get_drive_service()
+    except _NoDrive as e:
+        return str(e)
     parent_id = drive_id
 
     for name in path_parts:
