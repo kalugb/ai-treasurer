@@ -116,8 +116,13 @@ export default function Login() {
 
 	const submit = async (event) => {
 		event.preventDefault()
-		setBusy(true)
 		setError('')
+		const missing = signingIn
+			? [!form.identifier.trim() && 'Please enter your username or email.', !form.password && 'Please enter your password.']
+			: [!form.username.trim() && 'Please enter a username.', !form.email.trim() && 'Please enter your email.', !form.password && 'Please enter a password.']
+		const firstMissing = missing.find(Boolean)
+		if (firstMissing) return setError(firstMissing)
+		setBusy(true)
 		try {
 			if (signingIn) await login(form.identifier.trim(), form.password, remember)
 			else await register(form.username.trim(), form.email.trim(), form.password, remember)
@@ -172,7 +177,7 @@ export default function Login() {
 								<span>Remember me<small className="block text-xs text-muted">Stay signed in after you close the browser (up to 60 days). Leave it off on a shared computer.</small></span>
 							</label>
 						</div>
-						<p className="min-h-4 text-xs text-red" role="alert" aria-live="polite">{error}</p>
+						<p className="min-h-4 text-xs font-bold text-red-600" role="alert" aria-live="polite">{error}</p>
 						<button type="submit" className={`${button.primary} w-full`} disabled={busy}>
 							{busy && <Icon name="spinner" size={16} />}
 							{signingIn ? 'Sign in' : 'Create account'}
