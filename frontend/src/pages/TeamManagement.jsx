@@ -106,12 +106,14 @@ function TeamModal({ team, teams, onClose, onSave, serverError }) {
 	const [googleDriveFolderId, setGoogleDriveFolderId] = useState(team?.googleDriveFolderId || '')
 	const [members, setMembers] = useState(team?.members?.length ? team.members : [])
 	const [errors, setErrors] = useState({})
+	const [removal, setRemoval] = useState(null) // { count } (null count = unknown) while the user must confirm a folder change
+	const [checking, setChecking] = useState(false)
 
 	const updateMember = (index, key, value) => {
 		setMembers((current) => current.map((member, memberIndex) => memberIndex === index ? { ...member, [key]: value } : member))
 	}
 
-	const submit = (event) => {
+	const submit = async (event) => {
 		event.preventDefault()
 		const nextErrors = {}
 		const trimmedName = name.trim()
@@ -121,7 +123,19 @@ function TeamModal({ team, teams, onClose, onSave, serverError }) {
 		if (members.length && members.some((member) => !member.name || !member.role.trim())) nextErrors.members = 'Choose a user and role for every member.'
 		setErrors(nextErrors)
 		if (Object.keys(nextErrors).length) return
-		onSave({ id: team?.id, name: trimmedName, budget: budget === '' ? 0 : Number(budget), googleDriveFolderId: googleDriveFolderId.trim(), members })
+		const nextFolder = googleDriveFolderId.trim()
+		const oldFolder = team?.googleDriveFolderId || ''
+		// pointing the team at a DIFFERENT folder: the next sync deletes every Drive receipt that isn't in it (clearing the ID only stops syncing)
+		if (editing && oldFolder && nextFolder && nextFolder !== oldFolder && !removal) {
+			setChecking(true)
+			let count = null
+			try {
+				count = (await receiptsAPI.getReceipts(team.id)).filter((r) => r.source !== 'local_upload').length
+			} catch { /* unknown: warn anyway */ }
+			setChecking(false)
+			if (count !== 0) { setRemoval({ count }); return }
+		}
+		onSave({ id: team?.id, name: trimmedName, budget: budget === '' ? 0 : Number(budget), googleDriveFolderId: nextFolder, members })
 	}
 
 	return (
@@ -151,11 +165,11 @@ function TeamModal({ team, teams, onClose, onSave, serverError }) {
 					Google Drive folder ID
 					<span className="text-[11px] font-normal text-muted">Optional</span>
 					<div className="flex items-center gap-2">
-						<input className={`${input} flex-1`} value={googleDriveFolderId} onChange={(event) => setGoogleDriveFolderId(event.target.value)} placeholder="e.g. 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms" />
+						<input className={`${input} flex-1`} value={googleDriveFolderId} onChange={(event) => { setGoogleDriveFolderId(event.target.value); setRemoval(null) }} placeholder="e.g. 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms" />
 						<button
 							type="button"
 							className="inline-flex h-10 shrink-0 items-center rounded-lg bg-red-50 px-3.5 text-[12px] font-semibold text-red-600 transition enabled:hover:bg-red-100 focus-visible:outline-[3px] focus-visible:outline-blue-ring disabled:cursor-not-allowed disabled:bg-transparent disabled:text-muted disabled:opacity-60"
-							onClick={() => setGoogleDriveFolderId('')}
+							onClick={() => { setGoogleDriveFolderId(''); setRemoval(null) }}
 							disabled={!googleDriveFolderId}
 						>
 							Remove
@@ -175,8 +189,14 @@ function TeamModal({ team, teams, onClose, onSave, serverError }) {
 						<Icon name="plus" size={15} /> Add member
 					</button>
 				</fieldset>
+				{removal && (
+					<div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs leading-5 text-red-800" role="alert">
+						<strong className="flex items-center gap-1.5"><Icon name="insight" size={14} /> This changes the Google Drive folder</strong>
+						<p className="mt-1">{removal.count == null ? 'Drive receipts of this team' : `${removal.count} Drive ${removal.count === 1 ? 'receipt' : 'receipts'} of this team`} that are not in the new folder will be <strong>deleted</strong> on the next sync, with their amounts, labels, notes and groups. This can't be undone. Receipts uploaded by hand stay. Press the button again to save anyway.</p>
+					</div>
+				)}
 				<div className="flex gap-2 border-t border-line pt-5">
-					<button className={button.primary} type="submit">{editing ? 'Save changes' : 'Add team'}</button>
+					<button className={removal ? button.danger : button.primary} type="submit" disabled={checking}>{checking ? 'Checking…' : removal ? 'Save anyway' : editing ? 'Save changes' : 'Add team'}</button>
 					<button className={button.secondary} type="button" onClick={onClose}>Cancel</button>
 				</div>
 			</form>

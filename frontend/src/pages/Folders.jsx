@@ -16,6 +16,7 @@ import { useSelectedOrganization } from '../hooks/useSelectedOrganization'
 import { useSyncStatus } from '../context/syncStatus'
 import { useToast } from '../context/toast'
 import { useSnapshotMode } from '../context/snapshotMode'
+import { useGoogleIntegration } from '../hooks/useGoogleIntegration'
 import { useBulkScan } from '../context/bulkScan'
 import Modal from '../components/Modal'
 
@@ -124,6 +125,7 @@ export default function Folders({ goTo }) {
 	const [refreshing, setRefreshing] = useState(false)
 	const { push } = useToast()
 	const { readOnly } = useSnapshotMode()
+	const drive = useGoogleIntegration() // this user owns the organization, so this is the connection its Drive receipts use
 	const bulk = useBulkScan()
 	const handledBulkRef = useRef(0)
 	const [addOpen, setAddOpen] = useState(false)
@@ -346,6 +348,12 @@ export default function Folders({ goTo }) {
 						{alert && <p className="mt-4 flex items-center gap-2 text-xs font-bold"><Icon name="insight" size={15} /> {overBudget ? `Over budget by ${formatMoney(-remaining)}: spending is above this team’s ${formatMoney(team.budget ?? 0)} budget.` : 'Less than 10% of this team’s budget remains.'}</p>}
 					</section>
 					<section>
+						{!readOnly && !drive.loading && !drive.connected && driveReceipts.some((r) => r.source === 'google') && (
+							<div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-brown-soft px-3.5 py-2.5 text-xs font-bold text-brown" role="status">
+								<span className="flex items-center gap-2"><Icon name="plug" size={14} /> Google Drive is disconnected{drive.accountEmail ? ` (was ${drive.accountEmail})` : ''}. Your Drive receipts and their details are kept, but previews, AI scan and sync won't work until you reconnect.</span>
+								<button className="underline underline-offset-2" type="button" onClick={() => goTo('settings')}>Reconnect in Settings</button>
+							</div>
+						)}
 						<ReceiptsToolbar
 							count={filteredReceipts.length}
 							filters={{ source: sourceFilter, reimbursed: reimbursedFilter, duplicates: duplicateFilter, group: activeGroup, search, order: dateOrder }}
