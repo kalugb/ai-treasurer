@@ -136,6 +136,7 @@ export default function Folders({ goTo }) {
 	const [deleteTargets, setDeleteTargets] = useState([])
 	const [deleting, setDeleting] = useState(false)
 	const { status: syncStatus, teamId: syncTeamId, completedAt, startSync } = useSyncStatus()
+	const handledSyncRef = useRef(completedAt) // a sync that finished before this page opened was already loaded by the mount fetch
 	const syncing = syncStatus === 'syncing' && syncTeamId === team?.id
 
 	useEffect(() => {
@@ -150,15 +151,17 @@ export default function Folders({ goTo }) {
 	// clear any selection when switching teams so it doesn't carry stale ids across teams
 	useEffect(() => { setSelecting(false); setSelectedIds(new Set()); setDeleteTargets([]); setAmountsOpen(false); setPreviewGroup(null); setGroupDialog(null) }, [team?.id])
 
-	// when a sync for the currently-viewed team completes, refetch its receipts
+	// when a sync for the currently-viewed team completes, refetch its receipts. Keyed on the completion counter only:
+	// the pill resets the status to idle right after done, and depending on the status cancelled this very refetch.
 	useEffect(() => {
-		if (!team?.id || completedAt === 0 || syncTeamId !== team.id || syncStatus !== 'done') return
+		if (!team?.id || completedAt === 0 || completedAt === handledSyncRef.current || syncTeamId !== team.id) return
+		handledSyncRef.current = completedAt
 		let cancelled = false
 		fetchReceipts(team.id)
 			.then((receipts) => { if (!cancelled) setDriveReceipts(receipts) })
 			.catch(() => { /* pill already reported the outcome */ })
 		return () => { cancelled = true }
-	}, [completedAt, team?.id, syncTeamId, syncStatus])
+	}, [completedAt, team?.id, syncTeamId])
 
 	const handleSaveReceipt = async (fileId, patch) => {
 		const updated = await receiptsAPI.updateReceipt(team.id, fileId, patch)
@@ -297,7 +300,9 @@ export default function Folders({ goTo }) {
 	const remaining = team ? (team.budget ?? 0) - used : 0
 	const overBudget = team && remaining < 0
 	const remainingPercent = team?.budget ? (remaining / team.budget) * 100 : 0
-	const alert = team && remainingPercent < 10
+	// a team with no budget set (0) has nothing to compare against, so no remaining figure and no warning
+	const hasBudget = (team?.budget ?? 0) > 0
+	const alert = hasBudget && remainingPercent < 10
 
 	useEffect(() => {
 		if (!preview && !amountsOpen) return
@@ -337,7 +342,7 @@ export default function Folders({ goTo }) {
 			{team ? (
 				<>
 					<section className={alert ? 'mb-6 rounded-[14px] border border-red-200 bg-red-50 p-5 text-red-900' : 'mb-6 rounded-[14px] border border-line bg-white p-5'}>
-						<div className="flex items-end justify-between gap-5 max-[560px]:flex-col max-[560px]:items-start"><div><p className="text-[11px] font-bold tracking-widest uppercase opacity-70">{team.name} · budget summary</p><p className="mt-2 font-display text-[24px] tracking-[-0.04em]">{formatMoney(used)} <span className="font-body text-sm font-normal opacity-70">spent</span></p></div><div className="text-left min-[561px]:text-right"><p className="text-xs opacity-70">Remaining budget</p><p className="mt-1 font-display text-[20px]">{formatMoney(remaining)}</p></div></div>
+						<div className="flex items-end justify-between gap-5 max-[560px]:flex-col max-[560px]:items-start"><div><p className="text-[11px] font-bold tracking-widest uppercase opacity-70">{team.name} · budget summary</p><p className="mt-2 font-display text-[24px] tracking-[-0.04em]">{formatMoney(used)} <span className="font-body text-sm font-normal opacity-70">spent</span></p></div>{hasBudget && <div className="text-left min-[561px]:text-right"><p className="text-xs opacity-70">Remaining budget</p><p className="mt-1 font-display text-[20px]">{formatMoney(remaining)}</p></div>}</div>
 						{alert && <p className="mt-4 flex items-center gap-2 text-xs font-bold"><Icon name="insight" size={15} /> {overBudget ? `Over budget by ${formatMoney(-remaining)}: spending is above this team’s ${formatMoney(team.budget ?? 0)} budget.` : 'Less than 10% of this team’s budget remains.'}</p>}
 					</section>
 					<section>

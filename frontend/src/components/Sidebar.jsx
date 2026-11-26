@@ -14,9 +14,11 @@ export default function Sidebar({ page, setPage }) {
 	const user = useCurrentUser()
 	const { logout } = useAuth()
 	const userName = user?.displayName || user?.email || (user ? 'Set your name in Settings' : '')
-	const [pinned, setPinned] = useState({}) // groups opened by click
-	const [hovered, setHovered] = useState(null)
-	const [muted, setMuted] = useState(null) // group just closed by click; ignore hover until the pointer leaves
+	const [pinned, setPinned] = useState(() => {
+		// start with the group of the page you are on open, so the nav isn't all shut
+		const active = navGroups.find((group) => group.items.some((item) => item.id === page))
+		return active ? { [active.label]: true } : {}
+	}) // groups opened by click
 	const [confirmLogout, setConfirmLogout] = useState(false)
 	return (
 		<div className="sticky top-0 h-svh w-(--sidebar-width) max-w-[50%] min-w-55 shrink-0 max-[560px]:w-14.5 max-[560px]:min-w-14.5">
@@ -28,22 +30,13 @@ export default function Sidebar({ page, setPage }) {
 
 				<nav aria-label="Main navigation" className="grid">
 					{navGroups.map((group) => {
-						const isOpen = !!pinned[group.label] || (hovered === group.label && muted !== group.label)
+						const isOpen = !!pinned[group.label]
 						return (
-							<div
-								className="mb-2 grid gap-1 max-[560px]:mb-3"
-								key={group.label}
-								onMouseEnter={() => setHovered(group.label)}
-								onMouseLeave={() => { setHovered(null); setMuted(null) }}
-							>
+							<div className="mb-2 grid gap-1 max-[560px]:mb-3" key={group.label}>
 								<button
 									className={`flex w-full items-center justify-between rounded-[9px] border-0 px-3 py-2 text-left text-[10px] font-bold tracking-[0.12em] uppercase text-muted hover:text-blue max-[560px]:hidden ${navFocus}`}
 									aria-expanded={isOpen}
-									onClick={() => {
-										// Click pins the group open; clicking again closes it even while the pointer is still over it.
-										if (pinned[group.label]) setMuted(group.label)
-										setPinned((p) => ({ ...p, [group.label]: !p[group.label] }))
-									}}
+									onClick={() => setPinned((p) => ({ ...p, [group.label]: !p[group.label] }))}
 								>
 									{group.label}
 									<span className={`transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`}><Icon name="chevron" size={12} /></span>
