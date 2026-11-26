@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import Icon from './Icon'
 import { button } from './button'
 
@@ -17,6 +18,12 @@ export default function ReceiptsToolbar({
 }) {
 	const filtering = filters.source !== 'all' || filters.reimbursed !== 'all' || filters.duplicates !== 'all' || filters.group !== 'all' || filters.search.trim() !== ''
 	const seg = (active) => `h-8 px-3 text-xs font-bold ${off} ${active ? 'bg-blue text-white' : 'bg-white text-ink hover:bg-blue-soft'}`
+	// the filter row can be folded away; the choice is remembered per browser
+	const [showFilters, setShowFilters] = useState(() => localStorage.getItem('receipts:showFilters') !== '0')
+	const toggleFilters = () => {
+		setShowFilters(!showFilters)
+		localStorage.setItem('receipts:showFilters', showFilters ? '0' : '1')
+	}
 	const toReview = duplicateCounts.pending
 
 	return (
@@ -29,6 +36,9 @@ export default function ReceiptsToolbar({
 						<button className={seg(groupView === 'grouped')} type="button" aria-pressed={groupView === 'grouped'} onClick={() => onGroupView('grouped')} disabled={selecting} title="One card per group">Grouped</button>
 						<button className={`${seg(groupView === 'flat')} border-l border-line`} type="button" aria-pressed={groupView === 'flat'} onClick={() => onGroupView('flat')} disabled={selecting} title="Every receipt on its own, marked with its group name">One by one</button>
 					</div>
+					<button className={`${seg(!showFilters)} self-center rounded-lg border border-line`} type="button" aria-pressed={!showFilters} onClick={toggleFilters} title={showFilters ? 'Hide the filters' : 'Show the filters'}>
+						Hide filters
+					</button>
 				</div>
 				<div className="flex flex-wrap items-center gap-2">
 					{selecting ? (
@@ -52,7 +62,7 @@ export default function ReceiptsToolbar({
 				</div>
 			</div>
 
-			<div className="grid grid-cols-2 items-end gap-3 min-[900px]:grid-cols-[minmax(180px,1.5fr)_repeat(5,minmax(110px,1fr))_auto]">
+			{showFilters && <div className="grid grid-cols-2 items-end gap-3 min-[900px]:grid-cols-[minmax(180px,1.5fr)_repeat(5,minmax(110px,1fr))_auto]">
 				<label className={`${label} col-span-2 min-[900px]:col-span-1`}>Search
 					<span className="relative block">
 						<input className={`${control} pr-8 [&::-webkit-search-cancel-button]:hidden`} type="search" placeholder="Name or label" value={filters.search} onChange={(event) => onFilter('search', event.target.value)} />
@@ -90,7 +100,7 @@ export default function ReceiptsToolbar({
 					</select>
 				</label>
 				<button className={`h-9 px-1 text-xs font-bold text-blue ${off} max-[899px]:col-span-2 max-[899px]:justify-self-start`} type="button" onClick={onClear} disabled={!filtering}>Clear filters</button>
-			</div>
+			</div>}
 
 			{toReview > 0 && filters.duplicates !== 'pending' && (
 				<div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-brown-soft px-3.5 py-2.5 text-xs font-bold text-brown" role="status">
