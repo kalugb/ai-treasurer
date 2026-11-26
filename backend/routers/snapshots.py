@@ -153,6 +153,7 @@ def _build(user_oid: ObjectId, org_oid: ObjectId, name: str, data: dict) -> dict
             "date": out["date"],
             "label": out["label"],
             "description": out["description"],
+            "groupName": out.get("groupName"),
             "source": out["source"],
             "mimeType": _mime(doc.get("receiptMetadata")),
             "duplicate": duplicate,

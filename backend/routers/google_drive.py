@@ -11,7 +11,7 @@ from googleapiclient.errors import HttpError
 from starlette.concurrency import run_in_threadpool
 from starlette.responses import StreamingResponse
 
-from models.receipt import DuplicateReviewIn, ReceiptDelete, ReceiptUpdate
+from models.receipt import DuplicateReviewIn, ReceiptDelete, ReceiptGroup, ReceiptUpdate
 from routers.reimbursement import receipt_key, receipt_links
 from routers.teams import _verify_org_owner
 from services.users import current_owner_id, get_current_user
@@ -30,7 +30,6 @@ TEAMS_COLLECTION = "departments"
 RECEIPTS_COLLECTION = "receipts"
 CACHE_KEY_NAME = "receipts"
 THUMBNAIL_CACHE_SECONDS = 86400
-FOLDER_MIME = "application/vnd.google-apps.folder"
 UPLOAD_DOC_TYPES = {
     "application/pdf",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -89,6 +88,8 @@ def _to_out(team_id: str, doc: dict) -> dict:
             "label": doc.get("label"),
             "date": date,
             "source": "local_upload",
+            "groupName": doc.get("groupName"),
+            "groupSource": doc.get("groupSource"),
             "thumbnail": _thumbnail_url(team_id, file_id) if file_id else None,
             "contentHash": doc.get("contentHash"),  # consumed (and removed) by _attach_duplicates
             "duplicateReview": doc.get("duplicateReview"),
@@ -111,6 +112,8 @@ def _to_out(team_id: str, doc: dict) -> dict:
         "label": doc.get("label"),
         "date": modified[:10] if isinstance(modified, str) and modified else None,
         "source": doc.get("createdFrom", "google_drive"),
+        "groupName": doc.get("groupName"),
+        "groupSource": doc.get("groupSource"),
         "thumbnail": _thumbnail_url(team_id, file_id) if file_id else None,
         "contentHash": doc.get("contentHash"),
         "duplicateReview": doc.get("duplicateReview"),
@@ -212,7 +215,7 @@ async def _run_sync(request: Request, team_id: str) -> dict:
     mongo = _get_mongo(request)
     try:
         # the org owner's Drive connection (409 if they haven't connected)
-        files = await run_for_org(request, org_id, lambda drive: drive.get_folder_content_by_id_with_pagination(folder_id))
+        files = await run_for_org(request, org_id, lambda drive: drive.get_folder_tree_with_groups(folder_id))
     except HttpError as exc:
         status = getattr(exc.resp, "status", None)
         if status in (400, 404):
@@ -220,11 +223,12 @@ async def _run_sync(request: Request, team_id: str) -> dict:
         if status == 403:
             raise HTTPException(status_code=403, detail="No access to this Google Drive folder. Share it with the connected Google account.")
         raise
-    files = [f for f in files if f.get("mimeType") != FOLDER_MIME]
+    # (the folder walker already returns files only; those in sub-folders carry groupName)
 
     now = datetime.now(timezone.utc)
     inserted = updated = 0
     drive_ids = set()
+    group_names = set()
 
     for f in files:
         file_id = f.get("id")
@@ -261,6 +265,15 @@ async def _run_sync(request: Request, team_id: str) -> dict:
         else:
             inserted += 1
 
+        # Folder groups never override a group a person set (groupSource "manual"). A file that left its
+        # folder in Drive loses only a folder-made group.
+        group = (f.get("groupName") or "").strip()[:80]
+        key = {"departmentID": dept_oid, "googleDriveFileId": file_id}
+        if group:
+            await mongodb_ops.update(mongo, {**key, "groupSource": {"$ne": "manual"}}, RECEIPTS_COLLECTION, {"groupName": group, "groupSource": "folder"})
+            group_names.add(group.casefold())
+        elif matched:
+            await mongodb_ops.update(mongo, {**key, "groupSource": "folder"}, RECEIPTS_COLLECTION, {"groupName": None, "groupSource": None})
     # hard-delete Mongo receipts whose Drive file no longer exists (image removed from Drive).
     # Only Drive receipts: local uploads have no googleDriveFileId and are never in the Drive listing.
     existing = await _read_receipts(request, dept_oid)
@@ -279,7 +292,7 @@ async def _run_sync(request: Request, team_id: str) -> dict:
 
     cache = request.app.state.cache
     await cache.delete(cache.key_builder(str(dept_oid), CACHE_KEY_NAME))
-    return {"inserted": inserted, "updated": updated, "deleted": deleted, "total": len(files)}
+    return {"inserted": inserted, "updated": updated, "deleted": deleted, "total": len(files), "groups": len(group_names)}
 
 
 @router.post("/teams/{team_id}/receipts/sync")
@@ -346,6 +359,32 @@ async def update_team_receipt(team_id: str, file_id: str, payload: ReceiptUpdate
     cache = request.app.state.cache
     await cache.delete(cache.key_builder(str(dept_oid), CACHE_KEY_NAME))
     return (await _attach_state(request, org_id, [_to_out(team_id, doc)]))[0]
+
+
+@router.post("/teams/{team_id}/receipts/group")
+async def group_team_receipts(team_id: str, payload: ReceiptGroup, request: Request):
+    """Put receipts of this team in a named group, or ungroup them (blank name). Marked `manual`, so a Drive
+    sync never moves them again. A name that matches an existing group (case-insensitive) joins that group."""
+    dept_oid, _org_id, _folder_id = await _team_ids(request, team_id)
+    mongo = _get_mongo(request)
+    name = (payload.name or "").strip() or None
+
+    docs = [d for d in [await _find_receipt(request, dept_oid, i) for i in dict.fromkeys(payload.ids)]]
+    if any(d is None for d in docs):
+        raise HTTPException(status_code=400, detail="Some receipts were not found in this team")
+    if name:
+        for d in await _read_receipts(request, dept_oid):
+            existing = d.get("groupName")
+            if existing and existing.casefold() == name.casefold():
+                name = existing  # reuse the spelling already in use
+                break
+    await mongodb_ops.update(
+        mongo, query={"_id": {"$in": [d["_id"] for d in docs]}}, collection_name=RECEIPTS_COLLECTION,
+        update_data={"groupName": name, "groupSource": "manual"}, update_many=True,
+    )
+    cache = request.app.state.cache
+    await cache.delete(cache.key_builder(str(dept_oid), CACHE_KEY_NAME))
+    return {"updated": len(docs), "groupName": name}
 
 
 @router.post("/teams/{team_id}/receipts/{file_id}/duplicate-review")

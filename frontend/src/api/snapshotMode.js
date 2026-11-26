@@ -41,7 +41,7 @@ function receiptsOut({ snapshot, orgId, ownerId }, teamId) {
 		return {
 			id: r.receiptId, googleDriveFileId: r.receiptId,
 			receiptName: r.name, receiptAmount: r.amount ?? 0, description: r.description, label: r.label,
-			date: r.date, source: r.source,
+			date: r.date, source: r.source, groupName: r.groupName ?? null, groupSource: null,
 			// current file, served through the owner-checked snapshot route (images are not frozen)
 			thumbnail: PREVIEWABLE(r.mimeType) ? `/api/snapshots/${snapshot.id}/teams/${teamId}/receipts/${encodeURIComponent(r.receiptId)}/thumbnail?${scope}` : null,
 			reimbursement: link, reimbursed: Boolean(link && link.status === 'Reimbursed'),

@@ -6,8 +6,10 @@ import SetAmountsModal from '../components/SetAmountsModal'
 import { button } from '../components/button'
 import AddReceiptModal from '../components/AddReceiptModal'
 import { teamsAPI } from '../api/teams'
-import { receiptsAPI, fetchReceipts, toReceipt, receiptAmountText, isUnset, isExcluded, compareReceipts } from '../api/receipts'
+import { receiptsAPI, fetchReceipts, toReceipt, receiptAmountText, isUnset, isExcluded, compareReceipts, groupReceipts, groupKey, needsDuplicateReview } from '../api/receipts'
 import DuplicateReview from '../components/DuplicateReview'
+import GroupNameModal from '../components/GroupNameModal'
+import GroupNotice from '../components/GroupNotice'
 import ReceiptsToolbar from '../components/ReceiptsToolbar'
 import { OrganizationRequiredEmptyState } from '../components/OrganizationContext'
 import { useSelectedOrganization } from '../hooks/useSelectedOrganization'
@@ -29,7 +31,30 @@ const readPreference = (key, allowed, fallback) => {
 }
 
 
-function ReceiptPreview({ receipt, teamName, onClose, onPrev, onNext, index, total, onSave, onScan, onReviewDuplicate, onDelete, deleting, readOnly }) {
+// One collapsed tile for a group of receipts: stacked-pages look, name, count and the members' amounts added up (display only).
+function GroupCard({ group, onOpen }) {
+	const cover = group.members.find((member) => member.thumbnail)?.thumbnail
+	const review = group.members.some(needsDuplicateReview)
+	const count = group.members.length
+	return (
+		<button className="group min-w-0 text-left focus-visible:outline-[3px] focus-visible:outline-blue-ring" type="button" onClick={onOpen} aria-label={`Open group ${group.name}, ${count} ${count === 1 ? 'receipt' : 'receipts'}`}>
+			<div className="relative mr-2 mb-2">
+				<span className="absolute inset-0 translate-x-2 translate-y-2 rounded-[14px] border border-line bg-paper" aria-hidden="true" />
+				<span className="absolute inset-0 translate-x-1 translate-y-1 rounded-[14px] border border-line bg-white" aria-hidden="true" />
+				<div className="relative grid aspect-[1.15] place-items-center overflow-hidden rounded-[14px] border border-line bg-white text-blue shadow-sm transition group-hover:-translate-y-0.5 group-hover:border-blue group-hover:shadow-md">
+					<Icon name="receipt" size={34} />
+					{cover && <img src={cover} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" onError={(event) => { event.currentTarget.style.display = 'none' }} />}
+					<span className="absolute top-2 right-2 rounded-full bg-blue px-2 py-0.5 text-[10px] font-bold text-white">{count} {count === 1 ? 'receipt' : 'receipts'}</span>
+					{review && <span className="absolute right-2 bottom-2 rounded-full bg-brown-soft px-2 py-0.5 text-[10px] font-bold text-brown">Duplicate? Review</span>}
+				</div>
+			</div>
+			<strong className="mt-3 flex items-center gap-1.5 text-[13px] text-ink"><Icon name="folder" size={14} /><span className="truncate">{group.name}</span></strong>
+			<span className="mt-1 block truncate text-xs text-muted">{formatMoney(group.total)}{group.unset ? ` · ${group.unset} not set` : ''}</span>
+		</button>
+	)
+}
+
+function ReceiptPreview({ receipt, teamName, onClose, onPrev, onNext, index, total, onSave, onScan, onReviewDuplicate, onDelete, deleting, readOnly, groupCount, onRenameGroup, onRemoveFromGroup, onUngroup }) {
 	if (!receipt) return null
 	return (
 		<div className="fixed inset-0 z-20 grid place-items-center bg-[rgb(28_35_36/38%)] p-5" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
@@ -44,7 +69,7 @@ function ReceiptPreview({ receipt, teamName, onClose, onPrev, onNext, index, tot
 					readOnly={readOnly}
 					onSave={(patch) => onSave(receipt.googleDriveFileId, patch)}
 					onScan={() => onScan(receipt.googleDriveFileId)}
-					notice={<DuplicateReview receipt={receipt} teamName={teamName} readOnly={readOnly} onReview={(status) => onReviewDuplicate(receipt.googleDriveFileId, status)} />}
+					notice={<><GroupNotice receipt={receipt} count={groupCount} readOnly={readOnly} onRename={onRenameGroup} onRemove={onRemoveFromGroup} onUngroup={onUngroup} /><DuplicateReview receipt={receipt} teamName={teamName} readOnly={readOnly} onReview={(status) => onReviewDuplicate(receipt.googleDriveFileId, status)} /></>}
 					actions={receipt.source === 'manual' ? <button className={`${button.danger} disabled:opacity-60`} type="button" onClick={onDelete} disabled={deleting}><Icon name="trash" size={15} /> Delete receipt</button> : null}
 				>
 					<button className="absolute top-1/2 left-3 grid size-10 -translate-y-1/2 place-items-center rounded-full border border-line bg-white text-blue shadow-md transition hover:bg-blue-soft disabled:cursor-not-allowed disabled:opacity-40" type="button" aria-label="Previous receipt" onClick={onPrev} disabled={index <= 0}><span className="rotate-180"><Icon name="chevron" size={18} /></span></button>
@@ -66,6 +91,8 @@ export default function Folders({ goTo }) {
 	const [reimbursedFilter, setReimbursedFilter] = useState(() => readPreference('receipts:reimbursed', ['all', 'reimbursed', 'unreimbursed'], 'all'))
 	const [search, setSearch] = useState('')
 	const [duplicateFilter, setDuplicateFilter] = useState('all') // 'all' | a duplicate status: 'pending' (needs review) | 'confirmed' | 'dismissed'
+	const [groupFilter, setGroupFilter] = useState('all') // 'all' | 'none' (not in a group) | a group key
+	const [groupView, setGroupView] = useState(() => readPreference('receipts:groupView', ['grouped', 'flat'], 'grouped'))
 	useEffect(() => {
 		if (!organization?.id) { setTeams([]); return }
 		teamsAPI.getTeams(organization.id, organization.ownerId)
@@ -83,12 +110,13 @@ export default function Folders({ goTo }) {
 			localStorage.setItem('receipts:source', sourceFilter)
 			localStorage.setItem('receipts:dateOrder', dateOrder)
 			localStorage.setItem('receipts:reimbursed', reimbursedFilter)
+			localStorage.setItem('receipts:groupView', groupView)
 			const currentTeam = teams[Math.min(teamIndex, teams.length - 1)]
 			if (currentTeam?.id) localStorage.setItem('receipts:team', currentTeam.id)
 		} catch {
 			// storage unavailable; view preferences just won't persist
 		}
-	}, [sourceFilter, dateOrder, reimbursedFilter, teams, teamIndex])
+	}, [sourceFilter, dateOrder, reimbursedFilter, groupView, teams, teamIndex])
 
 	const selectedIndex = teams.length ? Math.min(teamIndex, teams.length - 1) : 0
 	const team = teams[selectedIndex]
@@ -101,7 +129,10 @@ export default function Folders({ goTo }) {
 	const [addOpen, setAddOpen] = useState(false)
 	const [amountsOpen, setAmountsOpen] = useState(false)
 	const [selecting, setSelecting] = useState(false)
+	const [selectMode, setSelectMode] = useState('delete') // 'delete' (local uploads only) | 'group' (any receipt)
 	const [selectedIds, setSelectedIds] = useState(() => new Set())
+	const [previewGroup, setPreviewGroup] = useState(null) // group key while the preview pages through one group
+	const [groupDialog, setGroupDialog] = useState(null) // { ids, initial, title } while the name dialog is open
 	const [deleteTargets, setDeleteTargets] = useState([])
 	const [deleting, setDeleting] = useState(false)
 	const { status: syncStatus, teamId: syncTeamId, completedAt, startSync } = useSyncStatus()
@@ -117,7 +148,7 @@ export default function Folders({ goTo }) {
 	}, [team?.id])
 
 	// clear any selection when switching teams so it doesn't carry stale ids across teams
-	useEffect(() => { setSelecting(false); setSelectedIds(new Set()); setDeleteTargets([]); setAmountsOpen(false) }, [team?.id])
+	useEffect(() => { setSelecting(false); setSelectedIds(new Set()); setDeleteTargets([]); setAmountsOpen(false); setPreviewGroup(null); setGroupDialog(null) }, [team?.id])
 
 	// when a sync for the currently-viewed team completes, refetch its receipts
 	useEffect(() => {
@@ -167,6 +198,26 @@ export default function Folders({ goTo }) {
 	}
 
 	const exitSelection = () => { setSelecting(false); setSelectedIds(new Set()) }
+
+	// put receipts in a group (blank name = ungroup); the server answers with the name it stored
+	const applyGroup = async (ids, name) => {
+		const res = await receiptsAPI.group(team.id, ids, name)
+		const changed = new Set(ids)
+		setDriveReceipts((list) => list.map((r) => changed.has(r.id) ? { ...r, groupName: res.groupName, groupSource: 'manual' } : r))
+		return res
+	}
+	const closePreview = () => { setPreview(null); setPreviewGroup(null) }
+	// from the preview: change the group, then close it (the group it paged through may no longer exist)
+	const changeGroupFromPreview = async (ids, name, message) => {
+		try {
+			await applyGroup(ids, name)
+			closePreview()
+			push(message, 'success')
+		} catch (err) {
+			const detail = err?.response?.data?.detail
+			push(typeof detail === 'string' ? detail : 'Could not change the group.', 'error')
+		}
+	}
 
 	const toggleSelected = (id) => setSelectedIds((current) => {
 		const next = new Set(current)
@@ -220,16 +271,26 @@ export default function Folders({ goTo }) {
 	}
 
 	const allReceipts = [...(team?.receipts ?? []), ...driveReceipts]
+	// dropdown entries, A to Z; a stale choice (its last receipt was ungrouped) falls back to All
+	const groupOptions = [...new Map(allReceipts.filter((r) => groupKey(r)).map((r) => [groupKey(r), r.groupName.trim()])).entries()]
+		.map(([key, name]) => ({ key, name })).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+	const activeGroup = groupFilter === 'all' || groupFilter === 'none' || groupOptions.some((o) => o.key === groupFilter) ? groupFilter : 'all'
 	const filteredReceipts = allReceipts
 		.filter((receipt) => sourceFilter === 'all' || receipt.source === sourceFilter)
 		.filter((receipt) => reimbursedFilter === 'all' || receipt.reimbursed === (reimbursedFilter === 'reimbursed'))
 	.filter((receipt) => duplicateFilter === 'all' || receipt.duplicate?.status === duplicateFilter)
+		.filter((receipt) => activeGroup === 'all' || (activeGroup === 'none' ? !groupKey(receipt) : groupKey(receipt) === activeGroup))
 		.filter((receipt) => {
 			const q = search.trim().toLowerCase()
 			return !q || receipt.filename.toLowerCase().includes(q) || (receipt.label ?? '').toLowerCase().includes(q)
 		})
 		.sort(compareReceipts(dateOrder))
-	const previewIndex = preview ? filteredReceipts.findIndex((receipt) => receipt.id === preview.id) : -1
+	const groupItems = groupReceipts(filteredReceipts)
+	// the preview pages through the opened group, else through everything shown
+	const previewList = previewGroup ? (groupItems.find((item) => item.key === previewGroup)?.members ?? []) : filteredReceipts
+	const previewIndex = preview ? previewList.findIndex((receipt) => receipt.id === preview.id) : -1
+	const sameGroup = (receipt) => allReceipts.filter((r) => groupKey(r) === groupKey(receipt))
+	const groupNames = groupOptions.map((o) => o.name)
 	// total spent is the sum of actual receipt amounts, not the stale stored team.used; confirmed duplicates aren't real expenses
 	const used = allReceipts.reduce((sum, receipt) => sum + (isExcluded(receipt) ? 0 : receipt.amount ?? 0), 0)
 	// negative when spending is over the budget, so the summary shows how far over it is
@@ -249,8 +310,11 @@ export default function Folders({ goTo }) {
 
 	const unsetCount = readOnly ? 0 : allReceipts.filter(isUnset).length // 0 hides the button
 	const duplicateCount = (status) => allReceipts.filter((r) => r.duplicate?.status === status).length
-	const localReceiptCount = readOnly ? 0 : filteredReceipts.filter((r) => r.source === 'manual').length // 0 hides "Select for deletion"
+	const localReceiptCount = readOnly ? 0 : allReceipts.filter((r) => r.source === 'manual').length // 0 disables "Select for deletion"; counts the whole team, not just what the filters show
 	const selectedReceipts = allReceipts.filter((receipt) => selectedIds.has(receipt.id))
+	// what "Select all" covers: the receipts shown, restricted to local uploads when selecting for deletion
+	const selectableIds = filteredReceipts.filter((r) => selectMode === 'group' || r.source === 'manual').map((r) => r.id)
+	const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selectedIds.has(id))
 
 	const handleGDrivePromptAction = () => {
 		if (team?.id) {
@@ -279,15 +343,19 @@ export default function Folders({ goTo }) {
 					<section>
 						<ReceiptsToolbar
 							count={filteredReceipts.length}
-							filters={{ source: sourceFilter, reimbursed: reimbursedFilter, duplicates: duplicateFilter, search, order: dateOrder }}
-							onFilter={(key, value) => ({ source: setSourceFilter, reimbursed: setReimbursedFilter, duplicates: setDuplicateFilter, search: setSearch, order: setDateOrder })[key](value)}
-							onClear={() => { setSourceFilter('all'); setReimbursedFilter('all'); setDuplicateFilter('all'); setSearch('') }}
+							filters={{ source: sourceFilter, reimbursed: reimbursedFilter, duplicates: duplicateFilter, group: activeGroup, search, order: dateOrder }}
+							onFilter={(key, value) => ({ source: setSourceFilter, reimbursed: setReimbursedFilter, duplicates: setDuplicateFilter, group: setGroupFilter, search: setSearch, order: setDateOrder })[key](value)}
+							onClear={() => { setSourceFilter('all'); setReimbursedFilter('all'); setDuplicateFilter('all'); setGroupFilter('all'); setSearch('') }}
+							groupOptions={groupOptions} groupView={groupView} onGroupView={setGroupView}
+							selectableCount={selectableIds.length} allSelected={allSelected} onSelectAll={() => setSelectedIds(allSelected ? new Set() : new Set(selectableIds))}
 							duplicateCounts={{ pending: duplicateCount('pending'), confirmed: duplicateCount('confirmed'), dismissed: duplicateCount('dismissed') }}
-							readOnly={readOnly} selecting={selecting} selectedCount={selectedIds.size} deleting={deleting}
+							readOnly={readOnly} selecting={selecting} selectMode={selectMode} selectedCount={selectedIds.size} deleting={deleting}
 							refreshing={refreshing} syncing={syncing} canSync={Boolean(team?.googleDriveFolderId)}
 							unsetCount={unsetCount} localCount={localReceiptCount}
 							onRefresh={handleRefresh} onSync={handleSync} onFillMissing={() => setAmountsOpen(true)}
-							onSelect={() => setSelecting(true)} onDelete={() => setDeleteTargets(selectedReceipts)} onCancelSelect={exitSelection} onAdd={() => setAddOpen(true)}
+							onSelect={() => { setSelectMode('delete'); setSelecting(true) }} onGroupSelect={() => { setSelectMode('group'); setSelecting(true) }}
+							onDelete={() => setDeleteTargets(selectedReceipts)} onGroup={() => setGroupDialog({ ids: [...selectedIds], initial: '', title: `Group ${selectedIds.size} receipt${selectedIds.size === 1 ? '' : 's'}` })}
+							onCancelSelect={exitSelection} onAdd={() => setAddOpen(true)}
 						/>
 						{needsGDriveSetup ? (
 							<div className="grid min-h-55 place-items-center rounded-[14px] border border-dashed border-line bg-white p-8 text-center">
@@ -300,22 +368,24 @@ export default function Folders({ goTo }) {
 									</button>
 								</div>
 							</div>
-						) : filteredReceipts.length ? <div className="grid grid-cols-2 gap-4 min-[700px]:grid-cols-3 min-[1050px]:grid-cols-5">{filteredReceipts.map((receipt) => {
+						) : filteredReceipts.length ? <div className="grid grid-cols-2 gap-4 min-[700px]:grid-cols-3 min-[1050px]:grid-cols-5">{(selecting || groupView === 'flat' ? filteredReceipts.map((receipt) => ({ type: 'receipt', receipt })) : groupItems).map((item) => {
+							if (item.type === 'group') return <GroupCard key={`group:${item.key}`} group={item} onOpen={() => { setPreviewGroup(item.key); setPreview(item.members[0]) }} />
+							const { receipt } = item
 							const isLocal = receipt.source === 'manual'
-							const selectable = selecting && isLocal
+							const selectable = selecting && (selectMode === 'group' || isLocal)
 							const isSelected = selectedIds.has(receipt.id)
-							return <button className={`group min-w-0 text-left focus-visible:outline-[3px] focus-visible:outline-blue-ring ${selecting && !isLocal || isExcluded(receipt) ? 'opacity-50' : ''}`} type="button" key={receipt.id} aria-pressed={selectable ? isSelected : undefined} onClick={() => selectable ? toggleSelected(receipt.id) : setPreview(receipt)}><div className={`relative grid aspect-[1.15] place-items-center overflow-hidden rounded-[14px] border bg-white text-blue shadow-sm transition group-hover:-translate-y-0.5 group-hover:shadow-md ${isSelected ? 'border-blue ring-[3px] ring-blue-ring' : 'border-line group-hover:border-blue'}`}><Icon name="receipt" size={34} />{receipt.thumbnail && <img src={receipt.thumbnail} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" onError={(event) => { event.currentTarget.style.display = 'none' }} />}{selectable && <span className={`absolute top-2 right-2 grid size-6 place-items-center rounded-md border text-white ${isSelected ? 'border-blue bg-blue' : 'border-line bg-white/80'}`}>{isSelected && <Icon name="check" size={14} />}</span>}{selecting && !isLocal && <span className="absolute bottom-2 left-2 rounded-full bg-[rgb(28_35_36/70%)] px-2 py-0.5 text-[10px] font-bold text-white">Drive</span>}{receipt.reimbursement && <span className={`absolute top-2 left-2 rounded-full px-2 py-0.5 text-[10px] font-bold ${receipt.reimbursed ? 'bg-green text-white' : 'bg-brown-soft text-brown'}`} title={`In record “${receipt.reimbursement.name}”`}>{receipt.reimbursed ? 'Reimbursed' : 'Pending'}</span>}{receipt.duplicate && receipt.duplicate.status !== 'dismissed' && <span className={`absolute right-2 bottom-2 rounded-full px-2 py-0.5 text-[10px] font-bold ${receipt.duplicate.excluded ? 'bg-red-600 text-white' : 'bg-brown-soft text-brown'}`} title={`Copy of "${receipt.duplicate.of.name}"`}>{receipt.duplicate.excluded ? 'Duplicate (excluded)' : 'Duplicate? Review'}</span>}</div><strong className="mt-3 block overflow-hidden text-ellipsis whitespace-nowrap text-[13px] text-ink">{receipt.filename}</strong><span className="mt-1 block truncate text-xs text-muted">{receipt.date} · {receiptAmountText(receipt)}</span></button>
+							return <button className={`group min-w-0 text-left focus-visible:outline-[3px] focus-visible:outline-blue-ring ${selecting && !selectable || isExcluded(receipt) ? 'opacity-50' : ''}`} type="button" key={receipt.id} aria-pressed={selectable ? isSelected : undefined} onClick={() => selectable ? toggleSelected(receipt.id) : (setPreviewGroup(null), setPreview(receipt))}><div className={`relative grid aspect-[1.15] place-items-center overflow-hidden rounded-[14px] border bg-white text-blue shadow-sm transition group-hover:-translate-y-0.5 group-hover:shadow-md ${isSelected ? 'border-blue ring-[3px] ring-blue-ring' : 'border-line group-hover:border-blue'}`}><Icon name="receipt" size={34} />{receipt.thumbnail && <img src={receipt.thumbnail} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" onError={(event) => { event.currentTarget.style.display = 'none' }} />}{selectable && <span className={`absolute top-2 right-2 grid size-6 place-items-center rounded-md border text-white ${isSelected ? 'border-blue bg-blue' : 'border-line bg-white/80'}`}>{isSelected && <Icon name="check" size={14} />}</span>}{selecting && !selectable && <span className="absolute bottom-2 left-2 rounded-full bg-[rgb(28_35_36/70%)] px-2 py-0.5 text-[10px] font-bold text-white">Drive</span>}{receipt.reimbursement && <span className={`absolute top-2 left-2 rounded-full px-2 py-0.5 text-[10px] font-bold ${receipt.reimbursed ? 'bg-green text-white' : 'bg-brown-soft text-brown'}`} title={`In record “${receipt.reimbursement.name}”`}>{receipt.reimbursed ? 'Reimbursed' : 'Pending'}</span>}{receipt.duplicate && receipt.duplicate.status !== 'dismissed' && <span className={`absolute right-2 bottom-2 rounded-full px-2 py-0.5 text-[10px] font-bold ${receipt.duplicate.excluded ? 'bg-red-600 text-white' : 'bg-brown-soft text-brown'}`} title={`Copy of "${receipt.duplicate.of.name}"`}>{receipt.duplicate.excluded ? 'Duplicate (excluded)' : 'Duplicate? Review'}</span>}</div><strong className="mt-3 block overflow-hidden text-ellipsis whitespace-nowrap text-[13px] text-ink">{receipt.filename}</strong><span className="mt-1 block truncate text-xs text-muted">{receipt.date} · {receiptAmountText(receipt)}</span>{receipt.groupName && <span className="mt-0.5 flex items-center gap-1 truncate text-xs font-bold text-blue" title={`Group: ${receipt.groupName}`}><Icon name="folder" size={12} /><span className="truncate">{receipt.groupName}</span></span>}</button>
 						})}</div> : <div className="grid min-h-55 place-items-center rounded-[14px] border border-dashed border-line bg-white p-8 text-center"><div><span className="mx-auto grid size-11 place-items-center rounded-xl bg-blue-soft text-blue"><Icon name="folder" size={20} /></span><h3 className="mt-4 font-display text-[16px]">{allReceipts.length ? 'No matching receipts' : 'No receipts yet'}</h3><p className="mt-1 text-xs text-muted">{allReceipts.length ? 'Try another filter or search.' : `Add the first receipt for ${team.name} to see it here.`}</p></div></div>}
 					</section>
 				</>
 			) : <div className="grid min-h-80 place-items-center rounded-[14px] border border-line bg-white p-8 text-center"><div className="max-w-md"><span className="mx-auto grid size-14 place-items-center rounded-2xl bg-blue-soft text-blue"><Icon name="users" size={24} /></span><h2 className="mt-5 font-display text-[20px] tracking-[-0.03em]">Create a team to manage receipts</h2><p className="mt-2 text-[13px] leading-6 text-muted">Receipts are organized by team. Add your first team in Team Management to get started.</p></div></div>}
 			<ReceiptPreview
 				receipt={preview}
-				onClose={() => setPreview(null)}
-				onPrev={() => previewIndex > 0 && setPreview(filteredReceipts[previewIndex - 1])}
-				onNext={() => previewIndex < filteredReceipts.length - 1 && setPreview(filteredReceipts[previewIndex + 1])}
+				onClose={closePreview}
+				onPrev={() => previewIndex > 0 && setPreview(previewList[previewIndex - 1])}
+				onNext={() => previewIndex < previewList.length - 1 && setPreview(previewList[previewIndex + 1])}
 				index={previewIndex}
-				total={filteredReceipts.length}
+				total={previewList.length}
 				onSave={handleSaveReceipt}
 				onScan={handleScanReceipt}
 				onReviewDuplicate={handleReviewDuplicate}
@@ -323,7 +393,24 @@ export default function Folders({ goTo }) {
 				onDelete={() => setDeleteTargets([preview])}
 				deleting={deleting}
 				readOnly={readOnly}
+				groupCount={preview ? sameGroup(preview).length : 0}
+				onRenameGroup={() => setGroupDialog({ ids: sameGroup(preview).map((r) => r.id), initial: preview.groupName, title: 'Rename group' })}
+				onRemoveFromGroup={() => changeGroupFromPreview([preview.id], null, 'Removed from the group.')}
+				onUngroup={() => changeGroupFromPreview(sameGroup(preview).map((r) => r.id), null, 'Group removed. The receipts are on their own again.')}
 			/>
+			{groupDialog && <GroupNameModal
+				title={groupDialog.title}
+				initial={groupDialog.initial}
+				existing={groupNames}
+				onClose={() => setGroupDialog(null)}
+				onSubmit={async (name) => {
+					await applyGroup(groupDialog.ids, name)
+					setGroupDialog(null)
+					exitSelection()
+					closePreview()
+					push(`Grouped as “${name}”.`, 'success')
+				}}
+			/>}
 			{amountsOpen && <SetAmountsModal receipts={allReceipts} onClose={() => setAmountsOpen(false)} onSave={handleSaveReceipt} onScan={handleScanReceipt} running={bulk.running} onFillAll={(list) => bulk.start(team.id, list, { ownerId: organization?.ownerId, orgId: organization?.id })} onCancelRun={bulk.cancel} />}
 			<AddReceiptModal open={addOpen} onClose={() => setAddOpen(false)} onUpload={handleUploadReceipt} scanContext={{ ownerId: organization?.ownerId, orgId: organization?.id, teamId: team?.id }} />
 			<Modal isOpen={deleteTargets.length > 0} onClose={() => { if (!deleting) setDeleteTargets([]) }} title={`Delete ${deleteTargets.length} receipt${deleteTargets.length === 1 ? '' : 's'}?`} footer={

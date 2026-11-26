@@ -22,6 +22,8 @@ class ReceiptOut(BaseModel):
     label: str | None = None
     date: str | None = None
     source: str = "google_drive"
+    groupName: str | None = None  # receipts of one team sharing a name (case-insensitive) form a group; null = alone
+    groupSource: str | None = None  # "folder" (from a Drive sub-folder) | "manual" (set by a person; sync never changes it)
     reimbursed: bool = False  # in a record whose status is Reimbursed
     reimbursement: dict | None = None  # {id, name, status} of the record holding this receipt
     duplicate: dict | None = None  # {status: pending|confirmed|dismissed, excluded, of} when an older copy exists in the org
@@ -35,6 +37,11 @@ class ReceiptUpdate(BaseModel):
     receiptAmount: float | None = Field(default=None, ge=0)
     description: str | None = None
     label: str | None = None
+
+
+class ReceiptGroup(BaseModel):
+    ids: list[str] = Field(min_length=1, max_length=200)
+    name: str | None = Field(default=None, max_length=80)  # null/blank = ungroup
 
 
 class ReceiptDelete(BaseModel):

@@ -13,6 +13,7 @@ A treasurer's workspace for clubs and societies. It tracks team budgets, receipt
   - Sync a team's Google Drive folder (metadata only; files stay on Drive), or upload images, PDFs or Excel files (stored in Supabase).
   - Edit amount, label and notes; zoomable previews (PDFs render page 1).
   - Filter by source, reimbursement state and duplicates; sort by date or amount.
+  - Group receipts that belong together (for example "part 1, 2, 3") under a name: select them with "Group receipts". A group shows as one card that opens a viewer paging through its parts. Each receipt keeps its own amount. Sync turns each Google Drive sub-folder into a group named after the folder; groups you make or remove by hand are never changed by a sync. Switch between **Grouped** (one card per group) and **One by one** (every receipt, marked with its group name), and use the **Group** filter to show a single group.
   - "Set missing amounts" walks through receipts with no amount; "Fill all with AI" does it in the background with cancel and a review list.
   - Duplicate detection by file hash (MD5) across the organization: a duplicate local upload is blocked, Drive duplicates are flagged for a person to confirm or dismiss. Confirmed duplicates are left out of totals.
 - **Cash flow**: cash in records (with optional proof image) and reimbursement records linked to receipts. Balance = total cash in − total reimbursement. A reimbursed receipt's amount is locked.

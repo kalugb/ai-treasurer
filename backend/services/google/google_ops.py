@@ -12,6 +12,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+FOLDER_MIME = "application/vnd.google-apps.folder"
+MAX_GROUP_FOLDERS = 100  # shortcut: a huge Drive tree is only partly grouped (rest skipped, logged), raise when real folders need it
+MAX_GROUP_DEPTH = 5
+
 class GoogleDriveService:
     def __init__(self, service):
         self.service = service
@@ -57,6 +61,27 @@ class GoogleDriveService:
             if not page_token:
                 break
             
+        return files
+
+    def get_folder_tree_with_groups(self, folder_id):
+        """Files of the folder plus the files inside its sub-folders. A file inside a top-level sub-folder (at any
+        depth) gets `groupName` = that top-level folder's name; files directly in the folder have no `groupName`."""
+        root = self.get_folder_content_by_id_with_pagination(folder_id)
+        files = [f for f in root if f.get("mimeType") != FOLDER_MIME]
+        queue = [(f["id"], f.get("name", ""), 1) for f in root if f.get("mimeType") == FOLDER_MIME]
+        seen = 0
+        while queue:
+            sub_id, group, depth = queue.pop(0)
+            seen += 1
+            if seen > MAX_GROUP_FOLDERS:
+                print(f"Drive folder tree has more than {MAX_GROUP_FOLDERS} sub-folders; the rest were not grouped.")
+                break
+            for f in self.get_folder_content_by_id_with_pagination(sub_id):
+                if f.get("mimeType") == FOLDER_MIME:
+                    if depth < MAX_GROUP_DEPTH:
+                        queue.append((f["id"], group, depth + 1))
+                else:
+                    files.append({**f, "groupName": group})
         return files
 
     def get_folder_content_by_path(self, folder_path: str):

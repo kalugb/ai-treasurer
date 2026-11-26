@@ -56,6 +56,9 @@ export const receiptsAPI = {
 	// status: 'dismissed' (not a duplicate) | 'confirmed' (a real duplicate) | 'clear' (forget the decision)
 	reviewDuplicate: (teamId, fileId, status) =>
 		request(`/api/google-drive/teams/${teamId}/receipts/${fileId}/duplicate-review`, { method: 'POST', data: { status } }),
+	// name: the group name; blank/null ungroups. Sync never changes receipts grouped this way. Answers { updated, groupName }
+	group: (teamId, ids, name) =>
+		request(`/api/google-drive/teams/${teamId}/receipts/group`, { method: 'POST', data: { ids, name } }),
 }
 
 // backend returns persisted receipts; map to the shape the UI renders (shared by Folders + ReceiptPickerModal)
@@ -73,6 +76,8 @@ export const toReceipt = (r) => ({
 	reimbursed: r.reimbursed ?? false, // unreimbursed unless its record is marked Reimbursed
 	reimbursement: r.reimbursement ?? null, // { id, name, status } of the record holding this receipt
 	duplicate: r.duplicate ?? null, // null, or { status: pending|confirmed|dismissed, excluded, of } when an older copy exists in the org
+	groupName: r.groupName ?? null, // receipts of one team with the same name (case-insensitive) form a group; null = alone
+	groupSource: r.groupSource ?? null, // 'folder' (Drive sub-folder) | 'manual'
 })
 
 // a receipt a human confirmed as a duplicate: not a real expense (left out of totals, queues and the reimbursement picker)
@@ -102,4 +107,28 @@ export const compareReceipts = (order) => (a, b) => {
 	if (isUnset(a) !== isUnset(b)) return isUnset(a) ? 1 : -1
 	const diff = (a.amount ?? 0) - (b.amount ?? 0)
 	return (order === 'amount-asc' ? diff : -diff) || byDate(a, b, 'desc')
+}
+
+// Groups = receipts of one team sharing a groupName (trimmed, case-insensitive); no name = a receipt on its own.
+// Takes the already filtered + sorted list and returns display items in that order: a group sits where its
+// best-ranked member is. Members are in natural filename order ("part 2" before "part 10").
+// total leaves out confirmed duplicates; unset counts members whose amount was never set (not part of total).
+const naturalName = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
+export const groupKey = (r) => (r.groupName ?? '').trim().toLowerCase()
+export const groupReceipts = (list) => {
+	const items = []
+	const byKey = new Map()
+	for (const receipt of list) {
+		const key = groupKey(receipt)
+		if (!key) { items.push({ type: 'receipt', receipt }); continue }
+		let group = byKey.get(key)
+		if (!group) { group = { type: 'group', key, name: receipt.groupName.trim(), members: [] }; byKey.set(key, group); items.push(group) }
+		group.members.push(receipt)
+	}
+	for (const group of byKey.values()) {
+		group.members.sort((a, b) => naturalName.compare(a.filename, b.filename))
+		group.total = group.members.reduce((sum, r) => sum + (isExcluded(r) ? 0 : r.amount ?? 0), 0)
+		group.unset = group.members.filter(isUnset).length
+	}
+	return items
 }

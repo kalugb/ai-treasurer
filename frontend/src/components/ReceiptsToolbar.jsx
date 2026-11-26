@@ -11,11 +11,12 @@ const off = 'disabled:cursor-not-allowed disabled:opacity-50'
 // While selecting for deletion, the actions slot swaps to "Delete (n)" + "Cancel"; the filters stay usable.
 // filters = { source, reimbursed, duplicates, search, order }; onFilter(key, value) changes one of them.
 export default function ReceiptsToolbar({
-	count, filters, onFilter, onClear, duplicateCounts,
-	readOnly, selecting, selectedCount, deleting, refreshing, syncing, canSync, unsetCount, localCount,
-	onRefresh, onSync, onFillMissing, onSelect, onDelete, onCancelSelect, onAdd,
+	count, filters, onFilter, onClear, duplicateCounts, groupOptions, groupView, onGroupView, selectableCount, allSelected, onSelectAll,
+	readOnly, selecting, selectMode, selectedCount, deleting, refreshing, syncing, canSync, unsetCount, localCount,
+	onRefresh, onSync, onFillMissing, onSelect, onGroupSelect, onDelete, onGroup, onCancelSelect, onAdd,
 }) {
-	const filtering = filters.source !== 'all' || filters.reimbursed !== 'all' || filters.duplicates !== 'all' || filters.search.trim() !== ''
+	const filtering = filters.source !== 'all' || filters.reimbursed !== 'all' || filters.duplicates !== 'all' || filters.group !== 'all' || filters.search.trim() !== ''
+	const seg = (active) => `h-8 px-3 text-xs font-bold ${off} ${active ? 'bg-blue text-white' : 'bg-white text-ink hover:bg-blue-soft'}`
 	const toReview = duplicateCounts.pending
 
 	return (
@@ -24,27 +25,46 @@ export default function ReceiptsToolbar({
 				<div className="flex items-baseline gap-3">
 					<h2 className="font-display text-[18px] tracking-[-0.03em]">Team receipts</h2>
 					<span className="text-xs text-muted">{count} {count === 1 ? 'receipt' : 'receipts'}</span>
+					<div className="inline-flex self-center overflow-hidden rounded-lg border border-line" role="group" aria-label="Show receipts">
+						<button className={seg(groupView === 'grouped')} type="button" aria-pressed={groupView === 'grouped'} onClick={() => onGroupView('grouped')} disabled={selecting} title="One card per group">Grouped</button>
+						<button className={`${seg(groupView === 'flat')} border-l border-line`} type="button" aria-pressed={groupView === 'flat'} onClick={() => onGroupView('flat')} disabled={selecting} title="Every receipt on its own, marked with its group name">One by one</button>
+					</div>
 				</div>
 				<div className="flex flex-wrap items-center gap-2">
 					{selecting ? (
 						<>
-							<button className={`${button.danger} ${off}`} type="button" onClick={onDelete} disabled={selectedCount === 0}><Icon name="trash" size={15} /> Delete{selectedCount ? ` (${selectedCount})` : ''}</button>
-							<button className={`${button.secondary} ${off}`} type="button" onClick={onCancelSelect} disabled={deleting}>Cancel</button>
+							<button className={`${button.quiet} ${off}`} type="button" onClick={onSelectAll} disabled={selectableCount === 0}>{allSelected ? 'Clear selection' : `Select all (${selectableCount})`}</button>
+							{selectMode === 'group'
+								? <button className={`${button.primary} ${off}`} type="button" onClick={onGroup} disabled={selectedCount === 0}><Icon name="folder" size={15} /> Group{selectedCount ? ` (${selectedCount})` : ''}</button>
+								: <button className={`${button.danger} ${off}`} type="button" onClick={onDelete} disabled={selectedCount === 0}><Icon name="trash" size={15} /> Delete{selectedCount ? ` (${selectedCount})` : ''}</button>}
+							<button className={`${button.outline} ${off}`} type="button" onClick={onCancelSelect} disabled={deleting}>Cancel</button>
 						</>
 					) : (
 						<>
-							<button className={`${button.secondary} ${off}`} type="button" onClick={onRefresh} disabled={refreshing} title="Re-read from the database (picks up external edits)"><Icon name={refreshing ? 'spinner' : 'sync'} size={15} /> {refreshing ? 'Refreshing…' : 'Refresh'}</button>
+							<button className={`${button.outline} ${off}`} type="button" onClick={onRefresh} disabled={refreshing} title="Re-read from the database (picks up external edits)"><Icon name={refreshing ? 'spinner' : 'sync'} size={15} /> {refreshing ? 'Refreshing…' : 'Refresh'}</button>
 							{!readOnly && <button className={`${button.secondary} ${off}`} type="button" onClick={onSync} disabled={syncing || !canSync} title={canSync ? 'Sync receipts from the team’s Google Drive folder' : 'This team has no Google Drive folder set'}><Icon name={syncing ? 'spinner' : 'sync'} size={15} /> {syncing ? 'Syncing…' : 'Sync Google Drive'}</button>}
-							{!readOnly && <button className={`${button.secondary} ${off}`} type="button" onClick={onFillMissing} disabled={unsetCount === 0} title="Step through Drive receipts that have no amount"><Icon name="edit" size={15} /> Set missing amounts ({unsetCount})</button>}
-							{!readOnly && <button className={`${button.secondary} ${off}`} type="button" onClick={onSelect} disabled={localCount === 0} title="Select local-upload receipts to delete"><Icon name="check" size={15} /> Select for deletion</button>}
+							{!readOnly && <button className={`${button.warning} ${off}`} type="button" onClick={onFillMissing} disabled={unsetCount === 0} title="Step through Drive receipts that have no amount"><Icon name="edit" size={15} /> Set missing amounts ({unsetCount})</button>}
+							{!readOnly && <button className={`${button.outline} ${off}`} type="button" onClick={onGroupSelect} disabled={count === 0} title="Select receipts to put in one named group"><Icon name="folder" size={15} /> Group receipts</button>}
+							{!readOnly && <button className={`${button.dangerSoft} ${off}`} type="button" onClick={onSelect} disabled={localCount === 0} title="Select local-upload receipts to delete"><Icon name="check" size={15} /> Select for deletion</button>}
 							{!readOnly && <button className={button.primary} type="button" onClick={onAdd}><Icon name="plus" size={15} /> Add receipt</button>}
 						</>
 					)}
 				</div>
 			</div>
 
-			<div className="grid grid-cols-2 items-end gap-3 min-[900px]:grid-cols-[minmax(180px,1.5fr)_repeat(4,minmax(120px,1fr))_auto]">
-				<label className={`${label} col-span-2 min-[900px]:col-span-1`}>Search<input className={control} type="search" placeholder="Name or label" value={filters.search} onChange={(event) => onFilter('search', event.target.value)} /></label>
+			<div className="grid grid-cols-2 items-end gap-3 min-[900px]:grid-cols-[minmax(180px,1.5fr)_repeat(5,minmax(110px,1fr))_auto]">
+				<label className={`${label} col-span-2 min-[900px]:col-span-1`}>Search
+					<span className="relative block">
+						<input className={`${control} pr-8 [&::-webkit-search-cancel-button]:hidden`} type="search" placeholder="Name or label" value={filters.search} onChange={(event) => onFilter('search', event.target.value)} />
+						{filters.search && <button className="absolute top-1/2 right-1.5 grid size-6 -translate-y-1/2 place-items-center rounded-md text-muted hover:bg-blue-soft hover:text-ink" type="button" aria-label="Clear search" onClick={() => onFilter('search', '')}><Icon name="close" size={13} /></button>}
+					</span>
+				</label>
+				<label className={label}>Group
+					<select className={control} value={filters.group} onChange={(event) => onFilter('group', event.target.value)}>
+						<option value="all">All</option><option value="none">No group</option>
+						{groupOptions.map((option) => <option key={option.key} value={option.key}>{option.name}</option>)}
+					</select>
+				</label>
 				<label className={label}>Source
 					<select className={control} value={filters.source} onChange={(event) => onFilter('source', event.target.value)}>
 						<option value="all">All</option><option value="google">Google Drive</option><option value="manual">Local upload</option>
