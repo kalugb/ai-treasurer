@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Icon from '../components/Icon'
+import { authAPI } from '../api/auth'
 import { button } from '../components/button'
 import { useAuth } from '../context/auth'
 
@@ -15,6 +16,7 @@ function errorText(e) {
 	if (!e?.response) return "Can't reach the server. Check your connection and try again."
 	const detail = e.response.data?.detail
 	if (typeof detail === 'string') return detail
+	if (typeof detail?.message === 'string') return detail.message
 	if (Array.isArray(detail) && detail[0]?.msg) return detail[0].msg.replace(/^Value error, /, '')
 	return 'Something went wrong. Please try again.'
 }
@@ -87,10 +89,16 @@ function Showcase() {
 	)
 }
 
+const RESEND_SECONDS = 60
+
 export default function Login() {
-	const { login, register, googleUrl } = useAuth()
+	const { login, googleUrl } = useAuth()
+	// signin | signup | verify (enter the emailed code) | forgot (ask for a reset code) | reset (code + new password)
 	const [mode, setMode] = useState('signin')
-	const [form, setForm] = useState({ identifier: '', username: '', email: '', password: '' })
+	const [form, setForm] = useState({ identifier: '', username: '', email: '', password: '', confirm: '' })
+	const [code, setCode] = useState('')
+	const [notice, setNotice] = useState('')
+	const [cooldown, setCooldown] = useState(0) // seconds until another code may be requested
 	// only the choice is remembered (never the credentials), so the box stays ticked for people who ticked it
 	const [remember, setRemember] = useState(() => localStorage.getItem('auth:remember') === '1')
 	const toggleRemember = (event) => {
@@ -103,34 +111,106 @@ export default function Login() {
 		return REDIRECT_ERRORS[code] ?? ''
 	})
 	const [busy, setBusy] = useState(false)
+	const [showPassword, setShowPassword] = useState(false)
 	const [dir, setDir] = useState(0) // 0 = first render (no animation), then which way the content slides in: 1 = from the right, -1 = from the left
 	const signingIn = mode === 'signin'
+	const tabbed = mode === 'signin' || mode === 'signup'
 	const enterClass = dir ? 'animate-fade-slide' : ''
 	const enter = { '--enter-x': `${dir * 12}px` }
-	const switchMode = (next) => {
-		setDir(next === 'signup' ? 1 : -1)
+
+	useEffect(() => {
+		if (cooldown <= 0) return undefined
+		const timer = setTimeout(() => setCooldown((s) => s - 1), 1000)
+		return () => clearTimeout(timer)
+	}, [cooldown])
+
+	const goTo = (next, forward = true) => {
+		setDir(forward ? 1 : -1)
 		setMode(next)
 		setError('')
+		setNotice('')
+		setCode('')
+		setShowPassword(false)
 	}
+	const switchMode = (next) => goTo(next, next === 'signup')
 	const set = (key) => (event) => setForm((f) => ({ ...f, [key]: event.target.value }))
+
+	const titles = {
+		signin: ['Sign in to your account', 'Welcome back. Pick up where you left off.'],
+		signup: ['Create your account', 'Start tracking every team budget in minutes.'],
+		verify: ['Check your email', `We sent a 6-digit code to ${form.email}. It expires in 10 minutes.`],
+		forgot: ['Reset your password', "Enter your account email and we'll send you a code."],
+		reset: ['Choose a new password', `Enter the code we sent to ${form.email} and your new password.`],
+	}
+	const [title, subtitle] = titles[mode]
+
+	const resend = async () => {
+		setError('')
+		try {
+			await (mode === 'reset' ? authAPI.forgotPassword(form.email) : authAPI.resendCode(form.email))
+			setCooldown(RESEND_SECONDS)
+			setNotice('A new code is on its way.')
+		} catch (e) {
+			setError(errorText(e))
+		}
+	}
 
 	const submit = async (event) => {
 		event.preventDefault()
 		setError('')
-		const missing = signingIn
-			? [!form.identifier.trim() && 'Please enter your username or email.', !form.password && 'Please enter your password.']
-			: [!form.username.trim() && 'Please enter a username.', !form.email.trim() && 'Please enter your email.', !form.password && 'Please enter a password.']
+		setNotice('')
+		const codeOk = /^\d{6}$/.test(code.trim())
+		const missing = {
+			signin: [!form.identifier.trim() && 'Please enter your username or email.', !form.password && 'Please enter your password.'],
+			signup: [!form.username.trim() && 'Please enter a username.', !form.email.trim() && 'Please enter your email.', !form.password && 'Please enter a password.', form.password !== form.confirm && 'The passwords do not match.'],
+			verify: [!codeOk && 'Enter the 6-digit code from the email.'],
+			forgot: [!form.email.trim() && 'Please enter your email.'],
+			reset: [!codeOk && 'Enter the 6-digit code from the email.', form.password.length < 8 && 'Choose a password of at least 8 characters.', form.password !== form.confirm && 'The passwords do not match.'],
+		}[mode]
 		const firstMissing = missing.find(Boolean)
 		if (firstMissing) return setError(firstMissing)
 		setBusy(true)
 		try {
-			if (signingIn) await login(form.identifier.trim(), form.password, remember)
-			else await register(form.username.trim(), form.email.trim(), form.password, remember)
+			if (mode === 'signin') {
+				await login(form.identifier.trim(), form.password, remember)
+			} else if (mode === 'signup') {
+				const email = form.email.trim()
+				await authAPI.register(form.username.trim(), email, form.password)
+				setForm((f) => ({ ...f, email }))
+				setCooldown(RESEND_SECONDS)
+				goTo('verify')
+			} else if (mode === 'verify') {
+				await authAPI.verifyEmail(form.email.trim(), code.trim())
+				// the password typed a moment ago is still in this form, so verifying ends in a normal sign-in
+				await login(form.email.trim(), form.password, remember)
+			} else if (mode === 'forgot') {
+				await authAPI.forgotPassword(form.email.trim())
+				setForm((f) => ({ ...f, email: f.email.trim(), password: '', confirm: '' }))
+				setCooldown(RESEND_SECONDS)
+				goTo('reset')
+				setNotice('If that email has an account, we sent a code to it.')
+			} else {
+				await authAPI.resetPassword(form.email.trim(), code.trim(), form.password)
+				setForm((f) => ({ ...f, identifier: f.email, password: '', confirm: '' }))
+				goTo('signin', false)
+				setNotice('Password changed. Sign in with your new password.')
+			}
 		} catch (e) {
-			setError(errorText(e))
+			const detail = e?.response?.data?.detail
+			if (mode === 'signin' && e?.response?.status === 403 && detail?.code === 'email_not_verified') {
+				// signed up but never entered the code: the server just sent a new one
+				setForm((f) => ({ ...f, email: detail.email || f.identifier }))
+				setCooldown(RESEND_SECONDS)
+				goTo('verify')
+			} else {
+				setError(errorText(e))
+			}
+		} finally {
 			setBusy(false)
 		}
 	}
+
+	const submitLabel = { signin: 'Sign in', signup: 'Create account', verify: 'Verify email', forgot: 'Send code', reset: 'Change password' }[mode]
 
 	return (
 		<main className="grid min-h-svh bg-paper lg:grid-cols-[1.05fr_1fr]">
@@ -143,21 +223,24 @@ export default function Login() {
 						AI Treasurer
 					</div>
 
-					<h1 key={`title-${mode}`} className={`${enterClass} font-display text-[22px] font-extrabold text-ink`} style={enter}>{signingIn ? 'Sign in to your account' : 'Create your account'}</h1>
-					<p key={`sub-${mode}`} className={`${enterClass} mt-1.5 text-[13px] text-muted`} style={enter}>{signingIn ? 'Welcome back. Pick up where you left off.' : 'Start tracking every team budget in minutes.'}</p>
+					<h1 key={`title-${mode}`} className={`${enterClass} font-display text-[22px] font-extrabold text-ink`} style={enter}>{title}</h1>
+					<p key={`sub-${mode}`} className={`${enterClass} mt-1.5 text-[13px] text-muted`} style={enter}>{subtitle}</p>
 
-					<div className="mt-6 mb-5 flex gap-1 rounded-lg bg-paper p-1" role="tablist" aria-label="Account">
-						<button type="button" role="tab" aria-selected={signingIn} className={`${tab} ${signingIn ? 'bg-white text-ink shadow-sm' : 'text-muted hover:text-ink'}`} onClick={() => switchMode('signin')}>Sign in</button>
-						<button type="button" role="tab" aria-selected={!signingIn} className={`${tab} ${!signingIn ? 'bg-white text-ink shadow-sm' : 'text-muted hover:text-ink'}`} onClick={() => switchMode('signup')}>Create account</button>
-					</div>
+					{tabbed && (
+						<div className="mt-6 mb-5 flex gap-1 rounded-lg bg-paper p-1" role="tablist" aria-label="Account">
+							<button type="button" role="tab" aria-selected={signingIn} className={`${tab} ${signingIn ? 'bg-white text-ink shadow-sm' : 'text-muted hover:text-ink'}`} onClick={() => switchMode('signin')}>Sign in</button>
+							<button type="button" role="tab" aria-selected={!signingIn} className={`${tab} ${!signingIn ? 'bg-white text-ink shadow-sm' : 'text-muted hover:text-ink'}`} onClick={() => switchMode('signup')}>Create account</button>
+						</div>
+					)}
 
-					<form onSubmit={submit} className="grid gap-4" noValidate>
+					<form onSubmit={submit} className={`grid gap-4 ${tabbed ? '' : 'mt-6'}`} noValidate>
 						<div key={mode} className={`${enterClass} grid gap-4`} style={enter}>
-							{signingIn ? (
+							{mode === 'signin' && (
 								<label className={label}>Username or email
 									<input className={field} value={form.identifier} onChange={set('identifier')} autoComplete="username" autoFocus required maxLength={254} />
 								</label>
-							) : (
+							)}
+							{mode === 'signup' && (
 								<>
 									<label className={label}>Username
 										<input className={field} value={form.username} onChange={set('username')} autoComplete="username" autoFocus required minLength={3} maxLength={30} pattern="[A-Za-z0-9_.]+" />
@@ -165,27 +248,68 @@ export default function Login() {
 									</label>
 									<label className={label}>Email
 										<input className={field} type="email" value={form.email} onChange={set('email')} autoComplete="email" required maxLength={254} />
+										<small className="font-normal text-muted">We'll email you a code to confirm it.</small>
 									</label>
 								</>
 							)}
-							<label className={label}>Password
-								<input className={field} type="password" value={form.password} onChange={set('password')} autoComplete={signingIn ? 'current-password' : 'new-password'} required minLength={signingIn ? undefined : 8} maxLength={72} />
-								{!signingIn && <small className="font-normal text-muted">At least 8 characters.</small>}
-							</label>
-							<label className="flex items-start gap-2.5 text-[13px] text-ink">
-								<input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-blue" checked={remember} onChange={toggleRemember} />
-								<span>Remember me<small className="block text-xs text-muted">Stay signed in after you close the browser (up to 60 days). Leave it off on a shared computer.</small></span>
-							</label>
+							{mode === 'forgot' && (
+								<label className={label}>Email
+									<input className={field} type="email" value={form.email} onChange={set('email')} autoComplete="email" autoFocus required maxLength={254} />
+								</label>
+							)}
+							{(mode === 'verify' || mode === 'reset') && (
+								<label className={label}>6-digit code
+									<input className={`${field} text-center font-display text-lg tracking-[0.5em]`} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" autoFocus maxLength={6} placeholder="000000" />
+								</label>
+							)}
+							{(mode === 'signin' || mode === 'signup' || mode === 'reset') && (
+								<label className={label}>{mode === 'reset' ? 'New password' : 'Password'}
+									<span className="relative block">
+										<input className={`${field} pr-11`} type={showPassword ? 'text' : 'password'} value={form.password} onChange={set('password')} autoComplete={signingIn ? 'current-password' : 'new-password'} required minLength={signingIn ? undefined : 8} maxLength={72} />
+										<button type="button" className="absolute inset-y-0 right-0 grid w-11 place-items-center rounded-r-xl text-muted hover:text-ink focus-visible:outline-[3px] focus-visible:outline-blue-ring" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} onClick={() => setShowPassword((v) => !v)}>
+											<Icon name={showPassword ? 'eyeOff' : 'eye'} size={18} />
+										</button>
+									</span>
+									{!signingIn && <small className="font-normal text-muted">At least 8 characters.</small>}
+								</label>
+							)}
+							{(mode === 'signup' || mode === 'reset') && (
+								<label className={label}>Confirm password
+									<input className={field} type="password" value={form.confirm} onChange={set('confirm')} autoComplete="new-password" required maxLength={72} />
+								</label>
+							)}
+							{(mode === 'signin' || mode === 'verify') && (
+								<label className="flex items-start gap-2.5 text-[13px] text-ink">
+									<input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-blue" checked={remember} onChange={toggleRemember} />
+									<span>Remember me<small className="block text-xs text-muted">Stay signed in after you close the browser (up to 60 days). Leave it off on a shared computer.</small></span>
+								</label>
+							)}
+							{signingIn && (
+								<button type="button" className="justify-self-start text-xs font-bold text-blue hover:underline focus-visible:outline-[3px] focus-visible:outline-blue-ring" onClick={() => { setForm((f) => ({ ...f, email: f.identifier.includes('@') ? f.identifier.trim() : f.email })); goTo('forgot') }}>Forgot password?</button>
+							)}
 						</div>
 						<p className="min-h-4 text-xs font-bold text-red-600" role="alert" aria-live="polite">{error}</p>
+						{notice && <p className="-mt-2 text-xs font-bold text-green" role="status">{notice}</p>}
 						<button type="submit" className={`${button.primary} w-full`} disabled={busy}>
 							{busy && <Icon name="spinner" size={16} />}
-							{signingIn ? 'Sign in' : 'Create account'}
+							{submitLabel}
 						</button>
+						{(mode === 'verify' || mode === 'reset') && (
+							<button type="button" className="text-xs font-bold text-blue hover:underline disabled:cursor-not-allowed disabled:text-muted disabled:no-underline" disabled={cooldown > 0} onClick={resend}>
+								{cooldown > 0 ? `Resend code in ${cooldown}s` : 'Resend code'}
+							</button>
+						)}
+						{!tabbed && (
+							<button type="button" className="text-xs font-bold text-muted hover:text-ink" onClick={() => goTo('signin', false)}>Back to sign in</button>
+						)}
 					</form>
 
-					<div className="my-4 flex items-center gap-3 text-[11px] font-bold tracking-widest text-muted uppercase"><span className="h-px flex-1 bg-line" />or<span className="h-px flex-1 bg-line" /></div>
-					<a className="inline-flex min-h-10.5 w-full items-center justify-center gap-2 rounded-xl border border-line bg-white px-3.75 text-[13px] font-bold text-ink transition-colors hover:bg-paper focus-visible:outline-[3px] focus-visible:outline-blue-ring focus-visible:outline-offset-2" href={googleUrl(remember)}><GoogleMark />Continue with Google</a>
+					{tabbed && (
+						<>
+							<div className="my-4 flex items-center gap-3 text-[11px] font-bold tracking-widest text-muted uppercase"><span className="h-px flex-1 bg-line" />or<span className="h-px flex-1 bg-line" /></div>
+							<a className="inline-flex min-h-10.5 w-full items-center justify-center gap-2 rounded-xl border border-line bg-white px-3.75 text-[13px] font-bold text-ink transition-colors hover:bg-paper focus-visible:outline-[3px] focus-visible:outline-blue-ring focus-visible:outline-offset-2" href={googleUrl(remember)}><GoogleMark />Continue with Google</a>
+						</>
+					)}
 				</div>
 			</section>
 		</main>

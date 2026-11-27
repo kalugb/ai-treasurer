@@ -24,6 +24,7 @@ from services.ai.history import user_oid
 
 USER_COLLECTION = "users"
 DEFAULT_USER_KEY = "1"
+EMAIL_NOT_VERIFIED = "Verify your email to continue."
 CURRENCIES = ("MYR", "USD", "CAD", "GBP")
 DEFAULT_SETTINGS = {"currency": "MYR", "monthlySummaries": True, "reviewReminders": True}
 USERNAME_RE = re.compile(r"^[a-z0-9_.]{3,30}$")
@@ -73,7 +74,16 @@ def find_by_username(db, username: str) -> dict | None:
     return db[USER_COLLECTION].find_one({"username": username})
 
 
-def _claim_legacy_user(db, auth_id: str, username: str, email: str, display_name: str, provider: str, now: datetime) -> dict | None:
+def find_by_email(db, email: str) -> dict | None:
+    return db[USER_COLLECTION].find_one({"email": email})
+
+
+def mark_email_verified(db, email: str) -> None:
+    db[USER_COLLECTION].update_one({"email": email, "emailVerified": False},
+                                   {"$set": {"emailVerified": True, "updatedAt": datetime.now(timezone.utc)}})
+
+
+def _claim_legacy_user(db, auth_id: str, username: str, email: str, display_name: str, provider: str, now: datetime, email_verified: bool) -> dict | None:
     """The first account takes over the pre-auth user "1": same _id and userKey, so every org, receipt, chat and the
     Drive connection it already has stay reachable. Atomic: only a doc without an authId can be claimed, once.
     Turn off with CLAIM_LEGACY_USER=false (new deployments have nothing to claim)."""
@@ -83,7 +93,7 @@ def _claim_legacy_user(db, auth_id: str, username: str, email: str, display_name
     return db[USER_COLLECTION].find_one_and_update(
         {"userKey": DEFAULT_USER_KEY, "authId": {"$exists": False}},
         [{"$set": {
-            "authId": auth_id, "username": username, "email": email, "authProvider": provider,
+            "authId": auth_id, "username": username, "email": email, "authProvider": provider, "emailVerified": email_verified,
             "displayName": {"$cond": [{"$gt": [{"$strLenCP": {"$ifNull": ["$displayName", ""]}}, 0]}, "$displayName", display_name]},
             "updatedAt": now, "lastSeenAt": now,
         }}],
@@ -91,17 +101,17 @@ def _claim_legacy_user(db, auth_id: str, username: str, email: str, display_name
     )
 
 
-def create_account(db, *, auth_id: str, username: str, email: str, display_name: str | None, provider: str) -> dict:
+def create_account(db, *, auth_id: str, username: str, email: str, display_name: str | None, provider: str, email_verified: bool = False) -> dict:
     """Blocking. Insert the profile for a new login. Raises DuplicateKeyError when the username/email/authId is taken."""
     now = datetime.now(timezone.utc)
     display_name = (display_name or "").strip() or username
-    claimed = _claim_legacy_user(db, auth_id, username, email, display_name, provider, now)
+    claimed = _claim_legacy_user(db, auth_id, username, email, display_name, provider, now, email_verified)
     if claimed:
         return claimed
     oid = ObjectId()
     doc = {
         "_id": oid, "userKey": str(oid), "authId": auth_id, "authProvider": provider, "username": username,
-        "displayName": display_name, "email": email, "status": "active", "settings": dict(DEFAULT_SETTINGS),
+        "displayName": display_name, "email": email, "emailVerified": email_verified, "status": "active", "settings": dict(DEFAULT_SETTINGS),
         "googleDrive": None, "createdAt": now, "lastSeenAt": now,
     }
     db[USER_COLLECTION].insert_one(doc)
@@ -128,7 +138,8 @@ def ensure_account(db, auth_user: dict, provider: str) -> dict:
         username = meta.get("username") or unique_username(db, email or meta.get("name") or "user")
         try:
             doc = create_account(db, auth_id=auth_id, username=username, email=email,
-                                 display_name=meta.get("full_name") or meta.get("name"), provider=provider)
+                                 display_name=meta.get("full_name") or meta.get("name"), provider=provider,
+                                 email_verified=provider == "google")  # Google already proved the email
         except DuplicateKeyError:  # two requests raced; or a real conflict, then find_by_auth_id stays None
             doc = find_by_auth_id(db, auth_id)
             if doc is None:
@@ -155,6 +166,7 @@ def public(doc: dict) -> dict:
         "authProvider": doc.get("authProvider"),
         "displayName": doc.get("displayName") or "",
         "email": doc.get("email"),
+        "emailVerified": doc.get("emailVerified", True),  # accounts made before verification existed count as verified
         "status": doc.get("status", "active"),
         "settings": {**DEFAULT_SETTINGS, **(doc.get("settings") or {})},
         "googleDrive": drive_status(doc),
@@ -177,6 +189,8 @@ async def get_current_user(request: Request) -> dict:
         raise HTTPException(status_code=401, detail="Not signed in")
     if user.get("status", "active") != "active":
         raise HTTPException(status_code=403, detail="This account is disabled")
+    if user.get("emailVerified") is False:  # only an explicit False blocks; older accounts have no field
+        raise HTTPException(status_code=403, detail=EMAIL_NOT_VERIFIED)
     request.state.claims = claims
     request.state.user = user
     return user

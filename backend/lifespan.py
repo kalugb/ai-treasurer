@@ -15,7 +15,7 @@ from services.ai.embeddings.init_embedding_client import get_embedding_client
 
 from services.ai.tools import treasury_tools, google_tools
 from routers.reimbursement import ensure_indexes as ensure_reimbursement_indexes
-from services import duplicates, users
+from services import duplicates, email_codes, users
 from services.google import drive_tokens
 
 from dotenv import load_dotenv
@@ -98,6 +98,7 @@ def prepare_databases(main_db, ai_db, history_db):
     if main_db is not None:
         # unique userKey/email; without them a duplicate user/email is possible
         _best_effort("create the user indexes", lambda: users.ensure_indexes(main_db))
+        _best_effort("create the email code indexes", lambda: email_codes.ensure_indexes(main_db))
         # one-time move of the old shared google_creds/token.json into user "1" (encrypted)
         _best_effort("import google_creds/token.json", lambda: drive_tokens.import_legacy_token(main_db))
         # the server-side pre-check still rejects double links; only the race window is open

@@ -48,7 +48,6 @@ export function AuthProvider({ children }) {
 	}, [signedIn])
 
 	const login = useCallback(async (identifier, password, remember) => finish(await authAPI.login(identifier, password, remember)), [finish])
-	const register = useCallback(async (username, email, password, remember) => finish(await authAPI.register(username, email, password, remember)), [finish])
 
 	const logout = useCallback(async () => {
 		try { await authAPI.logout() } catch { /* the cookies are cleared by the next failed refresh anyway */ }
@@ -57,8 +56,8 @@ export function AuthProvider({ children }) {
 	}, [])
 
 	const value = useMemo(
-		() => ({ ...state, login, register, logout, googleUrl: authAPI.googleUrl }),
-		[state, login, register, logout],
+		() => ({ ...state, login, logout, googleUrl: authAPI.googleUrl }),
+		[state, login, logout],
 	)
 	return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

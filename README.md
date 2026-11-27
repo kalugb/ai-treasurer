@@ -2,11 +2,11 @@
 
 A treasurer's workspace for clubs and societies. It tracks team budgets, receipts (from Google Drive or uploaded by hand), cash in and reimbursements, and has an AI agent that can read your data, scan receipts and build Excel reports. Amounts are in Malaysian Ringgit (RM).
 
-> **Status: in development.** Accounts have no email verification or two-factor sign-in yet, so anyone can register with any email address. Keep it off the public internet until those exist (see [Known limits](#known-limits)).
+> **Status: in development.** Accounts have no two-factor sign-in yet. Keep it off the public internet until those exist (see [Known limits](#known-limits)).
 
 ## Features
 
-- **Accounts**: sign up with a username, email and password; sign in with your username or email, or with Google. Tick **Remember me** to stay signed in after closing the browser (up to 60 days). Everything you see belongs to your account.
+- **Accounts**: sign up with a username, email and password (a 6-digit code emailed to you confirms the address; **Forgot password?** emails a code to reset it); sign in with your username or email, or with Google. Tick **Remember me** to stay signed in after closing the browser (up to 60 days). Everything you see belongs to your account.
 - **Overview**: total budget, spent and remaining across teams, cash balance, what needs attention (receipts with no amount, duplicates to review, receipts not reimbursed), per-team budget bars, recent receipts and cash flow, and rule-based notes such as "Games is over budget by RM348.91".
 - **Organizations and teams**: each organization has teams, each with a budget, members and an optional Google Drive folder.
 - **Receipts management**:
@@ -134,7 +134,7 @@ frontend/src/
 
 ## Known limits
 
-- **No email verification, password reset or two-factor sign-in yet** (no mail server). Anyone can register with an email address that is not theirs; usernames and emails cannot be changed after sign-up.
+- **No two-factor sign-in yet.** Usernames and emails cannot be changed after sign-up. Accounts that never verify their email are kept (no cleanup). Mail goes through Brevo; a From address on a free provider (e.g. Gmail) may land in spam, use a domain you own for production.
 - Failed sign-ins are limited to 5 per 15 minutes per address and username, counted in the backend's memory (reset on restart, separate per worker).
 - **Third-party data**: receipt scans, chat messages and attachments are sent to Groq, NVIDIA and Google Gemini.
 - Snapshots copy data, not files: receipt and proof images come from the current files.

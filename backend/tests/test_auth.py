@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ["SUPABASE_URL"] = "https://fake.supabase.test"
 os.environ["COOKIE_SECURE"] = "false"
 os.environ["FRONTEND_URL"] = "http://localhost:5173"
+os.environ.setdefault("TOKEN_ENCRYPTION_KEY", "test-only-key")
 
 import httpx
 import jwt
@@ -23,7 +24,8 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from fastapi.testclient import TestClient
 from pymongo import MongoClient
 
-from services import auth, users  # noqa: E402
+from routers import auth as auth_router  # noqa: E402
+from services import auth, email_codes, mailer, users  # noqa: E402
 import main  # noqa: E402
 from services.redis.cache import CacheStore  # noqa: E402
 from services.redis.events import EventBus  # noqa: E402
@@ -68,6 +70,9 @@ class FakeGoTrue:
             u = {"id": str(uuid.uuid4()), "email": json["email"], "password": json["password"], "meta": json["user_metadata"]}
             self.users[u["id"]] = u
             return res(200, {"id": u["id"]})
+        if path.startswith("/admin/users/") and method == "PUT":
+            self.users[path.rsplit("/", 1)[1]]["password"] = json["password"]
+            return res(200)
         if path.startswith("/admin/users/") and method == "DELETE":
             self.users.pop(path.rsplit("/", 1)[1], None)
             return res(200)
@@ -86,6 +91,9 @@ class FakeGoTrue:
                 return res(200, self.session(u)) if u and json["code_verifier"] else res(400)
         if path == "/logout":
             self.revoked.append(bearer)
+            if (params or {}).get("scope") == "global":
+                uid = jwt.decode(bearer, options={"verify_signature": False})["sub"]
+                self.refresh = {k: v for k, v in self.refresh.items() if v != uid}
             return res(204)
         raise AssertionError(f"unexpected GoTrue call {method} {path}")
 
@@ -103,12 +111,35 @@ def check(label, cond):
 def main_check():
     gotrue = FakeGoTrue()
     auth._gotrue, auth._jwks_client = gotrue, lambda: FakeJwks()
+    issued, mails = {}, []  # (email, purpose) -> last code made; mails actually handed to the mailer
+    real_issue = email_codes.issue
+
+    def recording_issue(db, email, purpose):
+        issued[(email, purpose)] = code = real_issue(db, email, purpose)
+        return code
+
+    async def fake_send_code(to, purpose, code):
+        mails.append((to, purpose, code))
+    email_codes.issue, mailer.send_code = recording_issue, fake_send_code
+
+    def clear_throttles():
+        for t in (auth.login_throttle, auth_router.register_throttle, auth_router.send_ip_throttle,
+                  auth_router.send_email_throttle, auth_router.guess_throttle):
+            t._hits.clear()
+
+    def signup(client, username, email, password):
+        """Register, enter the emailed code, then sign in: what a person does."""
+        clear_throttles()
+        assert client.post("/api/auth/register", json={"username": username, "email": email, "password": password}, headers=ORIGIN).status_code == 201
+        assert client.post("/api/auth/verify-email", json={"email": email.lower(), "code": issued[(email.lower(), "verify")]}, headers=ORIGIN).status_code == 200
+        assert client.post("/api/auth/login", json={"identifier": username, "password": password}, headers=ORIGIN).status_code == 200
     tag = uuid.uuid4().hex[:8]
     mongo = MongoClient(os.getenv("MONGODB_URI") or "mongodb://localhost:27017/")
     names = [f"zz_auth_main_{tag}", f"zz_auth_ai_{tag}", f"zz_auth_hist_{tag}"]
     db, ai, hist = (mongo[n] for n in names)
     try:
         users.ensure_indexes(db)
+        email_codes.ensure_indexes(db)
         link = RedisLink("redis://127.0.0.1:1/0")  # unreachable on purpose: in-memory cache/events fallbacks
         st = main.app.state
         st.mongo, st.ai_mongo, st.history_mongo = db, ai, hist
@@ -126,6 +157,7 @@ def main_check():
 
         # every route except the sign-in ones refuses an anonymous caller
         open_paths = {"/api/auth/register", "/api/auth/login", "/api/auth/refresh", "/api/auth/logout",
+                      "/api/auth/verify-email", "/api/auth/resend-code", "/api/auth/forgot-password", "/api/auth/reset-password",
                       "/api/auth/google/start", "/api/auth/google/callback", "/api/connect/google/callback"}
         bad = []
         for path, methods in main.app.openapi()["paths"].items():
@@ -147,8 +179,34 @@ def main_check():
                      {"username": "alice", "email": "a@x.com", "password": "short"},
                      {"username": "alice", "email": "a@x.com", "password": "password1", "role": "admin"}):
             check(f"register rejects {list(body.values())[:2]}", a.post("/api/auth/register", json=body, headers=ORIGIN).status_code == 422)
+        clear_throttles()
         r = a.post("/api/auth/register", json={"username": "Alice", "email": "Alice@X.com", "password": "password1"}, headers=ORIGIN)
-        check("register ok", r.status_code == 201)
+        check("register ok, asks for verification", r.status_code == 201 and r.json() == {"verificationRequired": True, "email": "alice@x.com"})
+        check("register sets no cookies (nobody is signed in yet)", not r.headers.get_list("set-cookie") and a.get("/api/auth/session").status_code == 401)
+        check("a code was made for the new email", ("alice@x.com", "verify") in issued)
+        check("the code is stored hashed, not in clear", issued[("alice@x.com", "verify")] not in str(db["emailCodes"].find_one({"email": "alice@x.com"})))
+        for _ in range(50):  # the mail is sent without waiting for it
+            if mails:
+                break
+            time.sleep(0.05)
+        check("the code was handed to the mailer", mails == [("alice@x.com", "verify", issued[("alice@x.com", "verify")])])
+        alice_id = db["users"].find_one({"username": "alice"})["authId"]
+        check("profile starts unverified", db["users"].find_one({"username": "alice"})["emailVerified"] is False)
+        pre = new_client()
+        pre.cookies.set("sb_access", sign(alice_id, "alice@x.com"))
+        check("a valid Supabase token of an unverified user is refused everywhere (403)", pre.get("/api/users/me").status_code == 403)
+        lg = new_client().post("/api/auth/login", json={"identifier": "alice", "password": "password1"}, headers=ORIGIN)
+        check("login before verifying -> 403 email_not_verified, no cookies", lg.status_code == 403 and lg.json()["detail"]["code"] == "email_not_verified" and not lg.headers.get_list("set-cookie"))
+        check("wrong password still looks like any wrong password", new_client().post("/api/auth/login", json={"identifier": "alice", "password": "nope-nope"}, headers=ORIGIN).status_code == 401)
+        good = issued[("alice@x.com", "verify")]
+        wrong = "000000" if good != "000000" else "111111"
+        check("wrong code -> 400", a.post("/api/auth/verify-email", json={"email": "alice@x.com", "code": wrong}, headers=ORIGIN).status_code == 400)
+        check("malformed code -> 422", a.post("/api/auth/verify-email", json={"email": "alice@x.com", "code": "12ab56"}, headers=ORIGIN).status_code == 422)
+        check("code for another email -> 400", a.post("/api/auth/verify-email", json={"email": "other@x.com", "code": good}, headers=ORIGIN).status_code == 400)
+        check("verify with the right code", a.post("/api/auth/verify-email", json={"email": "alice@x.com", "code": good}, headers=ORIGIN).status_code == 200)
+        check("the code works only once", a.post("/api/auth/verify-email", json={"email": "alice@x.com", "code": good}, headers=ORIGIN).status_code == 400)
+        r = a.post("/api/auth/login", json={"identifier": "alice", "password": "password1"}, headers=ORIGIN)
+        check("login after verifying", r.status_code == 200)
         check("tokens are in httpOnly cookies, not in the body", "access_token" not in r.text and "refresh_token" not in r.text)
         setc = " ".join(r.headers.get_list("set-cookie")).lower()
         check("cookies are httponly + samesite=lax", setc.count("httponly") == 2 and "samesite=lax" in setc)
@@ -162,10 +220,11 @@ def main_check():
 
         # ---- second account: separate identity, cannot reach the first one's data
         b = new_client()
+        clear_throttles()
         check("duplicate username -> 409", b.post("/api/auth/register", json={"username": "ALICE", "email": "b@x.com", "password": "password1"}, headers=ORIGIN).status_code == 409)
         check("duplicate email -> 409", b.post("/api/auth/register", json={"username": "bob", "email": "alice@x.com", "password": "password1"}, headers=ORIGIN).status_code == 409)
         check("failed sign-ups left no Supabase orphan", len(gotrue.users) == 1)
-        check("register ok (2nd)", b.post("/api/auth/register", json={"username": "bob", "email": "b@x.com", "password": "password1"}, headers=ORIGIN).status_code == 201)
+        check("register ok (2nd)", signup(b, "bob", "b@x.com", "password1") is None)
         bme = b.get("/api/auth/session").json()["user"]
         check("second account gets its own key", bme["userKey"] not in ("1", "") and ObjectId.is_valid(bme["userKey"]))
         check("second account has no orgs", b.get("/api/organizations").status_code == 404)
@@ -316,6 +375,56 @@ def main_check():
         gotrue.codes["code-2"] = guser
         hg = cookie_headers(gr.get("/api/auth/google/callback", params={"code": "code-2"}))
         check("google sign-in with remember: persistent cookies", f"max-age={auth.REFRESH_MAX_AGE}" in hg["sb_refresh"] and "sb_remember" in hg)
+        # ---- email codes: resend, limits, expiry
+        from datetime import datetime, timedelta, timezone
+        clear_throttles()
+        post = lambda client, path, body: client.post(f"/api/auth{path}", json=body, headers=ORIGIN)
+        carol = new_client()
+        check("register carol", post(carol, "/register", {"username": "carol", "email": "carol@x.com", "password": "password1"}).status_code == 201)
+        first = issued[("carol@x.com", "verify")]
+        check("resend inside the cooldown keeps the live code", post(carol, "/resend-code", {"email": "carol@x.com"}).json() == {"ok": True} and issued[("carol@x.com", "verify")] == first)
+        wrong = "000000" if first != "000000" else "111111"
+        for _ in range(5):
+            post(carol, "/verify-email", {"email": "carol@x.com", "code": wrong})
+        check("after 5 wrong guesses even the right code is refused", post(carol, "/verify-email", {"email": "carol@x.com", "code": first}).status_code == 400)
+        db["emailCodes"].update_one({"email": "carol@x.com", "purpose": "verify"}, {"$set": {"sentAt": datetime.now(timezone.utc) - timedelta(seconds=120)}})
+        post(carol, "/resend-code", {"email": "carol@x.com"})
+        second = issued[("carol@x.com", "verify")]
+        check("resend after the cooldown makes a new live code", db["emailCodes"].find_one({"email": "carol@x.com", "purpose": "verify"})["attempts"] == 0)
+        db["emailCodes"].update_one({"email": "carol@x.com", "purpose": "verify"}, {"$set": {"expiresAt": datetime.now(timezone.utc) - timedelta(seconds=1)}})
+        check("an expired code is refused", post(carol, "/verify-email", {"email": "carol@x.com", "code": second}).status_code == 400)
+        before = dict(issued)
+        check("resend for an unknown email looks the same", post(carol, "/resend-code", {"email": "nobody@x.com"}).json() == {"ok": True} and issued == before)
+        check("resend for an already verified email makes no code", post(carol, "/resend-code", {"email": "alice@x.com"}).json() == {"ok": True} and issued == before)
+        clear_throttles()
+        capped = [post(carol, "/resend-code", {"email": "capped@x.com"}).status_code for _ in range(7)]
+        check(f"requests for one email are capped per hour {capped}", capped == [200] * 5 + [429] * 2)
+        clear_throttles()
+
+        # ---- forgot / reset password
+        old = new_client()
+        old.post("/api/auth/login", json={"identifier": "alice", "password": "password1"}, headers=ORIGIN)
+        old_refresh = old.cookies.get("sb_refresh", path="/api/auth")
+        same = [post(new_client(), "/forgot-password", {"email": e}) for e in ("alice@x.com", "nobody@x.com", "gina@gmail.com")]
+        check("forgot-password answers identically for known, unknown and Google-only emails", len({(r.status_code, r.text) for r in same}) == 1 and same[0].status_code == 200)
+        check("a code was made only for the password account", ("alice@x.com", "reset") in issued and ("nobody@x.com", "reset") not in issued and ("gina@gmail.com", "reset") not in issued)
+        reset_code = issued[("alice@x.com", "reset")]
+        bad_reset = "000000" if reset_code != "000000" else "111111"
+        check("reset with a wrong code -> 400", post(new_client(), "/reset-password", {"email": "alice@x.com", "code": bad_reset, "newPassword": "newpassword1"}).status_code == 400)
+        check("reset with a too short password -> 422", post(new_client(), "/reset-password", {"email": "alice@x.com", "code": reset_code, "newPassword": "short"}).status_code == 422)
+        check("a verify code can't reset a password", post(new_client(), "/reset-password", {"email": "carol@x.com", "code": first, "newPassword": "newpassword1"}).status_code == 400)
+        check("reset ok", post(new_client(), "/reset-password", {"email": "alice@x.com", "code": reset_code, "newPassword": "newpassword1"}).status_code == 200)
+        check("the reset code works once", post(new_client(), "/reset-password", {"email": "alice@x.com", "code": reset_code, "newPassword": "another-pass1"}).status_code == 400)
+        check("old password no longer works", post(new_client(), "/login", {"identifier": "alice", "password": "password1"}).status_code == 401)
+        check("new password works", post(new_client(), "/login", {"identifier": "alice", "password": "newpassword1"}).status_code == 200)
+        stale = new_client()
+        stale.cookies.set("sb_refresh", old_refresh, path="/api/auth")
+        check("sessions from before the reset can't refresh", stale.post("/api/auth/refresh", headers=ORIGIN).status_code == 401)
+        post(carol, "/forgot-password", {"email": "carol@x.com"})
+        check("an unverified account can reset its password (and is then verified)",
+              post(carol, "/reset-password", {"email": "carol@x.com", "code": issued[("carol@x.com", "reset")], "newPassword": "carolpass1"}).status_code == 200
+              and post(new_client(), "/login", {"identifier": "carol", "password": "carolpass1"}).status_code == 200)
+
         print("\nALL AUTH CHECKS PASSED")
     finally:
         for n in names:

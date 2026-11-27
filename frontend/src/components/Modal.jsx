@@ -1,7 +1,10 @@
+import { createPortal } from 'react-dom';
+
 export default function Modal({ isOpen, onClose, title, children, footer }) {
     if (!isOpen) return null;
 
-    return (
+    // portal to <body>: inside the sidebar (a stacking context) the page's own buttons painted over the dialog
+    return createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="modal-title">
             <div className="relative w-full max-w-md rounded-[14px] bg-white p-6 shadow-xl" onClick={e => e.stopPropagation()}>
                 {title && (
@@ -14,6 +17,7 @@ export default function Modal({ isOpen, onClose, title, children, footer }) {
                     </div>
                 )}
             </div>
-        </div>
+        </div>,
+        document.body,
     );
 }

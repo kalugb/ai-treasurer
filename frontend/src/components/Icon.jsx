@@ -25,6 +25,8 @@ export default function Icon({ name, size = 18 }) {
 		snapshot: <><circle cx="12" cy="12" r="3.5" /><path d="M3 12h5.5M15.5 12H21" /></>,
 		sync: <><path d="M20 11a8 8 0 0 0-14.8-4M4 13a8 8 0 0 0 14.8 4" /><path d="M20 4v7h-7M4 20v-7h7" /></>,
 		logout: <><path d="M9 21H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h4" /><path d="m16 17 5-5-5-5M21 12H9" /></>,
+		eye: <><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" /><circle cx="12" cy="12" r="3" /></>,
+		eyeOff: <><path d="M2.5 12S6 5.5 12 5.5c1.9 0 3.5.6 4.9 1.4M21.5 12s-3.5 6.5-9.5 6.5c-1.9 0-3.5-.6-4.9-1.4" /><path d="M4 20 20 4" /></>,
 	}
 	return (
 		<svg

@@ -142,8 +142,8 @@ async def sign_out(access_token: str) -> None:
 
 
 async def admin_create_user(email: str, password: str, username: str) -> str:
-    """Create a confirmed Supabase user (no SMTP yet, so no confirmation mail) and return its id.
-    shortcut: marks the email as confirmed without proof; enable email confirmation once SMTP exists."""
+    """Create a Supabase user marked confirmed and return its id. Supabase's own email confirmation is not used:
+    our profile's `emailVerified` (proved with an emailed code, see email_codes) is what gates access."""
     res = await _gotrue(
         "POST", "/admin/users", key=os.getenv("SUPABASE_SECRET_KEY") or "",
         json={"email": email, "password": password, "email_confirm": True, "user_metadata": {"username": username}},
@@ -159,6 +159,27 @@ async def admin_create_user(email: str, password: str, username: str) -> str:
         raise HTTPException(status_code=422, detail="That email or password was rejected.")
     print(f"Supabase create user failed: {res.status_code} {code}")
     raise HTTPException(status_code=503, detail="Sign-in service unavailable")
+
+
+async def admin_set_password(user_id: str, password: str) -> None:
+    res = await _gotrue("PUT", f"/admin/users/{user_id}", key=os.getenv("SUPABASE_SECRET_KEY") or "", json={"password": password})
+    if res.status_code == 200:
+        return
+    if _error_code(res) == "weak_password" or res.status_code == 422:
+        raise HTTPException(status_code=422, detail="That password is too weak.")
+    print(f"Supabase set password failed: {res.status_code} {_error_code(res)}")
+    raise HTTPException(status_code=503, detail="Sign-in service unavailable")
+
+
+async def revoke_all_sessions(email: str, password: str) -> None:
+    """After a password reset: sign in once with the new password and log out everywhere, which kills every refresh
+    token the user had (the admin API has no revoke-by-id). Best effort. shortcut: an access token already issued
+    stays valid until it expires (at most an hour)."""
+    try:
+        session = await password_login(email, password)
+        await _gotrue("POST", "/logout", params={"scope": "global"}, bearer=session["access_token"])
+    except HTTPException:
+        print("Could not revoke the other sessions after a password reset")
 
 
 async def admin_delete_user(user_id: str) -> None:
