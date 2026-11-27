@@ -16,4 +16,4 @@ jobs:
       # and add `--images` to the command to also scan the Docker images.
       - run: bash scripts/trivy-scan.sh
         env:
-          TRIVY_EXIT_CODE: "0"
+          TRIVY_EXIT_CODE: "1"
