@@ -116,6 +116,10 @@ cd backend && uv run python tests/test_auth.py   # sign-in, sessions and ownersh
 
 Some backend modules carry their own assert self-checks, e.g. `PYTHONPATH=. uv run python routers/dashboard.py`.
 
+### Security scan (Trivy)
+
+`bash scripts/trivy-scan.sh` checks the lockfiles for known CVEs (HIGH/CRITICAL, fixed ones only), the repo for hard-coded secrets, and the Dockerfiles/compose file for misconfigurations. It needs only Docker (run it from WSL Ubuntu or any shell): it runs the `aquasec/trivy` image and keeps the vulnerability database in a `trivy-cache` volume, so only the first run downloads it. It skips `backend/.env`, `backend/.env.docker` and `backend/google_creds/`. It only reports; run `TRIVY_EXIT_CODE=1 bash scripts/trivy-scan.sh` to fail on findings, and add `--images` to also build and scan the backend and frontend images. The same script runs in GitHub Actions (`.github/workflows/trivy.yml`) on push, pull requests and weekly, report-only.
+
 ## Project layout
 
 ```
@@ -125,6 +129,7 @@ backend/
   models/                   Pydantic request/response models
   services/                 mongodb, redis, supabase, google, duplicates, auth, ai (inference, tools, skills, embeddings)
   tests/                    self-checks (test_auth.py)
+scripts/trivy-scan.sh       Trivy security scan (see Checks)
 frontend/src/
   pages/                    one file per page
   components/               shared UI (Modal, Toast, ZoomableImage, ReceiptEditor, ...)

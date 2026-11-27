@@ -1,0 +1,19 @@
+name: Trivy
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 3 * * 1" # weekly: new CVEs appear without code changes
+permissions:
+  contents: read
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # "0" = report-only. Set "1" in production to fail the build on HIGH/CRITICAL,
+      # and add `--images` to the command to also scan the Docker images.
+      - run: bash scripts/trivy-scan.sh
+        env:
+          TRIVY_EXIT_CODE: "0"
