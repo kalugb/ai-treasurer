@@ -2,7 +2,7 @@
 
 A treasurer's workspace for clubs and societies. It tracks team budgets, receipts (from Google Drive or uploaded by hand), cash in and reimbursements, and has an AI agent that can read your data, scan receipts and build Excel reports. Amounts are in Malaysian Ringgit (RM).
 
-> **Status: in development.** Accounts have no two-factor sign-in yet. Keep it off the public internet until those exist (see [Known limits](#known-limits)).
+> **Status: in development.** See [Known limits](#known-limits) before putting it on the public internet.
 
 ## Features
 
@@ -134,7 +134,7 @@ frontend/src/
 
 ## Known limits
 
-- **No two-factor sign-in yet.** Usernames and emails cannot be changed after sign-up. Accounts that never verify their email are kept (no cleanup). Mail goes through Brevo; a From address on a free provider (e.g. Gmail) may land in spam, use a domain you own for production.
+- Usernames and emails cannot be changed after sign-up. Accounts that never verify their email are kept (no cleanup). Mail goes through Brevo; a From address on a free provider (e.g. Gmail) may land in spam, use a domain you own for production.
 - Failed sign-ins are limited to 5 per 15 minutes per address and username, counted in the backend's memory (reset on restart, separate per worker).
 - **Third-party data**: receipt scans, chat messages and attachments are sent to Groq, NVIDIA and Google Gemini.
 - Snapshots copy data, not files: receipt and proof images come from the current files.
