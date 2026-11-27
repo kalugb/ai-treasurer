@@ -11,8 +11,12 @@
     "backend": "cd backend && uv run uvicorn main:app --reload --timeout-graceful-shutdown 3"
   },
   "dependencies": {
-    "@assistant-ui/react": "^0.15.15",
-    "@assistant-ui/react-ai-sdk": "^1.4.6",
-    "@openai/codex-security": "^0.1.14"
+    "@assistant-ui/react": "^0.15.38",
+    "@assistant-ui/react-ai-sdk": "^1.4.25",
+    "@openai/codex-security": "^0.1.31"
+  },
+  "overrides": {
+    "fast-uri": "^3.1.9",
+    "@modelcontextprotocol/server": "^2.4.0"
   }
 }

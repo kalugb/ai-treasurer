@@ -1,13 +1,16 @@
 FROM python:3.12-slim
 
+RUN pip install --no-cache-dir uv \
+    && useradd --system --create-home --uid 1000 app \
+    && mkdir /app && chown app:app /app
+
 WORKDIR /app
+USER app
 
-RUN pip install --no-cache-dir uv
+COPY --chown=app:app pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-cache
 
-COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev
-
-COPY . .
+COPY --chown=app:app . .
 
 EXPOSE 8000
 
